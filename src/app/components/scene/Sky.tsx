@@ -67,18 +67,18 @@ export default function Sky() {
 
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
-    const bob = Math.sin(t * 0.5) * 100;
 
     if (cubeGroup.current) {
       cubeGroup.current.rotation.x += delta * 0.07;
       cubeGroup.current.rotation.z += delta * 0.09;
-      cubeGroup.current.position.y = cubePos[1] + bob;
+      cubeGroup.current.position.y = cubePos[1] + Math.sin(t * 0.5) * 100;
     }
 
     if (pyramidGroup.current) {
       pyramidGroup.current.rotation.y += delta * 0.1;
       pyramidGroup.current.rotation.x += delta * 0.05;
-      pyramidGroup.current.position.y = pyramidPos[1] + bob;
+      pyramidGroup.current.position.y =
+        pyramidPos[1] + Math.sin(t * 0.45 + 0.1276) * 100;
     }
   });
 
