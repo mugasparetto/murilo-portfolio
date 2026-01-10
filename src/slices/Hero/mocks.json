@@ -1,0 +1,18 @@
+[
+	{
+		"__TYPE__": "SharedSliceContent",
+		"variation": "default",
+		"primary": {
+			"video_url": {
+				"__TYPE__": "LinkContent",
+				"key": "23308708-061e-43b3-af50-de4a93e80aec",
+				"value": {
+					"__TYPE__": "ExternalLink",
+					"url": "https://prismic.io",
+					"text": "until"
+				}
+			}
+		},
+		"items": []
+	}
+]
