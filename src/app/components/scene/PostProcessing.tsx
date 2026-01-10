@@ -22,7 +22,7 @@ type Props = {
 export default function Postprocessing({
   selected,
   visibleEdgeColor = "#ffffff",
-  hiddenEdgeColor = "#001a1a",
+  hiddenEdgeColor = "#ffffff",
   edgeStrength = 4.0,
   edgeThickness = 0.001,
   edgeGlow = 0.0,
