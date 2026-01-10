@@ -16,6 +16,8 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
   useEffect(() => {
     const gui = new GUI();
 
+    gui.close();
+
     const camFolder = gui.addFolder("camera");
     camFolder.add(params, "cameraX", -3000, 3000).onChange(cb.onCameraChange);
     camFolder.add(params, "cameraY", -3000, 3000).onChange(cb.onCameraChange);

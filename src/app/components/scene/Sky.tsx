@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useThree, useFrame } from "@react-three/fiber";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
+import { Stars } from "@react-three/drei";
 
 import OutlinedSolid from "./OutlinedSolid"; // adjust path if needed
 
@@ -109,6 +110,16 @@ export default function Sky() {
           wireScale={1.002}
         />
       </group>
+
+      <Stars
+        radius={1500}
+        depth={7000}
+        count={10000}
+        factor={200}
+        saturation={0}
+        fade
+        speed={1}
+      />
     </group>
   );
 }
