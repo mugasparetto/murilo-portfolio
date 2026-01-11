@@ -78,6 +78,9 @@ export default function Experience() {
     onGroupChange: () => {
       forceRender();
     },
+    onFluidChange: () => {
+      forceRender();
+    },
   });
 
   const p = paramsRef.current;

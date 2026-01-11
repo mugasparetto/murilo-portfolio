@@ -10,6 +10,7 @@ type Callbacks = {
   onStepsChange: () => void;
   onDoorChange: () => void;
   onGroupChange: () => void;
+  onFluidChange: () => void;
 };
 
 export function useLilGui(params: SceneParams, cb: Callbacks) {
@@ -23,7 +24,7 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
     camFolder.add(params, "cameraY", -3000, 3000).onChange(cb.onCameraChange);
     camFolder.add(params, "cameraZ", -1000, 5000).onChange(cb.onCameraChange);
     camFolder.add(params, "fov", 20, 120).onChange(cb.onCameraChange);
-    camFolder.open();
+    camFolder.close();
 
     const targetFolder = gui.addFolder("look at");
     targetFolder
@@ -35,6 +36,7 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
     targetFolder
       .add(params, "targetZ", -2000, 2000)
       .onChange(cb.onCameraChange);
+    targetFolder.close();
 
     const terrainFolder = gui.addFolder("terrain");
     terrainFolder
@@ -73,7 +75,7 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
     terrainFolder.add(params, "maskPower", 0.2, 6.0, 0.01).name("mask power");
     terrainFolder.add(params, "useHardClip", 0, 1, 1).name("hard clip");
 
-    terrainFolder.open();
+    terrainFolder.close();
 
     const stepFolder = gui.addFolder("steps");
     stepFolder.add(params, "stepX", -4000, 1000, 10).onChange(cb.onStepsChange);
@@ -98,6 +100,12 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
     groupFolder
       .add(params, "groupY", -2000, 2000, 50)
       .onChange(cb.onGroupChange);
+
+    const fluidFolder = gui.addFolder("fluid");
+    fluidFolder.addColor(params, "color1").onChange(cb.onFluidChange);
+    fluidFolder.addColor(params, "color2").onChange(cb.onFluidChange);
+    fluidFolder.addColor(params, "color3").onChange(cb.onFluidChange);
+    fluidFolder.addColor(params, "color4").onChange(cb.onFluidChange);
 
     return () => {
       gui.destroy();

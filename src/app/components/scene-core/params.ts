@@ -49,6 +49,19 @@ export type SceneParams = {
   doorScaleY: number;
 
   groupY: number;
+
+  brushSize: number;
+  brushStrength: number;
+  distortionAmount: number;
+  fluidDecay: number;
+  trailLength: number;
+  stopDecay: number;
+  color1: string;
+  color2: string;
+  color3: string;
+  color4: string;
+  colorIntensity: number;
+  softness: number;
 };
 
 export const defaultParams: SceneParams = {
@@ -97,4 +110,17 @@ export const defaultParams: SceneParams = {
   doorScaleY: 1.65,
 
   groupY: -50,
+
+  brushSize: 10.0,
+  brushStrength: 1,
+  distortionAmount: 1.5,
+  fluidDecay: 0.98,
+  trailLength: 0.8,
+  stopDecay: 0.85,
+  color1: "#15b259",
+  color2: "#caffad",
+  color3: "#dd2cae",
+  color4: "#0091ff",
+  colorIntensity: 1.65,
+  softness: 1,
 };

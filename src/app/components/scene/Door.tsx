@@ -10,6 +10,8 @@ import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 
 import { useFrame, useThree } from "@react-three/fiber";
 
+import { useFluidMaterials, type FluidConfig } from "./FluidMaterial";
+
 type Props = {
   params: SceneParams;
 };
@@ -19,6 +21,8 @@ export default function Door({ params }: Props) {
   const dpr = gl.getPixelRatio();
 
   const doorRef = useRef<THREE.Mesh>(null);
+  const pointerUvRef = useRef<THREE.Vector2 | null>(null);
+  const pointerActiveRef = useRef(false);
 
   const stepWidth = 800;
 
@@ -27,16 +31,32 @@ export default function Door({ params }: Props) {
     () => new THREE.BoxGeometry(stepWidth, 2 * stepWidth, 1),
     []
   );
-  const doorMat = useMemo(
-    () => new THREE.MeshBasicMaterial({ color: "yellow" }),
-    []
-  );
+  const { displayMat } = useFluidMaterials({
+    config: {
+      brushSize: params.brushSize,
+      brushStrength: params.brushStrength,
+      distortionAmount: params.distortionAmount,
+      fluidDecay: params.fluidDecay,
+      trailLength: params.trailLength,
+      stopDecay: params.stopDecay,
+      color1: params.color1,
+      color2: params.color2,
+      color3: params.color3,
+      color4: params.color4,
+      colorIntensity: params.colorIntensity,
+      softness: params.softness,
+    },
+    simWidth: 256,
+    simHeight: 512,
+    pointerUvRef,
+    pointerActiveRef,
+  });
 
   // --- fat line material
   const lineMat = useMemo(() => {
     const m = new LineMaterial({
       color: 0xffffff,
-      linewidth: 4,
+      linewidth: 2,
       resolution: new THREE.Vector2(size.width, size.height),
     });
     m.depthTest = true;
@@ -76,12 +96,12 @@ export default function Door({ params }: Props) {
   useEffect(() => {
     return () => {
       doorGeometry.dispose();
-      doorMat.dispose();
+      displayMat.dispose();
       lineGeo.dispose();
       lineMat.dispose();
       // wire will be GC'd; it uses disposed geo/mat above
     };
-  }, [doorGeometry, doorMat, lineGeo, lineMat]);
+  }, [doorGeometry, displayMat, lineGeo, lineMat]);
 
   // --- keep mesh + wire perfectly in sync
   useEffect(() => {
@@ -112,7 +132,24 @@ export default function Door({ params }: Props) {
 
   return (
     <group>
-      <mesh ref={doorRef} geometry={doorGeometry} material={doorMat} />
+      <mesh
+        ref={doorRef}
+        geometry={doorGeometry}
+        material={displayMat}
+        onPointerMove={(e) => {
+          pointerActiveRef.current = true;
+          if (e.uv) pointerUvRef.current = e.uv.clone();
+        }}
+        onPointerOut={() => {
+          pointerActiveRef.current = false;
+          pointerUvRef.current = null;
+        }}
+        onPointerLeave={() => {
+          pointerActiveRef.current = false;
+          pointerUvRef.current = null;
+        }}
+      />
+
       <primitive object={wire} />
     </group>
   );
