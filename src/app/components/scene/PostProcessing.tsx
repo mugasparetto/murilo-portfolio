@@ -35,7 +35,7 @@ export default function PostprocessingR3F({ selected }: Props) {
       <Outline
         ref={outlineRef}
         blendFunction={BlendFunction.ALPHA} // set this to BlendFunction.ALPHA for dark outlines
-        edgeStrength={20} // the edge strength
+        edgeStrength={10} // the edge strength
         pulseSpeed={0.0} // a pulse speed. A value of zero disables the pulse effect
         visibleEdgeColor={0xffffff} // the color of visible edges
         hiddenEdgeColor={0xffffff} // the color of hidden edges
