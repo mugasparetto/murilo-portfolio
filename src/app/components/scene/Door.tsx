@@ -10,11 +10,13 @@ import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 
 import { useFrame, useThree } from "@react-three/fiber";
 
-import { useFluidMaterials, type FluidConfig } from "./FluidMaterial";
+import { useFluidMaterials } from "./FluidMaterial";
 
 type Props = {
   params: SceneParams;
 };
+
+const BLOOM_LAYER = 1;
 
 export default function Door({ params }: Props) {
   const { size, camera, gl } = useThree();
@@ -70,6 +72,11 @@ export default function Door({ params }: Props) {
   useEffect(() => {
     lineMat.resolution.set(size.width * dpr, size.height * dpr);
   }, [lineMat, size.width, size.height, dpr]);
+
+  useEffect(() => {
+    if (!doorRef.current) return;
+    doorRef.current.layers.enable(BLOOM_LAYER);
+  }, []);
 
   // --- line geometry from edges
   const lineGeo = useMemo(() => {

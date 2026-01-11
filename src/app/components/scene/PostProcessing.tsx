@@ -2,7 +2,13 @@
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { EffectComposer, Outline } from "@react-three/postprocessing";
+import {
+  EffectComposer,
+  Outline,
+  SelectiveBloom,
+  Vignette,
+  Noise,
+} from "@react-three/postprocessing";
 import { BlendFunction } from "postprocessing";
 
 type Props = {
@@ -43,6 +49,18 @@ export default function PostprocessingR3F({ selected }: Props) {
         blur={false} // whether the outline should be blurred
         xRay={false} // indicates whether X-Ray outlines are enabled
       />
+
+      <SelectiveBloom
+        selectionLayer={1} // ✅ THIS is the key
+        intensity={1.15}
+        luminanceThreshold={0.55}
+        luminanceSmoothing={0.8}
+        mipmapBlur
+      />
+
+      {/* optional polish, very Huly-like */}
+      <Vignette eskil={false} offset={0.2} darkness={0.7} />
+      <Noise premultiply opacity={0.4} />
     </EffectComposer>
   );
 }

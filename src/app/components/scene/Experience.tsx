@@ -33,6 +33,11 @@ export default function Experience() {
     []
   );
 
+  useEffect(() => {
+    camera.layers.enable(1);
+    camera.layers.enable(0);
+  }, [camera]);
+
   const applyCameraFromParams = useCallback(() => {
     const p = paramsRef.current;
 

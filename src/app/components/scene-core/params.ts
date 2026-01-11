@@ -121,6 +121,6 @@ export const defaultParams: SceneParams = {
   color2: "#caffad",
   color3: "#dd2cae",
   color4: "#0091ff",
-  colorIntensity: 1.65,
+  colorIntensity: 2,
   softness: 1,
 };
