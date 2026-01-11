@@ -110,7 +110,6 @@ export default function Steps({ params }: Props) {
             polygonOffset
             polygonOffsetFactor={1}
             polygonOffsetUnits={1}
-            lineMode="wireframe"
           />
           <OutlinedSolid
             geometry={stepGeometry}
@@ -121,7 +120,6 @@ export default function Steps({ params }: Props) {
             polygonOffset
             polygonOffsetFactor={1}
             polygonOffsetUnits={1}
-            lineMode="wireframe"
           />
           <OutlinedSolid
             geometry={stepGeometry}
@@ -132,7 +130,6 @@ export default function Steps({ params }: Props) {
             polygonOffset
             polygonOffsetFactor={1}
             polygonOffsetUnits={1}
-            lineMode="wireframe"
           />
         </group>
       </group>
