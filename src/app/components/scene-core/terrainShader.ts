@@ -1,6 +1,6 @@
 export const terrainVertex = /* glsl */ `
-  attribute vec3 barycentric;
-  varying vec3 vBarycentric;
+  varying vec2 vUv;
+  varying float vWorldZ;
 
   uniform float uTime;
   uniform float uDiff;
@@ -9,8 +9,6 @@ export const terrainVertex = /* glsl */ `
   uniform float uSpeedMul;
 
   uniform float uWidth;
-  uniform float uEdgePower;
-  uniform float uEdgePad;
   uniform float uEdgeStrength;
 
   uniform float uBowlStrength;
@@ -18,8 +16,6 @@ export const terrainVertex = /* glsl */ `
   uniform float uNoiseEdgeStart;
   uniform float uNoiseEdgeEnd;
   uniform float uNoiseEdgePower;
-
-  varying float vWorldZ;
 
   vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
   vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -79,7 +75,7 @@ export const terrainVertex = /* glsl */ `
   }
 
   void main() {
-    vBarycentric = barycentric;
+    vUv = uv;
 
     vec3 pos = position;
 
@@ -106,28 +102,44 @@ export const terrainVertex = /* glsl */ `
 `;
 
 export const terrainFragment = /* glsl */ `
-  varying vec3 vBarycentric;
+  varying vec2 vUv;
+  varying float vWorldZ;
 
   uniform float uLineWidth;
   uniform vec3 uLineColor;
   uniform vec3 uFillColor;
-
-  varying float vWorldZ;
 
   uniform float uMaskNearZ;
   uniform float uMaskFarZ;
   uniform float uMaskPower;
   uniform float uUseHardClip;
 
-  float edgeFactor() {
-    vec3 d = fwidth(vBarycentric);
-    vec3 a = smoothstep(vec3(0.0), d * uLineWidth, vBarycentric);
-    return min(min(a.x, a.y), a.z);
+  // ✅ new: grid density (cells per 1.0 UV)
+  uniform float uGrid;
+
+  // Anti-aliased grid line factor:
+  // returns 0 on lines, 1 in cell interiors (so it matches your mix())
+  float gridFactor(vec2 uv, float grid, float lineWidth) {
+    vec2 g = uv * grid;
+
+    // distance to nearest grid line in each axis (0 at lines)
+    vec2 f = abs(fract(g) - 0.5);
+
+    // derivative for AA
+    vec2 df = fwidth(g);
+
+    // line thickness in "grid space"
+    vec2 a = smoothstep(vec2(0.0), df * lineWidth, f);
+
+    // min => lines on either axis become lines
+    return min(a.x, a.y);
   }
 
   void main() {
-    float edge = edgeFactor();
-    vec3 color = mix(uLineColor, uFillColor, edge);
+    float grid = gridFactor(vUv, uGrid, uLineWidth);
+
+    // On lines => grid~0 => lineColor. Inside => grid~1 => fillColor.
+    vec3 color = mix(uLineColor, uFillColor, grid);
 
     float t = smoothstep(uMaskNearZ, uMaskFarZ, vWorldZ);
     float fade = pow(1.0 - t, uMaskPower);

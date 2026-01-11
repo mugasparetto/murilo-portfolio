@@ -23,8 +23,6 @@ export default function Terrain({ params, tiles = 3 }: Props) {
 
     let geo = new THREE.PlaneGeometry(params.w, params.h, cols - 1, rows - 1);
     geo.rotateX(-Math.PI / 2);
-    geo = geo.toNonIndexed();
-    addBarycentricCoordinates(geo);
     return geo;
   }, [params.w, params.h, params.scl]);
 
@@ -40,6 +38,7 @@ export default function Terrain({ params, tiles = 3 }: Props) {
         uXYScale: { value: params.xyScale },
         uScrollSpeed: { value: params.scrollSpeed },
         uSpeedMul: { value: params.speedMul },
+        uGrid: { value: 40.0 },
 
         uWidth: { value: params.w },
         uEdgePower: { value: params.edgePower },
