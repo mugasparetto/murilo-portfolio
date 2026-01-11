@@ -23,7 +23,7 @@ export default function Postprocessing({
   selected,
   visibleEdgeColor = "#ffffff",
   hiddenEdgeColor = "#ffffff",
-  edgeStrength = 4.0,
+  edgeStrength = 2.0,
   edgeThickness = 0.001,
   edgeGlow = 0.0,
   msaaSamples = 16,

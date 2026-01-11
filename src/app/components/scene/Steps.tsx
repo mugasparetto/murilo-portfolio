@@ -34,7 +34,7 @@ export default function Steps({ params }: Props) {
   const stepLineMat = useMemo(() => {
     const m = new LineMaterial({
       color: 0xffffff,
-      linewidth: 4,
+      linewidth: 2,
       resolution: new THREE.Vector2(size.width * dpr, size.height * dpr),
     });
     m.depthTest = true;

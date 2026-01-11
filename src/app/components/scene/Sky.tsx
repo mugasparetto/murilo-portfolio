@@ -35,7 +35,7 @@ export default function Sky() {
   const lineMat = useMemo(() => {
     const m = new LineMaterial({
       color: 0xffffff,
-      linewidth: 2,
+      linewidth: 1.5,
       resolution: new THREE.Vector2(size.width * dpr, size.height * dpr),
     });
     m.depthTest = true;
@@ -115,7 +115,7 @@ export default function Sky() {
         radius={1500}
         depth={7000}
         count={10000}
-        factor={200}
+        factor={300}
         saturation={0}
         fade
         speed={1}
