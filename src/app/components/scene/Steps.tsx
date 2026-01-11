@@ -103,33 +103,36 @@ export default function Steps({ params }: Props) {
           {/* local layout only */}
           <OutlinedSolid
             geometry={stepGeometry}
-            lineGeometry={stepLineGeo}
+            // lineGeometry={stepLineGeo}
             lineMaterial={stepLineMat}
             position={[0, 0, 0]}
             wireScale={1.002}
             polygonOffset
             polygonOffsetFactor={1}
             polygonOffsetUnits={1}
+            lineMode="wireframe"
           />
           <OutlinedSolid
             geometry={stepGeometry}
-            lineGeometry={stepLineGeo}
+            // lineGeometry={stepLineGeo}
             lineMaterial={stepLineMat}
             position={[0, stepHeight, -stepDepth]}
             wireScale={1.002}
             polygonOffset
             polygonOffsetFactor={1}
             polygonOffsetUnits={1}
+            lineMode="wireframe"
           />
           <OutlinedSolid
             geometry={stepGeometry}
-            lineGeometry={stepLineGeo}
+            // lineGeometry={stepLineGeo}
             lineMaterial={stepLineMat}
             position={[0, 2 * stepHeight, -2 * stepDepth]}
             wireScale={1.002}
             polygonOffset
             polygonOffsetFactor={1}
             polygonOffsetUnits={1}
+            lineMode="wireframe"
           />
         </group>
       </group>

@@ -95,6 +95,7 @@ export default function Sky() {
           polygonOffsetFactor={2}
           polygonOffsetUnits={2}
           wireScale={1.002}
+          lineMode="wireframe"
         />
       </group>
 
@@ -108,6 +109,7 @@ export default function Sky() {
           polygonOffsetFactor={2}
           polygonOffsetUnits={2}
           wireScale={1.002}
+          lineMode="wireframe"
         />
       </group>
 

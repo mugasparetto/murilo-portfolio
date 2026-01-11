@@ -8,23 +8,16 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 
-type Props = {
-  /** Fill geometry (required) */
-  geometry: THREE.BufferGeometry;
+type LineMode = "edges" | "wireframe";
 
-  /** Fill material (optional). If omitted, a black MeshBasicMaterial is used. */
+type Props = {
+  geometry: THREE.BufferGeometry;
   fillMaterial?: THREE.Material;
 
-  /**
-   * If you pass a precomputed line geometry (recommended for many instances),
-   * OutlinedSolid will use it instead of building EdgesGeometry itself.
-   */
+  /** Optional precomputed line geometry (recommended for many instances) */
   lineGeometry?: LineSegmentsGeometry;
 
-  /**
-   * If you pass a shared LineMaterial (recommended for many instances),
-   * OutlinedSolid will use it. Otherwise it creates its own.
-   */
+  /** Optional shared fat line material */
   lineMaterial?: LineMaterial;
 
   /** Only used if lineMaterial is NOT provided */
@@ -32,23 +25,30 @@ type Props = {
   /** Only used if lineMaterial is NOT provided */
   lineWidth?: number;
 
-  /** Helps prevent fill/line depth fighting at distance */
+  /**
+   * How to generate lines if lineGeometry isn't provided:
+   * - "edges": feature/silhouette edges via EdgesGeometry (your current look)
+   * - "wireframe": all triangle edges via WireframeGeometry (internal triangles)
+   */
+  lineMode?: LineMode;
+
+  /**
+   * Used only in "edges" mode. Lower values include more edges.
+   * 1–15 is typical. 0 shows basically everything (often too much).
+   */
+  edgeThresholdAngle?: number;
+
   polygonOffset?: boolean;
   polygonOffsetFactor?: number;
   polygonOffsetUnits?: number;
 
-  /** Slightly scales wire outward to avoid depth overlap */
   wireScale?: number;
-
-  /** Render toggles */
   visible?: boolean;
 
-  /** Transform props */
   position?: [number, number, number];
   rotation?: [number, number, number];
   scale?: number | [number, number, number];
 
-  /** Useful if you want the wire on top */
   renderOrder?: number;
 };
 
@@ -60,12 +60,14 @@ export default function OutlinedSolid({
   lineColor = 0xffffff,
   lineWidth = 2,
 
+  lineMode = "edges",
+  edgeThresholdAngle = 1, // ✅ low angle = more edges in "edges" mode
+
   polygonOffset = true,
   polygonOffsetFactor = 1,
   polygonOffsetUnits = 1,
 
   wireScale = 1.001,
-
   visible = true,
 
   position,
@@ -75,25 +77,20 @@ export default function OutlinedSolid({
   renderOrder,
 }: Props) {
   const groupRef = useRef<THREE.Group>(null);
-  const fillRef = useRef<THREE.Mesh>(null);
 
   const { size, gl } = useThree();
   const dpr = gl.getPixelRatio();
 
   // ---------- fill material ----------
-  const internalFill = useMemo(() => {
-    const m = new THREE.MeshBasicMaterial({ color: "black" });
-    return m;
-  }, []);
-
+  const internalFill = useMemo(
+    () => new THREE.MeshBasicMaterial({ color: "black" }),
+    []
+  );
   const finalFill = fillMaterial ?? internalFill;
 
-  // apply polygon offset if supported by the material
   useEffect(() => {
-    const m = finalFill as any;
     if (!polygonOffset) return;
-
-    // many Three materials support these fields
+    const m = finalFill as any;
     m.polygonOffset = true;
     m.polygonOffsetFactor = polygonOffsetFactor;
     m.polygonOffsetUnits = polygonOffsetUnits;
@@ -113,10 +110,9 @@ export default function OutlinedSolid({
     m.opacity = 1.0;
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // create once
+  }, []);
 
   const finalLineMat = lineMaterial ?? internalLineMat!;
-  // keep shared or internal material resolution DPR-correct
   useEffect(() => {
     finalLineMat.resolution.set(size.width * dpr, size.height * dpr);
   }, [finalLineMat, size.width, size.height, dpr]);
@@ -125,20 +121,27 @@ export default function OutlinedSolid({
   const internalLineGeo = useMemo(() => {
     if (lineGeometry) return null;
 
-    const edges = new THREE.EdgesGeometry(geometry);
-    const pos = (edges.attributes.position as THREE.BufferAttribute)
-      .array as any;
+    let g3: THREE.BufferGeometry;
 
+    if (lineMode === "wireframe") {
+      // ✅ internal triangle edges everywhere
+      g3 = new THREE.WireframeGeometry(geometry);
+    } else {
+      // ✅ "edges" (feature edges); threshold controls how much detail
+      g3 = new THREE.EdgesGeometry(geometry, edgeThresholdAngle);
+    }
+
+    const pos = (g3.attributes.position as THREE.BufferAttribute).array as any;
     const g = new LineSegmentsGeometry();
     g.setPositions(pos);
 
-    edges.dispose();
+    g3.dispose();
     return g;
-  }, [geometry, lineGeometry]);
+  }, [geometry, lineGeometry, lineMode, edgeThresholdAngle]);
 
   const finalLineGeo = lineGeometry ?? internalLineGeo!;
 
-  // ---------- line object (stable) ----------
+  // ---------- line object ----------
   const wire = useMemo(() => {
     const w = new LineSegments2(finalLineGeo, finalLineMat);
     w.computeLineDistances();
@@ -146,7 +149,6 @@ export default function OutlinedSolid({
     return w;
   }, [finalLineGeo, finalLineMat]);
 
-  // apply wire scale + render order
   useEffect(() => {
     wire.scale.setScalar(wireScale);
     if (typeof renderOrder === "number") wire.renderOrder = renderOrder;
@@ -158,12 +160,10 @@ export default function OutlinedSolid({
       if (!fillMaterial) internalFill.dispose();
       if (!lineMaterial) internalLineMat?.dispose();
       if (!lineGeometry) internalLineGeo?.dispose();
-      // wire uses those resources; disposing them is enough
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // keep visibility consistent
   useEffect(() => {
     if (groupRef.current) groupRef.current.visible = visible;
   }, [visible]);
@@ -171,7 +171,6 @@ export default function OutlinedSolid({
   return (
     <group ref={groupRef} position={position} rotation={rotation} scale={scale}>
       <mesh
-        ref={fillRef}
         geometry={geometry}
         material={finalFill}
         renderOrder={renderOrder}
