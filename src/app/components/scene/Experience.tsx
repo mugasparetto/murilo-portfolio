@@ -25,6 +25,7 @@ import HumanModel from "./HumanModel";
 import Sky from "./Sky";
 import { useFluidMaterials } from "./FluidMaterial";
 import { useHeroPrimary } from "../../../slices/Hero/hero-context";
+import ParallaxRig from "./ParallaxRig";
 
 export default function Experience() {
   const { camera } = useThree();
@@ -50,25 +51,42 @@ export default function Experience() {
     camera.layers.enable(0);
   }, [camera]);
 
+  const basePos = useMemo(
+    () =>
+      new THREE.Vector3(
+        paramsRef.current.cameraX,
+        paramsRef.current.cameraY,
+        paramsRef.current.cameraZ
+      ),
+    []
+  );
+
+  const baseTarget = useMemo(
+    () =>
+      new THREE.Vector3(
+        paramsRef.current.targetX,
+        paramsRef.current.targetY,
+        paramsRef.current.targetZ
+      ),
+    []
+  );
+
   const applyCameraFromParams = useCallback(() => {
     const p = paramsRef.current;
 
     // set camera
-    camera.position.set(p.cameraX, p.cameraY, p.cameraZ);
+    camera.position.copy(basePos);
     camera.fov = p.fov;
     camera.updateProjectionMatrix();
 
-    // set orbit target (crucial)
-    const target = new THREE.Vector3(p.targetX, p.targetY, p.targetZ);
-
     const controls = controlsRef.current;
     if (controls) {
-      controls.target.copy(target);
+      controls.target.copy(baseTarget);
 
       // ✅ important: after changing camera/target, call update()
       controls.update();
     } else {
-      camera.lookAt(target);
+      camera.lookAt(baseTarget);
     }
   }, [camera]);
 
@@ -143,7 +161,7 @@ export default function Experience() {
     <>
       <color attach="background" args={[0x000000]} />
 
-      <OrbitControls ref={controlsRef} />
+      {/* <OrbitControls ref={controlsRef} /> */}
 
       <group position={groupPosition}>
         <Terrain params={p} tiles={3} />
@@ -162,7 +180,7 @@ export default function Experience() {
       <Suspense fallback={null}>
         <group ref={textRef}>
           <Text
-            position={[-1900, 2350, -5700]}
+            position={[-1900, 2350, -5750]}
             font="/fonts/Morganite-Black.ttf"
             fontSize={2000}
             color="white"
@@ -170,7 +188,7 @@ export default function Experience() {
             {first_name}
           </Text>
           <Text
-            position={[2450, 600, -5690]}
+            position={[2450, 600, -5650]}
             font="/fonts/Morganite-Black.ttf"
             fontSize={2000}
             color="white"
@@ -180,7 +198,10 @@ export default function Experience() {
         </group>
       </Suspense>
 
-      <Html position={[-1470, 870, 0]} className="w-[24rem] flex flex-col">
+      <Html
+        position={[-1470, 870, 0]}
+        className="w-[24rem] flex flex-col pointer-events-none"
+      >
         <span
           className="font-bold text-white lowercase text-2xl relative with-star"
           style={{ wordSpacing: 56 }}
@@ -191,6 +212,15 @@ export default function Experience() {
       </Html>
 
       <Postprocessing selected={outlined} />
+
+      <ParallaxRig
+        basePosition={basePos}
+        baseTarget={baseTarget}
+        strength={170}
+        damp={6}
+        targetStrength={0.2}
+      />
+
       <Stats />
     </>
   );
