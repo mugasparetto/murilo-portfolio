@@ -12,15 +12,32 @@
       "description": "Default",
       "imageUrl": "",
       "primary": {
-        "video_url": {
-          "type": "Link",
+        "first_name": {
+          "type": "Text",
           "config": {
-            "label": "Video url",
-            "placeholder": "",
-            "select": null,
-            "allowTargetBlank": true,
-            "allowText": true,
-            "repeat": false
+            "label": "First Name",
+            "placeholder": ""
+          }
+        },
+        "last_name": {
+          "type": "Text",
+          "config": {
+            "label": "Last name",
+            "placeholder": ""
+          }
+        },
+        "tag_line": {
+          "type": "Text",
+          "config": {
+            "label": "Tag line",
+            "placeholder": ""
+          }
+        },
+        "description": {
+          "type": "Text",
+          "config": {
+            "label": "Description",
+            "placeholder": ""
           }
         }
       },

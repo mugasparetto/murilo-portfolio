@@ -24,10 +24,12 @@ import Door from "./Door";
 import HumanModel from "./HumanModel";
 import Sky from "./Sky";
 import { useFluidMaterials } from "./FluidMaterial";
+import { useHeroPrimary } from "../../../slices/Hero/hero-context";
 
 export default function Experience() {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
+  const { first_name, last_name, tag_line, description } = useHeroPrimary();
 
   // ✅ single stable params object that GUI mutates
   const paramsRef = useRef<SceneParams>({ ...defaultParams });
@@ -165,7 +167,7 @@ export default function Experience() {
             fontSize={2000}
             color="white"
           >
-            MURILO
+            {first_name}
           </Text>
           <Text
             position={[2450, 600, -5690]}
@@ -173,7 +175,7 @@ export default function Experience() {
             fontSize={2000}
             color="white"
           >
-            GASPARETTO
+            {last_name}
           </Text>
         </group>
       </Suspense>

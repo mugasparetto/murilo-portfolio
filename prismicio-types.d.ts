@@ -213,20 +213,44 @@ export type AllDocumentTypes = HomepageDocument | PageDocument;
  */
 export interface HeroSliceDefaultPrimary {
   /**
-   * Video url field in *Hero → Default → Primary*
+   * First Name field in *Hero → Default → Primary*
    *
-   * - **Field Type**: Link
+   * - **Field Type**: Text
    * - **Placeholder**: *None*
-   * - **API ID Path**: hero.default.primary.video_url
-   * - **Documentation**: https://prismic.io/docs/fields/link
+   * - **API ID Path**: hero.default.primary.first_name
+   * - **Documentation**: https://prismic.io/docs/fields/text
    */
-  video_url: prismic.LinkField<
-    string,
-    string,
-    unknown,
-    prismic.FieldState,
-    never
-  >;
+  first_name: prismic.KeyTextField;
+
+  /**
+   * Last name field in *Hero → Default → Primary*
+   *
+   * - **Field Type**: Text
+   * - **Placeholder**: *None*
+   * - **API ID Path**: hero.default.primary.last_name
+   * - **Documentation**: https://prismic.io/docs/fields/text
+   */
+  last_name: prismic.KeyTextField;
+
+  /**
+   * Tag line field in *Hero → Default → Primary*
+   *
+   * - **Field Type**: Text
+   * - **Placeholder**: *None*
+   * - **API ID Path**: hero.default.primary.tag_line
+   * - **Documentation**: https://prismic.io/docs/fields/text
+   */
+  tag_line: prismic.KeyTextField;
+
+  /**
+   * Description field in *Hero → Default → Primary*
+   *
+   * - **Field Type**: Text
+   * - **Placeholder**: *None*
+   * - **API ID Path**: hero.default.primary.description
+   * - **Documentation**: https://prismic.io/docs/fields/text
+   */
+  description: prismic.KeyTextField;
 }
 
 /**
