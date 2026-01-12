@@ -79,7 +79,7 @@ export default function Steps({ params, doorFluidTextureRef }: Props) {
         uDoorUp: { value: new THREE.Vector3(0, 1, 0) },
         uDoorHalfSize: { value: new THREE.Vector2(400, 800) },
 
-        uIntensity: { value: 2 },
+        uIntensity: { value: 3.5 },
         uFalloff: { value: 0.001 },
 
         uTopStart: { value: 0.25 },
