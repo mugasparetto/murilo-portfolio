@@ -14,6 +14,7 @@ import Steps from "./Steps";
 import Door from "./Door";
 import HumanModel from "./HumanModel";
 import Sky from "./Sky";
+import { useFluidMaterials } from "./FluidMaterial";
 
 export default function Experience() {
   const { camera } = useThree();
@@ -90,6 +91,30 @@ export default function Experience() {
 
   const p = paramsRef.current;
 
+  const pointerUvRef = useRef<THREE.Vector2 | null>(null);
+  const pointerActiveRef = useRef(false);
+
+  const { displayMat, fluidTextureRef } = useFluidMaterials({
+    config: {
+      brushSize: p.brushSize,
+      brushStrength: p.brushStrength,
+      distortionAmount: p.distortionAmount,
+      fluidDecay: p.fluidDecay,
+      trailLength: p.trailLength,
+      stopDecay: p.stopDecay,
+      color1: p.color1,
+      color2: p.color2,
+      color3: p.color3,
+      color4: p.color4,
+      colorIntensity: p.colorIntensity,
+      softness: p.softness,
+    },
+    simWidth: 512,
+    simHeight: 1024,
+    pointerUvRef,
+    pointerActiveRef,
+  });
+
   const groupPosition = useMemo<[number, number, number]>(
     () => [0, p.groupY, 0],
     [p.groupY]
@@ -103,8 +128,13 @@ export default function Experience() {
 
       <group position={groupPosition}>
         <Terrain params={p} tiles={3} />
-        <Steps params={p} />
-        <Door params={p} />
+        <Steps params={p} doorFluidTextureRef={fluidTextureRef} />
+        <Door
+          params={p}
+          displayMat={displayMat}
+          pointerUvRef={pointerUvRef}
+          pointerActiveRef={pointerActiveRef}
+        />
         <HumanModel onMeshesReady={handleMeshesReady} />
       </group>
 

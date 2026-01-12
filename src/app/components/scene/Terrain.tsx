@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import type { SceneParams } from "../scene-core/params";
-import { addBarycentricCoordinates } from "../scene-core/barycentric";
 import { terrainFragment, terrainVertex } from "../scene-core/terrainShader";
 
 type Props = {

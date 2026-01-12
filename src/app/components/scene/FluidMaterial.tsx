@@ -88,6 +88,8 @@ export function useFluidMaterials({
   const currentRT = useRef<THREE.WebGLRenderTarget>(rtA);
   const previousRT = useRef<THREE.WebGLRenderTarget>(rtB);
 
+  const fluidTextureRef = useRef<THREE.Texture | null>(null);
+
   // sim scene: full-screen quad + ortho camera
   const simScene = useMemo(() => new THREE.Scene(), []);
   const simCam = useMemo(
@@ -238,6 +240,8 @@ export function useFluidMaterials({
 
     gl.setRenderTarget(null);
 
+    fluidTextureRef.current = currentRT.current.texture;
+
     // feed door shader
     displayMat.uniforms.iFluid.value = currentRT.current.texture;
 
@@ -255,5 +259,5 @@ export function useFluidMaterials({
     displayMat.uniforms.iResolution.value.set(simWidth, simHeight);
   }, [fluidMat, displayMat, simWidth, simHeight]);
 
-  return { displayMat };
+  return { displayMat, fluidTextureRef };
 }

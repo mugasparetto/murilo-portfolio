@@ -14,17 +14,23 @@ import { useFluidMaterials } from "./FluidMaterial";
 
 type Props = {
   params: SceneParams;
+  displayMat: THREE.ShaderMaterial;
+  pointerUvRef: React.MutableRefObject<THREE.Vector2 | null>;
+  pointerActiveRef: React.MutableRefObject<boolean>;
 };
 
 const BLOOM_LAYER = 1;
 
-export default function Door({ params }: Props) {
+export default function Door({
+  params,
+  displayMat,
+  pointerUvRef,
+  pointerActiveRef,
+}: Props) {
   const { size, camera, gl } = useThree();
   const dpr = gl.getPixelRatio();
 
   const doorRef = useRef<THREE.Mesh>(null);
-  const pointerUvRef = useRef<THREE.Vector2 | null>(null);
-  const pointerActiveRef = useRef(false);
 
   const stepWidth = 800;
 
@@ -33,26 +39,6 @@ export default function Door({ params }: Props) {
     () => new THREE.BoxGeometry(stepWidth, 2 * stepWidth, 1),
     []
   );
-  const { displayMat } = useFluidMaterials({
-    config: {
-      brushSize: params.brushSize,
-      brushStrength: params.brushStrength,
-      distortionAmount: params.distortionAmount,
-      fluidDecay: params.fluidDecay,
-      trailLength: params.trailLength,
-      stopDecay: params.stopDecay,
-      color1: params.color1,
-      color2: params.color2,
-      color3: params.color3,
-      color4: params.color4,
-      colorIntensity: params.colorIntensity,
-      softness: params.softness,
-    },
-    simWidth: 256,
-    simHeight: 512,
-    pointerUvRef,
-    pointerActiveRef,
-  });
 
   // --- fat line material
   const lineMat = useMemo(() => {
