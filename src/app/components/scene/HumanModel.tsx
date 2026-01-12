@@ -39,7 +39,7 @@ export default function HumanModel({ onMeshesReady }: Props) {
     () => ({
       scale: 100,
       rotationY: Math.PI - Math.PI * 0.05,
-      position: new THREE.Vector3(-700, 238, -3300),
+      position: new THREE.Vector3(-750, 238, -3100),
     }),
     []
   );

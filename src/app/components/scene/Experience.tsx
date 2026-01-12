@@ -1,9 +1,18 @@
 "use client";
 
-import { OrbitControls, Stats } from "@react-three/drei";
+import { OrbitControls, Stats, Html, Text } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  Suspense,
+} from "react";
+
+import { useFrame } from "@react-three/fiber";
 
 import { defaultParams, type SceneParams } from "../scene-core/params";
 import { useLilGui } from "../scene-core/useLilGui";
@@ -120,6 +129,14 @@ export default function Experience() {
     [p.groupY]
   );
 
+  const textRef = useRef<THREE.Mesh | null>(null);
+
+  // --- billboard both to camera every frame
+  useFrame(() => {
+    const q = camera.quaternion;
+    if (textRef.current) textRef.current.quaternion.copy(q);
+  });
+
   return (
     <>
       <color attach="background" args={[0x000000]} />
@@ -139,6 +156,42 @@ export default function Experience() {
       </group>
 
       <Sky />
+
+      <Suspense fallback={null}>
+        <group ref={textRef}>
+          <Text
+            position={[-1900, 2350, -5700]}
+            font="/fonts/Morganite-Black.ttf"
+            fontSize={2000}
+            color="white"
+          >
+            MURILO
+          </Text>
+          <Text
+            position={[2450, 600, -5690]}
+            font="/fonts/Morganite-Black.ttf"
+            fontSize={2000}
+            color="white"
+          >
+            GASPARETTO
+          </Text>
+        </group>
+      </Suspense>
+
+      {/* <Html
+        transform
+        position={[-1500, 1500, -7000]}
+        occlude="blending"
+        distanceFactor={1000}
+        // className="test"
+      >
+        <h1
+          className="text-9xl font-bold underline text-white bg-black border-8 border-black"
+          // style={{ background: "indianred" }}
+        >
+          Hello planet!
+        </h1>
+      </Html> */}
 
       <Postprocessing selected={outlined} />
       <Stats />

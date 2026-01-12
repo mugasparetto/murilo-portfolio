@@ -10,8 +10,6 @@ import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 
 import { useFrame, useThree } from "@react-three/fiber";
 
-import { useFluidMaterials } from "./FluidMaterial";
-
 type Props = {
   params: SceneParams;
   displayMat: THREE.ShaderMaterial;
