@@ -180,20 +180,15 @@ export default function Experience() {
         </group>
       </Suspense>
 
-      {/* <Html
-        transform
-        position={[-1500, 1500, -7000]}
-        occlude="blending"
-        distanceFactor={1000}
-        // className="test"
-      >
-        <h1
-          className="text-9xl font-bold underline text-white bg-black border-8 border-black"
-          // style={{ background: "indianred" }}
+      <Html position={[-1470, 870, 0]} className="w-[24rem] flex flex-col">
+        <span
+          className="font-bold text-white lowercase text-2xl relative with-star"
+          style={{ wordSpacing: 56 }}
         >
-          Hello planet!
-        </h1>
-      </Html> */}
+          {tag_line}
+        </span>
+        <span className="lowercase">{description}</span>
+      </Html>
 
       <Postprocessing selected={outlined} />
       <Stats />
