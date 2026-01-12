@@ -7,6 +7,10 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { Stars } from "@react-three/drei";
 
 import OutlinedSolid from "./OutlinedSolid"; // adjust path if needed
+import Star from "./Star";
+
+const STARS_COUNT = 200;
+const DOME_RADIUS = 6000;
 
 export default function Sky() {
   const { size, gl } = useThree();
@@ -65,6 +69,26 @@ export default function Sky() {
   const cubePos: [number, number, number] = [-4000, 5000, -7000];
   const pyramidPos: [number, number, number] = [6200, 4000, -7000];
 
+  const starsPositions = useMemo(() => {
+    const pts: [number, number, number][] = [];
+
+    for (let i = 0; i < STARS_COUNT; i++) {
+      // random direction
+      const u = Math.random();
+      const v = Math.random();
+      const theta = 2 * Math.PI * u;
+      const phi = Math.acos(2 * v - 1);
+
+      const x = DOME_RADIUS * Math.sin(phi) * Math.cos(theta);
+      const y = DOME_RADIUS * Math.sin(phi) * Math.sin(theta);
+      const z = DOME_RADIUS * Math.cos(phi);
+
+      pts.push([x, y, z]);
+    }
+
+    return pts;
+  }, []);
+
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
 
@@ -113,13 +137,27 @@ export default function Sky() {
 
       <Stars
         radius={1500}
-        depth={7000}
-        count={10000}
-        factor={300}
+        depth={5000}
+        count={9000}
+        factor={200}
         saturation={0}
         fade
         speed={1}
       />
+
+      <group>
+        {starsPositions.map((p, i) => (
+          <Star
+            key={i}
+            position={p}
+            minSize={10}
+            maxSize={18}
+            blinkSpeed={0.8}
+            minOpacity={0.2}
+            maxOpacity={1}
+          />
+        ))}
+      </group>
     </group>
   );
 }
