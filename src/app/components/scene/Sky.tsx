@@ -8,6 +8,7 @@ import { Stars } from "@react-three/drei";
 
 import OutlinedSolid from "./OutlinedSolid"; // adjust path if needed
 import Star from "./Star";
+import ShootingStars from "./ShootingStars";
 
 const STARS_COUNT = 200;
 const DOME_RADIUS = 6000;
@@ -158,6 +159,14 @@ export default function Sky() {
           />
         ))}
       </group>
+
+      <ShootingStars
+        domeRadius={DOME_RADIUS}
+        poolSize={6}
+        minInterval={5}
+        maxInterval={7}
+        globalMinGap={8}
+      />
     </group>
   );
 }
