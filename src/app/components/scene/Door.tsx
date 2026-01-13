@@ -101,7 +101,7 @@ export default function Door({
     const pz = params.doorZ;
 
     doorRef.current?.position.set(px, py, pz);
-    wire.position.set(px, py, pz);
+    wire.position.set(px, py, pz + 3);
 
     doorRef.current?.scale.set(params.doorScaleX, params.doorScaleY, 1);
     wire.scale.set(params.doorScaleX, params.doorScaleY, 1);
