@@ -8,6 +8,7 @@ import {
   SelectiveBloom,
   Vignette,
   Noise,
+  SMAA,
 } from "@react-three/postprocessing";
 import { BlendFunction } from "postprocessing";
 
@@ -37,7 +38,7 @@ export default function PostprocessingR3F({ selected }: Props) {
   }, [selected]);
 
   return (
-    <EffectComposer multisampling={8} autoClear={false}>
+    <EffectComposer multisampling={0} autoClear={false}>
       <Outline
         ref={outlineRef}
         blendFunction={BlendFunction.ALPHA} // set this to BlendFunction.ALPHA for dark outlines
@@ -45,10 +46,12 @@ export default function PostprocessingR3F({ selected }: Props) {
         pulseSpeed={0.0} // a pulse speed. A value of zero disables the pulse effect
         visibleEdgeColor={0xffffff} // the color of visible edges
         hiddenEdgeColor={0xffffff} // the color of hidden edges
-        width={2500} // render width
+        width={4000} // render width
         blur={false} // whether the outline should be blurred
         xRay={false} // indicates whether X-Ray outlines are enabled
       />
+
+      <SMAA />
 
       <SelectiveBloom
         selectionLayer={1} // ✅ THIS is the key
