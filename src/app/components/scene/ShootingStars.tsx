@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useEffect } from "react";
 import * as THREE from "three";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 
 import SkyBoundsDebug from "./SkyBoundsDebug";
 
@@ -262,7 +262,6 @@ export default function ShootingStars({
   minInterval = 2.0,
   maxInterval = 10.0,
 
-  horizonY = 1500, // keep meteors off the "floor"
   trailThickness = 22,
   globalMinGap = 4,
 }: {
@@ -270,7 +269,6 @@ export default function ShootingStars({
   poolSize?: number;
   minInterval?: number;
   maxInterval?: number;
-  horizonY?: number;
   trailThickness?: number;
   globalMinGap?: number;
 }) {
@@ -293,6 +291,7 @@ export default function ShootingStars({
   );
 
   const lastSpawnAtRef = useRef<number>(-1e9);
+  const clickQueueRef = useRef<{ x: number; y: number }[]>([]);
 
   const trailRef = useRef<THREE.InstancedMesh>(null);
   const headRef = useRef<THREE.InstancedMesh>(null);
@@ -306,10 +305,190 @@ export default function ShootingStars({
   // reuse color object to avoid allocations
   const tmpColor = useMemo(() => new THREE.Color(), []);
 
+  const { gl } = useThree();
+
+  useEffect(() => {
+    const el = gl.domElement;
+
+    const onPointerDown = (e: PointerEvent) => {
+      const rect = el.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+      clickQueueRef.current.push({ x, y });
+    };
+
+    el.addEventListener("pointerdown", onPointerDown);
+    return () => el.removeEventListener("pointerdown", onPointerDown);
+  }, [gl]);
+
+  function spawnToPointer(state: any, pointer: { x: number; y: number }) {
+    // find free slot
+    const idx = stars.findIndex((s) => !s.active);
+    if (idx === -1) return;
+
+    const s = stars[idx];
+
+    // ---------- 1) compute target point under pointer ----------
+    const targetZ = (SKY_BOUNDS.minZ + SKY_BOUNDS.maxZ) * 0.5;
+
+    // plane z = targetZ
+    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -targetZ);
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(pointer, state.camera);
+
+    const target = new THREE.Vector3();
+    const hit = raycaster.ray.intersectPlane(plane, target);
+    if (!hit) return;
+
+    // Clamp target inside bounds
+    target.y = THREE.MathUtils.clamp(
+      target.y,
+      SKY_BOUNDS.minY,
+      SKY_BOUNDS.maxY
+    );
+    target.z = THREE.MathUtils.clamp(
+      target.z,
+      SKY_BOUNDS.minZ,
+      SKY_BOUNDS.maxZ
+    );
+
+    // ---------- 2) choose side + guarantee "comes from distance" ----------
+    // If click is near center, force a strong side choice so you still get travel
+    const deadzone = 0.18;
+    let clickSign =
+      Math.abs(pointer.x) < deadzone
+        ? Math.random() < 0.5
+          ? -1
+          : 1
+        : Math.sign(pointer.x);
+
+    // click left => star comes from right; click right => star comes from left
+    const spawnSign = -clickSign;
+
+    // We want it to come from far, so pick a start Y higher than target (=> downward travel)
+    const startY = THREE.MathUtils.clamp(
+      target.y + rand(700, 1400), // ↑ higher start => more down drift
+      SKY_BOUNDS.minY,
+      SKY_BOUNDS.maxY
+    );
+
+    // Keep start Z near target Z so it doesn't get “stuck” by Z bounds
+    let startZ = THREE.MathUtils.clamp(
+      target.z + rand(-250, 250),
+      SKY_BOUNDS.minZ,
+      SKY_BOUNDS.maxZ
+    );
+
+    // Solve X on dome for (startY, startZ)
+    const rr = domeRadius * domeRadius;
+
+    // Guarantee a minimum |x| by nudging Z toward 0 if necessary
+    const minAbsX = 2200; // <-- makes it spawn from “distance”
+    {
+      const allowedZAbsForMinX = Math.sqrt(
+        Math.max(0, rr - startY * startY - minAbsX * minAbsX)
+      );
+
+      // If we can achieve minAbsX at this Y, constrain Z so xAbs won't collapse
+      if (allowedZAbsForMinX > 0) {
+        const zLo = Math.max(SKY_BOUNDS.minZ, -allowedZAbsForMinX);
+        const zHi = Math.min(SKY_BOUNDS.maxZ, +allowedZAbsForMinX);
+
+        // If intersection exists, clamp startZ into it (no tries)
+        if (zLo <= zHi) {
+          startZ = THREE.MathUtils.clamp(startZ, zLo, zHi);
+        }
+      }
+    }
+
+    const rest = rr - (startY * startY + startZ * startZ);
+    const xAbs = Math.sqrt(Math.max(0, rest));
+    const startX = spawnSign * xAbs;
+
+    const start = new THREE.Vector3(startX, startY, startZ);
+
+    // ---------- 3) aim at pointer, but keep it "a bit downwards" ----------
+    // Push the target slightly downward so even center clicks have down drift
+    const targetDownBias = 220;
+    target.y = THREE.MathUtils.clamp(
+      target.y - targetDownBias,
+      SKY_BOUNDS.minY,
+      SKY_BOUNDS.maxY
+    );
+
+    const dir = target.clone().sub(start);
+
+    // avoid "too horizontal": enforce a minimum downward component (but not a dive)
+    // convert to normalized y ratio
+    const len = dir.length();
+    if (len < 1) return;
+
+    const minDownRatio = -0.1; // at least ~10% down
+    const maxDownRatio = -0.28; // no steeper than ~28% down
+
+    let yRatio = dir.y / len;
+
+    if (yRatio > minDownRatio) {
+      // not down enough: make start a bit higher (deterministic)
+      start.y = THREE.MathUtils.clamp(
+        start.y + 350,
+        SKY_BOUNDS.minY,
+        SKY_BOUNDS.maxY
+      );
+      // recompute x to stay on dome
+      const rest2 = rr - (start.y * start.y + start.z * start.z);
+      const xAbs2 = Math.sqrt(Math.max(0, rest2));
+      start.x = spawnSign * xAbs2;
+      dir.copy(target).sub(start);
+    } else if (yRatio < maxDownRatio) {
+      // too down: bring start closer in Y
+      start.y = THREE.MathUtils.clamp(
+        start.y - 350,
+        SKY_BOUNDS.minY,
+        SKY_BOUNDS.maxY
+      );
+      const rest2 = rr - (start.y * start.y + start.z * start.z);
+      const xAbs2 = Math.sqrt(Math.max(0, rest2));
+      start.x = spawnSign * xAbs2;
+      dir.copy(target).sub(start);
+    }
+
+    dir.normalize();
+
+    // ---------- 4) set star so it reaches the pointer ----------
+    s.active = true;
+    s.startTime = state.clock.elapsedTime;
+
+    s.duration = rand(0.6, 1);
+    const travel = start.distanceTo(target);
+
+    // Keep travel meaningful even if click is extremely close to start
+    const minTravel = 2400;
+    const finalTravel = Math.max(minTravel, travel);
+
+    s.speed = finalTravel / s.duration;
+    s.length = THREE.MathUtils.clamp(finalTravel * 0.35, 900, 1700);
+    s.headSize = rand(110, 160);
+    s.opacity = 0;
+
+    s.start.copy(start);
+    s.dir.copy(dir);
+
+    // Optional: make it end near the pointer by shortening duration a bit if needed
+    // (your fadeOut should be near t=0.9..1.0)
+  }
+
   useFrame((state) => {
     const trail = trailRef.current;
     const head = headRef.current;
     if (!trail || !head) return;
+
+    // --- click spawns have priority and ignore timers ---
+    // click spawns (always)
+    while (clickQueueRef.current.length > 0) {
+      const pointer = clickQueueRef.current.shift()!;
+      spawnToPointer(state, pointer);
+    }
 
     const now = state.clock.elapsedTime;
 
@@ -362,7 +541,7 @@ export default function ShootingStars({
         const t = (now - s.startTime) / s.duration;
 
         const fadeIn = THREE.MathUtils.smoothstep(t, 0.0, 0.12);
-        const fadeOut = 1.0 - THREE.MathUtils.smoothstep(t, 0.72, 1.0);
+        const fadeOut = 1.0 - THREE.MathUtils.smoothstep(t, 0.9, 1.0);
         s.opacity = 1.0 * fadeIn * fadeOut;
 
         // compute head pos
