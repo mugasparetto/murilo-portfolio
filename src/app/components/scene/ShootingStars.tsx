@@ -3,6 +3,7 @@
 import { useMemo, useRef, useEffect } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
+import { useScroll } from "@react-three/drei";
 
 import SkyBoundsDebug from "./SkyBoundsDebug";
 
@@ -305,22 +306,6 @@ export default function ShootingStars({
   // reuse color object to avoid allocations
   const tmpColor = useMemo(() => new THREE.Color(), []);
 
-  const { gl } = useThree();
-
-  useEffect(() => {
-    const el = gl.domElement;
-
-    const onPointerDown = (e: PointerEvent) => {
-      const rect = el.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      const y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-      clickQueueRef.current.push({ x, y });
-    };
-
-    el.addEventListener("pointerdown", onPointerDown);
-    return () => el.removeEventListener("pointerdown", onPointerDown);
-  }, [gl]);
-
   function spawnToPointer(state: any, pointer: { x: number; y: number }) {
     // find free slot
     const idx = stars.findIndex((s) => !s.active);
@@ -615,6 +600,21 @@ export default function ShootingStars({
     if (trail.instanceColor) trail.instanceColor.needsUpdate = true;
     if (head.instanceColor) head.instanceColor.needsUpdate = true;
   });
+
+  const scroll = useScroll();
+  const { gl } = useThree();
+  useEffect(() => {
+    const el = scroll.el; // this is the scroll container that receives events
+    const onPointerDown = (e: PointerEvent) => {
+      const rect = (gl.domElement as HTMLCanvasElement).getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+      clickQueueRef.current.push({ x, y });
+    };
+
+    el.addEventListener("pointerdown", onPointerDown);
+    return () => el.removeEventListener("pointerdown", onPointerDown);
+  }, [gl, scroll]);
 
   return (
     <group>

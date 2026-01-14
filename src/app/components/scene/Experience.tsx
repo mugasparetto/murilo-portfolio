@@ -1,6 +1,12 @@
 "use client";
 
-import { OrbitControls, Stats, Html, Text } from "@react-three/drei";
+import {
+  OrbitControls,
+  Stats,
+  Html,
+  Text,
+  ScrollControls,
+} from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import {
@@ -163,53 +169,55 @@ export default function Experience() {
 
       {/* <OrbitControls ref={controlsRef} /> */}
 
-      <group position={groupPosition}>
-        <Terrain params={p} tiles={3} />
-        <Steps params={p} doorFluidTextureRef={fluidTextureRef} />
-        <Door
-          params={p}
-          displayMat={displayMat}
-          pointerUvRef={pointerUvRef}
-          pointerActiveRef={pointerActiveRef}
-        />
-        <HumanModel onMeshesReady={handleMeshesReady} />
-      </group>
-
-      <Sky />
-
-      <Suspense fallback={null}>
-        <group ref={textRef}>
-          <Text
-            position={[-1900, 2350, -5750]}
-            font="/fonts/Morganite-Black.ttf"
-            fontSize={2000}
-            color="white"
-          >
-            {first_name}
-          </Text>
-          <Text
-            position={[2450, 600, -5650]}
-            font="/fonts/Morganite-Black.ttf"
-            fontSize={2000}
-            color="white"
-          >
-            {last_name}
-          </Text>
+      <ScrollControls pages={3}>
+        <group position={groupPosition}>
+          <Terrain params={p} tiles={3} />
+          <Steps params={p} doorFluidTextureRef={fluidTextureRef} />
+          <Door
+            params={p}
+            displayMat={displayMat}
+            pointerUvRef={pointerUvRef}
+            pointerActiveRef={pointerActiveRef}
+          />
+          <HumanModel onMeshesReady={handleMeshesReady} />
         </group>
-      </Suspense>
 
-      <Html
-        position={[-1470, 870, 0]}
-        className="w-[24rem] flex flex-col pointer-events-none"
-      >
-        <span
-          className="font-bold text-white lowercase text-2xl relative with-star"
-          style={{ wordSpacing: 56 }}
+        <Sky />
+
+        <Suspense fallback={null}>
+          <group ref={textRef}>
+            <Text
+              position={[-1900, 2350, -5750]}
+              font="/fonts/Morganite-Black.ttf"
+              fontSize={2000}
+              color="white"
+            >
+              {first_name}
+            </Text>
+            <Text
+              position={[2450, 600, -5650]}
+              font="/fonts/Morganite-Black.ttf"
+              fontSize={2000}
+              color="white"
+            >
+              {last_name}
+            </Text>
+          </group>
+        </Suspense>
+
+        <Html
+          position={[-1470, 870, 0]}
+          className="w-[24rem] flex flex-col pointer-events-none"
         >
-          {tag_line}
-        </span>
-        <span className="lowercase">{description}</span>
-      </Html>
+          <span
+            className="font-bold text-white lowercase text-2xl relative with-star"
+            style={{ wordSpacing: 56 }}
+          >
+            {tag_line}
+          </span>
+          <span className="lowercase">{description}</span>
+        </Html>
+      </ScrollControls>
 
       <Postprocessing selected={outlined} />
 
