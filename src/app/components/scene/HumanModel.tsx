@@ -16,7 +16,7 @@ export default function HumanModel({ onMeshesReady }: Props) {
 
   useEffect(() => {
     // similar to your: animations[1]
-    const name = names?.[1];
+    const name = names?.[0];
     const action = name ? actions?.[name] : undefined;
     action?.reset().play();
 
@@ -37,9 +37,9 @@ export default function HumanModel({ onMeshesReady }: Props) {
 
   const transform = useMemo(
     () => ({
-      scale: 100,
+      scale: 80,
       rotationY: Math.PI - Math.PI * 0.05,
-      position: new THREE.Vector3(-750, 238, -3100),
+      position: new THREE.Vector3(-200, 50, -50),
     }),
     []
   );

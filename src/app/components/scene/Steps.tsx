@@ -18,9 +18,14 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 type Props = {
   params: SceneParams;
   doorFluidTextureRef: React.MutableRefObject<THREE.Texture | null>;
+  children?: React.ReactNode;
 };
 
-export default function Steps({ params, doorFluidTextureRef }: Props) {
+export default function Steps({
+  params,
+  doorFluidTextureRef,
+  children,
+}: Props) {
   const { size, gl, camera } = useThree();
   const dpr = gl.getPixelRatio();
 
@@ -333,42 +338,49 @@ export default function Steps({ params, doorFluidTextureRef }: Props) {
     <group ref={stepsRoot}>
       <group ref={stepsPivot}>
         <group ref={steps}>
-          <OutlinedSolid
+          <group ref={registerStepGroup} position={[0, 0, 0]}>
+            <OutlinedSolid
+              geometry={stepGeometry}
+              lineMaterial={stepLineMat}
+              position={[0, 0, 0]}
+              wireScale={1.002}
+              polygonOffset
+              polygonOffsetFactor={1}
+              polygonOffsetUnits={1}
+              fillMaterial={fillMat}
+              scale={[1, 1, 0.98]}
+            />
+            {children}
+          </group>
+          <group ref={registerStepGroup} position={[0, stepHeight, -stepDepth]}>
+            <OutlinedSolid
+              geometry={stepGeometry}
+              lineMaterial={stepLineMat}
+              position={[0, 0, 0]}
+              wireScale={1.002}
+              polygonOffset
+              polygonOffsetFactor={1}
+              polygonOffsetUnits={1}
+              fillMaterial={fillMat}
+              scale={[1, 1, 0.98]}
+            />
+          </group>
+          <group
             ref={registerStepGroup}
-            geometry={stepGeometry}
-            lineMaterial={stepLineMat}
-            position={[0, 0, 0]}
-            wireScale={1.002}
-            polygonOffset
-            polygonOffsetFactor={1}
-            polygonOffsetUnits={1}
-            fillMaterial={fillMat}
-            scale={[1, 1, 0.98]}
-          />
-          <OutlinedSolid
-            ref={registerStepGroup}
-            geometry={stepGeometry}
-            lineMaterial={stepLineMat}
-            position={[0, stepHeight, -stepDepth]}
-            wireScale={1.002}
-            polygonOffset
-            polygonOffsetFactor={1}
-            polygonOffsetUnits={1}
-            fillMaterial={fillMat}
-            scale={[1, 1, 0.98]}
-          />
-          <OutlinedSolid
-            ref={registerStepGroup}
-            geometry={stepGeometry}
-            lineMaterial={stepLineMat}
             position={[0, 2 * stepHeight, -2 * stepDepth]}
-            wireScale={1.002}
-            polygonOffset
-            polygonOffsetFactor={1}
-            polygonOffsetUnits={1}
-            fillMaterial={fillMat}
-            scale={[1, 1, 0.98]}
-          />
+          >
+            <OutlinedSolid
+              geometry={stepGeometry}
+              lineMaterial={stepLineMat}
+              position={[0, 0, 0]}
+              wireScale={1.002}
+              polygonOffset
+              polygonOffsetFactor={1}
+              polygonOffsetUnits={1}
+              fillMaterial={fillMat}
+              scale={[1, 1, 0.98]}
+            />
+          </group>
           <group ref={clipRef} position={[0, 0, 0]} rotation={[0, 0, 0]}>
             {/* <mesh renderOrder={9999}>
               <planeGeometry args={[2000, 2000]} />

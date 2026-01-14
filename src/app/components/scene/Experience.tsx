@@ -169,20 +169,21 @@ export default function Experience() {
     <>
       <color attach="background" args={[0x000000]} />
 
-      <OrbitControls ref={controlsRef} />
+      {/* <OrbitControls ref={controlsRef} /> */}
 
       <ScrollControls pages={2}>
         <group ref={sceneRef}>
           <group position={groupPosition}>
             <Terrain params={p} tiles={3} />
-            <Steps params={p} doorFluidTextureRef={fluidTextureRef} />
+            <Steps params={p} doorFluidTextureRef={fluidTextureRef}>
+              <HumanModel onMeshesReady={handleMeshesReady} />
+            </Steps>
             <Door
               params={p}
               displayMat={displayMat}
               pointerUvRef={pointerUvRef}
               pointerActiveRef={pointerActiveRef}
             />
-            <HumanModel onMeshesReady={handleMeshesReady} />
           </group>
 
           <Sky />
