@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { SceneParams } from "../scene-core/params";
 import { useThree, useFrame } from "@react-three/fiber";
+import { useScroll } from "@react-three/drei";
 
 import OutlinedSolid from "./OutlinedSolid";
 import {
@@ -61,6 +62,10 @@ export default function Steps({ params, doorFluidTextureRef }: Props) {
   const fillMat = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
+        uClipPlanePoint: { value: new THREE.Vector3() },
+        uClipPlaneNormal: { value: new THREE.Vector3(0, 0, 1) },
+        uClipPlaneSide: { value: 1.0 },
+
         iTime: { value: 0 },
         iResolution: { value: new THREE.Vector2(512, 1024) }, // “pattern space”, not screen
 
@@ -143,6 +148,12 @@ export default function Steps({ params, doorFluidTextureRef }: Props) {
     stepsPivot.current.scale.setScalar(1.6);
   }, [params.stepX, params.stepY, params.stepZ, params.rotY, params.rotZ]);
 
+  const stepGroups = useRef<THREE.Group[]>([]);
+  stepGroups.current = [];
+  const registerStepGroup = (el: THREE.Group | null) => {
+    if (el) stepGroups.current.push(el);
+  };
+
   // ✅ Update uniforms every frame (texture + door plane basis + sizes)
   useFrame(() => {
     // door center
@@ -222,11 +233,108 @@ export default function Steps({ params, doorFluidTextureRef }: Props) {
     if (tex) fillMat.uniforms.uDoorFluid.value = tex;
   });
 
+  useEffect(() => {
+    gl.localClippingEnabled = true;
+  }, [gl]);
+
+  const scroll = useScroll();
+  const stepCount = 3;
+
+  const easeCos = (x: number) => 0.5 - 0.5 * Math.cos(Math.PI * x);
+  const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+
+  useFrame(() => {
+    const t = scroll.offset; // 0..1
+
+    // 5 equal segments: Z, Y, Z, Y, Z
+    const segments = 5;
+    const segLen = 1 / segments;
+
+    // progress inside segment k (0..1)
+    const segP = (k: number) => {
+      const local = (t - k * segLen) / segLen;
+      return easeCos(clamp01(local));
+    };
+
+    // Accumulate offsets:
+    // Each completed segment contributes 1 full step (Z or Y),
+    // and the current active segment contributes partial progress.
+    let zSteps = 0;
+    let ySteps = 0;
+
+    // Segment 0: Z (0..1 step)
+    zSteps += segP(0);
+
+    // Segment 1: Y (0..1 step)
+    ySteps += segP(1);
+
+    // Segment 2: Z
+    zSteps += segP(2);
+
+    // Segment 3: Y
+    ySteps += segP(3);
+
+    // Segment 4: Z
+    zSteps += segP(4);
+
+    // Convert "steps" to world distances
+    const offsetZ = -zSteps * stepDepth;
+    const offsetY = ySteps * stepHeight;
+
+    for (let i = 0; i < stepCount; i++) {
+      const group = stepGroups.current[i];
+      if (!group) continue;
+
+      const baseY = i * stepHeight;
+      const baseZ = -i * stepDepth;
+
+      group.position.set(0, baseY + offsetY, baseZ + offsetZ);
+    }
+  });
+
+  // shared plane object used by LineMaterial (and optionally other materials)
+  const clipPlane = useMemo(() => new THREE.Plane(), []);
+
+  const clipRef = useRef<THREE.Object3D>(null);
+  const tmpPos = useMemo(() => new THREE.Vector3(), []);
+  const tmpNormal = useMemo(() => new THREE.Vector3(), []);
+  const tmpQuat = useMemo(() => new THREE.Quaternion(), []);
+
+  useFrame(() => {
+    if (!clipRef.current) return;
+
+    clipRef.current.getWorldPosition(tmpPos);
+    clipRef.current.getWorldQuaternion(tmpQuat);
+    tmpNormal.set(0, 0, 1).applyQuaternion(tmpQuat).normalize();
+
+    // update the Three.Plane (world space)
+    clipPlane.setFromNormalAndCoplanarPoint(tmpNormal, tmpPos);
+
+    (fillMat.uniforms.uClipPlanePoint.value as THREE.Vector3).copy(tmpPos);
+    (fillMat.uniforms.uClipPlaneNormal.value as THREE.Vector3).copy(tmpNormal);
+
+    fillMat.uniforms.uClipPlaneSide.value = -1.0; // or -1.0
+  });
+
+  useEffect(() => {
+    stepLineMat.clippingPlanes = [clipPlane];
+    stepLineMat.clipIntersection = false;
+    stepLineMat.clipShadows = true;
+    stepLineMat.needsUpdate = true;
+  }, [stepLineMat, clipPlane]);
+
+  useEffect(() => {
+    if (!clipRef.current) return;
+    clipRef.current.position.set(0, 0, -1378);
+    clipRef.current.rotation.set(0, 0, 0);
+  }, []);
+
   return (
     <group ref={stepsRoot}>
       <group ref={stepsPivot}>
         <group ref={steps}>
           <OutlinedSolid
+            ref={registerStepGroup}
             geometry={stepGeometry}
             lineMaterial={stepLineMat}
             position={[0, 0, 0]}
@@ -235,8 +343,10 @@ export default function Steps({ params, doorFluidTextureRef }: Props) {
             polygonOffsetFactor={1}
             polygonOffsetUnits={1}
             fillMaterial={fillMat}
+            scale={[1, 1, 0.98]}
           />
           <OutlinedSolid
+            ref={registerStepGroup}
             geometry={stepGeometry}
             lineMaterial={stepLineMat}
             position={[0, stepHeight, -stepDepth]}
@@ -245,8 +355,10 @@ export default function Steps({ params, doorFluidTextureRef }: Props) {
             polygonOffsetFactor={1}
             polygonOffsetUnits={1}
             fillMaterial={fillMat}
+            scale={[1, 1, 0.98]}
           />
           <OutlinedSolid
+            ref={registerStepGroup}
             geometry={stepGeometry}
             lineMaterial={stepLineMat}
             position={[0, 2 * stepHeight, -2 * stepDepth]}
@@ -255,7 +367,20 @@ export default function Steps({ params, doorFluidTextureRef }: Props) {
             polygonOffsetFactor={1}
             polygonOffsetUnits={1}
             fillMaterial={fillMat}
+            scale={[1, 1, 0.98]}
           />
+          <group ref={clipRef} position={[0, 0, 0]} rotation={[0, 0, 0]}>
+            {/* <mesh renderOrder={9999}>
+              <planeGeometry args={[2000, 2000]} />
+              <meshBasicMaterial
+                transparent
+                opacity={0.15}
+                depthWrite={false}
+                side={THREE.DoubleSide}
+                color={"yellow"}
+              />
+            </mesh> */}
+          </group>
         </group>
       </group>
     </group>

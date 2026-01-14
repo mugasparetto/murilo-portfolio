@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import React, { forwardRef, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useThree } from "@react-three/fiber";
 
@@ -9,91 +9,79 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 
 type Props = {
-  /** Fill geometry (required) */
   geometry: THREE.BufferGeometry;
-
-  /** Fill material (optional). If omitted, a black MeshBasicMaterial is used. */
   fillMaterial?: THREE.Material;
 
-  /**
-   * If you pass a precomputed line geometry (recommended for many instances),
-   * OutlinedSolid will use it instead of building EdgesGeometry itself.
-   */
   lineGeometry?: LineSegmentsGeometry;
-
-  /**
-   * If you pass a shared LineMaterial (recommended for many instances),
-   * OutlinedSolid will use it. Otherwise it creates its own.
-   */
   lineMaterial?: LineMaterial;
 
-  /** Only used if lineMaterial is NOT provided */
   lineColor?: THREE.ColorRepresentation;
-  /** Only used if lineMaterial is NOT provided */
   lineWidth?: number;
 
-  /** Helps prevent fill/line depth fighting at distance */
   polygonOffset?: boolean;
   polygonOffsetFactor?: number;
   polygonOffsetUnits?: number;
 
-  /** Slightly scales wire outward to avoid depth overlap */
   wireScale?: number;
-
-  /** Render toggles */
   visible?: boolean;
 
-  /** Transform props */
   position?: [number, number, number];
   rotation?: [number, number, number];
   scale?: number | [number, number, number];
 
-  /** Useful if you want the wire on top */
-  renderOrder?: number;
+  renderOrder?: number; // fill uses this, wire uses +1
 };
 
-export default function OutlinedSolid({
-  geometry,
-  fillMaterial,
-  lineGeometry,
-  lineMaterial,
-  lineColor = 0xffffff,
-  lineWidth = 2,
+const OutlinedSolid = forwardRef<THREE.Group, Props>(function OutlinedSolid(
+  {
+    geometry,
+    fillMaterial,
+    lineGeometry,
+    lineMaterial,
+    lineColor = 0xffffff,
+    lineWidth = 2,
 
-  polygonOffset = true,
-  polygonOffsetFactor = 1,
-  polygonOffsetUnits = 1,
+    polygonOffset = true,
+    polygonOffsetFactor = 1,
+    polygonOffsetUnits = 1,
 
-  wireScale = 1.001,
+    wireScale = 1.001,
+    visible = true,
 
-  visible = true,
+    position,
+    rotation,
+    scale,
 
-  position,
-  rotation,
-  scale,
-
-  renderOrder,
-}: Props) {
-  const groupRef = useRef<THREE.Group>(null);
-  const fillRef = useRef<THREE.Mesh>(null);
+    renderOrder,
+  },
+  forwardedRef
+) {
+  const localGroupRef = useRef<THREE.Group>(null);
+  const wireRef = useRef<LineSegments2>(null);
 
   const { size, gl } = useThree();
   const dpr = gl.getPixelRatio();
 
-  // ---------- fill material ----------
-  const internalFill = useMemo(() => {
-    const m = new THREE.MeshBasicMaterial({ color: "black" });
-    return m;
-  }, []);
+  // Merge forwarded ref + local ref
+  useEffect(() => {
+    if (!forwardedRef) return;
+    const node = localGroupRef.current;
+    if (!node) return;
 
+    if (typeof forwardedRef === "function") forwardedRef(node);
+    else forwardedRef.current = node;
+  }, [forwardedRef]);
+
+  // ---------- fill material ----------
+  const internalFill = useMemo(
+    () => new THREE.MeshBasicMaterial({ color: "black" }),
+    []
+  );
   const finalFill = fillMaterial ?? internalFill;
 
-  // apply polygon offset if supported by the material
   useEffect(() => {
-    const m = finalFill as any;
     if (!polygonOffset) return;
-
-    // many Three materials support these fields
+    const m = finalFill as any;
     m.polygonOffset = true;
     m.polygonOffsetFactor = polygonOffsetFactor;
     m.polygonOffsetUnits = polygonOffsetUnits;
@@ -113,10 +101,10 @@ export default function OutlinedSolid({
     m.opacity = 1.0;
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // create once
+  }, []);
 
   const finalLineMat = lineMaterial ?? internalLineMat!;
-  // keep shared or internal material resolution DPR-correct
+
   useEffect(() => {
     finalLineMat.resolution.set(size.width * dpr, size.height * dpr);
   }, [finalLineMat, size.width, size.height, dpr]);
@@ -138,45 +126,46 @@ export default function OutlinedSolid({
 
   const finalLineGeo = lineGeometry ?? internalLineGeo!;
 
-  // ---------- line object (stable) ----------
-  const wire = useMemo(() => {
+  const fillOrder = typeof renderOrder === "number" ? renderOrder : 0;
+  const wireOrder = fillOrder + 1;
+
+  // wire instance (stable per component)
+  const wireObj = useMemo(() => {
     const w = new LineSegments2(finalLineGeo, finalLineMat);
-    w.computeLineDistances();
     w.frustumCulled = false;
+    w.computeLineDistances();
     return w;
   }, [finalLineGeo, finalLineMat]);
 
-  // apply wire scale + render order
   useEffect(() => {
-    wire.scale.setScalar(wireScale);
-    if (typeof renderOrder === "number") wire.renderOrder = renderOrder;
-  }, [wire, wireScale, renderOrder]);
+    wireObj.scale.setScalar(wireScale);
+    wireObj.renderOrder = wireOrder;
+  }, [wireObj, wireScale, wireOrder]);
 
-  // cleanup ONLY internals
+  useEffect(() => {
+    if (localGroupRef.current) localGroupRef.current.visible = visible;
+  }, [visible]);
+
   useEffect(() => {
     return () => {
       if (!fillMaterial) internalFill.dispose();
       if (!lineMaterial) internalLineMat?.dispose();
       if (!lineGeometry) internalLineGeo?.dispose();
-      // wire uses those resources; disposing them is enough
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // keep visibility consistent
-  useEffect(() => {
-    if (groupRef.current) groupRef.current.visible = visible;
-  }, [visible]);
-
   return (
-    <group ref={groupRef} position={position} rotation={rotation} scale={scale}>
-      <mesh
-        ref={fillRef}
-        geometry={geometry}
-        material={finalFill}
-        renderOrder={renderOrder}
-      />
-      <primitive object={wire} />
+    <group
+      ref={localGroupRef}
+      position={position}
+      rotation={rotation}
+      scale={scale}
+    >
+      <mesh geometry={geometry} material={finalFill} renderOrder={fillOrder} />
+      <primitive ref={wireRef} object={wireObj} />
     </group>
   );
-}
+});
+
+export default OutlinedSolid;

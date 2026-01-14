@@ -5,7 +5,11 @@ varying vec3 vWorldNormal;
 void main() {
   vec4 wp = modelMatrix * vec4(position, 1.0);
   vWorldPos = wp.xyz;
+
+  // NOTE: this matches what you already had.
+  // If you ever apply non-uniform scale, use normalMatrix instead.
   vWorldNormal = normalize(mat3(modelMatrix) * normal);
+
   gl_Position = projectionMatrix * viewMatrix * wp;
 }
 `;
@@ -13,6 +17,7 @@ void main() {
 // This reproduces the DOOR display shader’s color pattern,
 // but uses the fluid texture ONLY to distort UVs.
 // Also masks to top faces only.
+// + Adds oriented clip-plane masking in world space.
 export const stepReflectFragment = /* glsl */ `
 uniform float iTime;
 uniform vec2 iResolution;
@@ -42,12 +47,27 @@ uniform float uFalloff;
 uniform float uTopStart;
 uniform float uTopEnd;
 
+// --- CLIP PLANE (world space) ---
+uniform vec3 uClipPlanePoint;    // any point on the plane, world-space
+uniform vec3 uClipPlaneNormal;   // plane normal, world-space (should be normalized)
+uniform float uClipPlaneSide;    // +1.0 or -1.0 to flip which side is kept
+
 varying vec3 vWorldPos;
 varying vec3 vWorldNormal;
 
 float sat(float x){ return clamp(x,0.0,1.0); }
 
 void main() {
+  // ---- ORIENTED CLIP PLANE ----
+  // Signed distance from point to plane:
+  // d > 0 => in direction of normal
+  float dPlane = dot(normalize(uClipPlaneNormal), (vWorldPos - uClipPlanePoint));
+
+  // Keep one half-space, discard the other.
+  // If uClipPlaneSide = +1 => discard when dPlane > 0
+  // If uClipPlaneSide = -1 => discard when dPlane < 0
+  if (dPlane * uClipPlaneSide > 0.0) discard;
+
   vec3 base = vec3(0.0);
 
   // ---- TOP FACE MASK ----
@@ -68,7 +88,7 @@ void main() {
   float mx = smoothstep(0.0, 0.03, uv.x) * (1.0 - smoothstep(0.97, 1.0, uv.x));
   float my = smoothstep(0.0, 0.03, uv.y) * (1.0 - smoothstep(0.97, 1.0, uv.y));
   float inside = mx * 0.15;
-//   float inside = 0.15;
+  // float inside = 0.15;
 
   // ---- Distortion field (fluid) ----
   vec2 fluidVel = texture2D(uDoorFluid, uv).xy;

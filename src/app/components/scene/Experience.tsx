@@ -171,7 +171,7 @@ export default function Experience() {
 
       {/* <OrbitControls ref={controlsRef} /> */}
 
-      <ScrollControls pages={3}>
+      <ScrollControls pages={2}>
         <group ref={sceneRef}>
           <group position={groupPosition}>
             <Terrain params={p} tiles={3} />
@@ -221,7 +221,7 @@ export default function Experience() {
             <span className="lowercase">{description}</span>
           </Html>
         </group>
-        <ScrollRig
+        {/* <ScrollRig
           pages={10}
           targetRef={sceneRef}
           windows={[
@@ -232,18 +232,18 @@ export default function Experience() {
           viewportDistancePerWeight={2}
           smoothing={8}
           direction={1}
-        />
+        /> */}
       </ScrollControls>
 
       <Postprocessing selected={outlined} />
 
-      <ParallaxRig
+      {/* <ParallaxRig
         basePosition={basePos}
         baseTarget={baseTarget}
         strength={170}
         damp={6}
         targetStrength={0.2}
-      />
+      /> */}
 
       <Stats />
     </>
