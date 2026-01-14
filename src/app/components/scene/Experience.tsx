@@ -171,7 +171,7 @@ export default function Experience() {
 
       {/* <OrbitControls ref={controlsRef} /> */}
 
-      <ScrollControls pages={2}>
+      <ScrollControls pages={2} damping={0.15}>
         <group ref={sceneRef}>
           <group position={groupPosition}>
             <Terrain params={p} tiles={3} />

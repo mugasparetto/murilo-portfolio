@@ -104,10 +104,10 @@ export const defaultParams: SceneParams = {
   rotZ: 0.15,
 
   doorX: 60,
-  doorY: 2160,
+  doorY: 2120,
   doorZ: -5400,
   doorScaleX: 1.64,
-  doorScaleY: 1.65,
+  doorScaleY: 1.738,
 
   groupY: -50,
 
