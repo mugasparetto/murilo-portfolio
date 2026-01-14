@@ -38,3 +38,7 @@ body {
   background: url("/star.svg") center / contain no-repeat;
   transform: translate(-50%, -50%);
 }
+
+.super-fixed {
+  position: fixed !important;
+}

@@ -169,7 +169,7 @@ export default function Experience() {
     <>
       <color attach="background" args={[0x000000]} />
 
-      {/* <OrbitControls ref={controlsRef} /> */}
+      <OrbitControls ref={controlsRef} />
 
       <ScrollControls pages={2}>
         <group ref={sceneRef}>
@@ -209,7 +209,8 @@ export default function Experience() {
           </Suspense>
 
           <Html
-            position={[-1470, 870, 0]}
+            wrapperClass="super-fixed"
+            position={[-3860, 1955, -5500]}
             className="w-[24rem] flex flex-col pointer-events-none"
           >
             <span
