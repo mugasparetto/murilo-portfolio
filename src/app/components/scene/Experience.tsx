@@ -32,6 +32,7 @@ import Sky from "./Sky";
 import { useFluidMaterials } from "./FluidMaterial";
 import { useHeroPrimary } from "../../../slices/Hero/hero-context";
 import ParallaxRig from "./ParallaxRig";
+import ScrollRig from "./ScrollRig";
 
 export default function Experience() {
   const { camera } = useThree();
@@ -156,6 +157,7 @@ export default function Experience() {
   );
 
   const textRef = useRef<THREE.Mesh | null>(null);
+  const sceneRef = useRef<THREE.Object3D | null>(null);
 
   // --- billboard both to camera every frame
   useFrame(() => {
@@ -170,53 +172,67 @@ export default function Experience() {
       {/* <OrbitControls ref={controlsRef} /> */}
 
       <ScrollControls pages={3}>
-        <group position={groupPosition}>
-          <Terrain params={p} tiles={3} />
-          <Steps params={p} doorFluidTextureRef={fluidTextureRef} />
-          <Door
-            params={p}
-            displayMat={displayMat}
-            pointerUvRef={pointerUvRef}
-            pointerActiveRef={pointerActiveRef}
-          />
-          <HumanModel onMeshesReady={handleMeshesReady} />
-        </group>
-
-        <Sky />
-
-        <Suspense fallback={null}>
-          <group ref={textRef}>
-            <Text
-              position={[-1900, 2350, -5750]}
-              font="/fonts/Morganite-Black.ttf"
-              fontSize={2000}
-              color="white"
-            >
-              {first_name}
-            </Text>
-            <Text
-              position={[2450, 600, -5650]}
-              font="/fonts/Morganite-Black.ttf"
-              fontSize={2000}
-              color="white"
-            >
-              {last_name}
-            </Text>
+        <group ref={sceneRef}>
+          <group position={groupPosition}>
+            <Terrain params={p} tiles={3} />
+            <Steps params={p} doorFluidTextureRef={fluidTextureRef} />
+            <Door
+              params={p}
+              displayMat={displayMat}
+              pointerUvRef={pointerUvRef}
+              pointerActiveRef={pointerActiveRef}
+            />
+            <HumanModel onMeshesReady={handleMeshesReady} />
           </group>
-        </Suspense>
 
-        <Html
-          position={[-1470, 870, 0]}
-          className="w-[24rem] flex flex-col pointer-events-none"
-        >
-          <span
-            className="font-bold text-white lowercase text-2xl relative with-star"
-            style={{ wordSpacing: 56 }}
+          <Sky />
+
+          <Suspense fallback={null}>
+            <group ref={textRef}>
+              <Text
+                position={[-1900, 2350, -5750]}
+                font="/fonts/Morganite-Black.ttf"
+                fontSize={2000}
+                color="white"
+              >
+                {first_name}
+              </Text>
+              <Text
+                position={[2450, 600, -5650]}
+                font="/fonts/Morganite-Black.ttf"
+                fontSize={2000}
+                color="white"
+              >
+                {last_name}
+              </Text>
+            </group>
+          </Suspense>
+
+          <Html
+            position={[-1470, 870, 0]}
+            className="w-[24rem] flex flex-col pointer-events-none"
           >
-            {tag_line}
-          </span>
-          <span className="lowercase">{description}</span>
-        </Html>
+            <span
+              className="font-bold text-white lowercase text-2xl relative with-star"
+              style={{ wordSpacing: 56 }}
+            >
+              {tag_line}
+            </span>
+            <span className="lowercase">{description}</span>
+          </Html>
+        </group>
+        <ScrollRig
+          pages={10}
+          targetRef={sceneRef}
+          windows={[
+            { startPage: 3, endPage: 5 },
+            { startPage: 8, endPage: 11 }, // Always (N+1)
+          ]}
+          unit="viewport"
+          viewportDistancePerWeight={2}
+          smoothing={8}
+          direction={1}
+        />
       </ScrollControls>
 
       <Postprocessing selected={outlined} />
