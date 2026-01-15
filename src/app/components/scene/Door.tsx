@@ -142,6 +142,7 @@ export default function Door({
 
     if (doorRef.current) {
       doorRef.current.scale.y = params.doorScaleY * (1 - progressDoor);
+      doorRef.current.visible = t < 0.999;
     }
 
     wire.scale.y = params.doorScaleY * (1 - progressDoor);
