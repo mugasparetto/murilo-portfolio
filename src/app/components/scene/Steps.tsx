@@ -256,6 +256,7 @@ export default function Steps({
     const t = progressInWindow(scroll.offset, totalPagesCount, scrollWindow);
 
     if (humanRef.current) humanRef.current.visible = t < 0.999;
+    if (stepsRoot.current) stepsRoot.current.visible = t < 0.999;
 
     // 5 equal segments: Z, Y, Z, Y, Z
     const segments = 5;
