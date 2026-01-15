@@ -11,6 +11,7 @@ import {
   stepReflectFragment,
   stepReflectVertex,
 } from "../scene-core/reflectionShader";
+import { progressInWindow, ScrollWindow } from "./ScrollRig";
 
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
@@ -19,12 +20,16 @@ type Props = {
   params: SceneParams;
   doorFluidTextureRef: React.MutableRefObject<THREE.Texture | null>;
   children?: React.ReactNode;
+  totalPagesCount: number;
+  scrollWindow: ScrollWindow;
 };
 
 export default function Steps({
   params,
   doorFluidTextureRef,
   children,
+  totalPagesCount,
+  scrollWindow,
 }: Props) {
   const { size, gl, camera } = useThree();
   const dpr = gl.getPixelRatio();
@@ -249,7 +254,7 @@ export default function Steps({
   const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
   useFrame(() => {
-    const t = scroll.offset; // 0..1
+    const t = progressInWindow(scroll.offset, totalPagesCount, scrollWindow);
 
     // 5 equal segments: Z, Y, Z, Y, Z
     const segments = 5;

@@ -83,6 +83,18 @@ export type ScrollRigProps = {
   smoothing?: number;
 };
 
+export function progressInWindow(
+  offset: number,
+  pages: number,
+  w: ScrollWindow
+) {
+  const p = 1 / pages;
+  const a = (w.startPage - 1) * p;
+  const b = (w.endPage - 1) * p;
+  if (b <= a) return 0;
+  return THREE.MathUtils.clamp((offset - a) / (b - a), 0, 1);
+}
+
 /**
  * Convert ScrollControls offset (0..1) into a piecewise-linear progress value.
  * Progress is the sum of contributions from each window:
@@ -97,25 +109,11 @@ function windowedProgress(
   pages: number,
   windows: ScrollWindow[]
 ) {
-  const p = 1 / pages;
   let total = 0;
-
   for (const w of windows) {
     const weight = w.weight ?? 1;
-
-    // Convert 1-based pages to normalized offset ranges
-    // startPage=1 => 0
-    // startPage=2 => 1/pages
-    const a = (w.startPage - 1) * p;
-    const b = (w.endPage - 1) * p;
-
-    // Guard against invalid ranges
-    if (b <= a) continue;
-
-    const t = THREE.MathUtils.clamp((offset - a) / (b - a), 0, 1);
-    total += t * weight;
+    total += progressInWindow(offset, pages, w) * weight;
   }
-
   return total;
 }
 

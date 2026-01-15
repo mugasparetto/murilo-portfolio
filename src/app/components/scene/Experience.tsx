@@ -34,6 +34,8 @@ import { useHeroPrimary } from "../../../slices/Hero/hero-context";
 import ParallaxRig from "./ParallaxRig";
 import ScrollRig from "./ScrollRig";
 
+const PAGES_COUNT = 6;
+
 export default function Experience() {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
@@ -171,11 +173,16 @@ export default function Experience() {
 
       {/* <OrbitControls ref={controlsRef} /> */}
 
-      <ScrollControls pages={2} damping={0.15}>
+      <ScrollControls pages={PAGES_COUNT} damping={0.15}>
         <group ref={sceneRef}>
           <group position={groupPosition}>
             <Terrain params={p} tiles={3} />
-            <Steps params={p} doorFluidTextureRef={fluidTextureRef}>
+            <Steps
+              params={p}
+              doorFluidTextureRef={fluidTextureRef}
+              totalPagesCount={PAGES_COUNT}
+              scrollWindow={{ startPage: 1, endPage: 3 }}
+            >
               <HumanModel onMeshesReady={handleMeshesReady} />
             </Steps>
             <Door
@@ -223,29 +230,26 @@ export default function Experience() {
             <span className="lowercase">{description}</span>
           </Html>
         </group>
-        {/* <ScrollRig
-          pages={10}
+        <ScrollRig
+          pages={PAGES_COUNT}
           targetRef={sceneRef}
-          windows={[
-            { startPage: 3, endPage: 5 },
-            { startPage: 8, endPage: 11 }, // Always (N+1)
-          ]}
+          windows={[{ startPage: 4, endPage: 7 }]}
           unit="viewport"
           viewportDistancePerWeight={2}
           smoothing={8}
           direction={1}
-        /> */}
+        />
       </ScrollControls>
 
       <Postprocessing selected={outlined} />
 
-      {/* <ParallaxRig
+      <ParallaxRig
         basePosition={basePos}
         baseTarget={baseTarget}
         strength={170}
         damp={6}
         targetStrength={0.2}
-      /> */}
+      />
 
       <Stats />
     </>
