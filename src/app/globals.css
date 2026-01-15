@@ -42,3 +42,28 @@ body {
 .super-fixed {
   position: fixed !important;
 }
+
+.blind-shutter {
+  --open: 1; /* 1=open, 0=closed */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) 0,
+    rgba(0, 0, 0, 1) calc(var(--open) * 100%),
+    rgba(0, 0, 0, 0) calc(var(--open) * 100%)
+  );
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) 0,
+    rgba(0, 0, 0, 1) calc(var(--open) * 100%),
+    rgba(0, 0, 0, 0) calc(var(--open) * 100%)
+  );
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+
+  will-change:
+    mask-image,
+    -webkit-mask-image;
+}

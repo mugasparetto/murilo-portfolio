@@ -34,6 +34,7 @@ import { useHeroPrimary } from "../../../slices/Hero/hero-context";
 import ParallaxRig from "./ParallaxRig";
 import ScrollRig from "./ScrollRig";
 import Name from "./Name";
+import Headline from "./Headline";
 
 const PAGES_COUNT = 10;
 
@@ -198,19 +199,12 @@ export default function Experience() {
             />
           </Suspense>
 
-          <Html
-            wrapperClass="super-fixed"
-            position={[-3860, 1955, -5500]}
-            className="w-[24rem] flex flex-col pointer-events-none"
-          >
-            <span
-              className="font-bold text-white lowercase text-2xl relative with-star"
-              style={{ wordSpacing: 56 }}
-            >
-              {tag_line}
-            </span>
-            <span className="lowercase">{description}</span>
-          </Html>
+          <Headline
+            tagline={tag_line}
+            description={description}
+            totalPagesCount={PAGES_COUNT}
+            scrollWindow={{ startPage: 1, endPage: 3 }}
+          />
         </group>
         <ScrollRig
           pages={PAGES_COUNT}
