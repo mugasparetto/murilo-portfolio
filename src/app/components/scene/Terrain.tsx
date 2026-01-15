@@ -20,13 +20,15 @@ export default function Terrain({ params, tiles = 3 }: Props) {
     const cols = Math.max(2, Math.floor(params.w / params.scl));
     const rows = Math.max(2, Math.floor(params.h / params.scl));
 
-    let geo = new THREE.PlaneGeometry(params.w, params.h, cols - 1, rows - 1);
+    const geo = new THREE.PlaneGeometry(params.w, params.h, cols - 1, rows - 1);
     geo.rotateX(-Math.PI / 2);
     return geo;
   }, [params.w, params.h, params.scl]);
 
-  const material = useMemo(() => {
-    return new THREE.ShaderMaterial({
+  const materialRef = useRef<THREE.ShaderMaterial | null>(null);
+
+  useEffect(() => {
+    const mat = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
       side: THREE.DoubleSide,
@@ -62,20 +64,31 @@ export default function Terrain({ params, tiles = 3 }: Props) {
       vertexShader: terrainVertex,
       fragmentShader: terrainFragment,
     });
-  }, []); // keep stable; we update uniforms every frame
+
+    materialRef.current = mat;
+
+    return () => {
+      materialRef.current = null;
+      mat.dispose();
+    };
+    // create once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     return () => {
       geometry.dispose();
-      material.dispose();
     };
-  }, [geometry, material]);
+  }, [geometry]);
 
   const tileLength = params.h;
   const scrollZ = useRef(0);
 
   useFrame((state, delta) => {
     const t = state.clock.getElapsedTime();
+
+    const material = materialRef.current;
+    if (!material) return;
 
     // update uniforms
     material.uniforms.uTime.value = t;
@@ -124,7 +137,7 @@ export default function Terrain({ params, tiles = 3 }: Props) {
         <mesh
           key={i}
           geometry={geometry}
-          material={material}
+          material={materialRef.current ?? undefined}
           position={[0, 0, -i * params.h]}
         />
       ))}

@@ -81,17 +81,17 @@ const OutlinedSolid = forwardRef<THREE.Group, Props>(function OutlinedSolid(
 
   useEffect(() => {
     if (!polygonOffset) return;
-    const m = finalFill as any;
-    m.polygonOffset = true;
-    m.polygonOffsetFactor = polygonOffsetFactor;
-    m.polygonOffsetUnits = polygonOffsetUnits;
+
+    finalFill.polygonOffset = true;
+    finalFill.polygonOffsetFactor = polygonOffsetFactor;
+    finalFill.polygonOffsetUnits = polygonOffsetUnits;
   }, [finalFill, polygonOffset, polygonOffsetFactor, polygonOffsetUnits]);
 
   // ---------- line material ----------
   const internalLineMat = useMemo(() => {
     if (lineMaterial) return null;
     const m = new LineMaterial({
-      color: new THREE.Color(lineColor as any),
+      color: new THREE.Color(lineColor),
       linewidth: lineWidth,
       resolution: new THREE.Vector2(size.width * dpr, size.height * dpr),
     });
@@ -115,7 +115,7 @@ const OutlinedSolid = forwardRef<THREE.Group, Props>(function OutlinedSolid(
 
     const edges = new THREE.EdgesGeometry(geometry);
     const pos = (edges.attributes.position as THREE.BufferAttribute)
-      .array as any;
+      .array as Float32Array;
 
     const g = new LineSegmentsGeometry();
     g.setPositions(pos);

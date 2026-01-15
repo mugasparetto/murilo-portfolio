@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useEffect } from "react";
 import * as THREE from "three";
-import { useFrame, useThree } from "@react-three/fiber";
+import { useFrame, useThree, RootState } from "@react-three/fiber";
 import { useScroll } from "@react-three/drei";
 
 import SkyBoundsDebug from "./SkyBoundsDebug";
@@ -273,23 +273,24 @@ export default function ShootingStars({
   trailThickness?: number;
   globalMinGap?: number;
 }) {
-  // stable stars array (no refs needed)
-  const stars = useMemo<Star[]>(
-    () =>
-      Array.from({ length: poolSize }, (_, i) => ({
-        active: false,
-        nextSpawnAt: rand(minInterval, maxInterval) + i * (globalMinGap * 0.5),
-        startTime: 0,
-        duration: rand(1.2, 1.85),
-        start: new THREE.Vector3(),
-        dir: new THREE.Vector3(),
-        speed: rand(3600, 4800),
-        length: rand(1000, 1600),
-        opacity: 0,
-        headSize: rand(100, 140), // world units; will be used to scale the head plane
-      })),
-    [poolSize, minInterval, maxInterval, globalMinGap]
-  );
+  const starsRef = useRef<Star[]>([]);
+  const readyRef = useRef(false);
+
+  useEffect(() => {
+    starsRef.current = Array.from({ length: poolSize }, (_, i) => ({
+      active: false,
+      nextSpawnAt: rand(minInterval, maxInterval) + i * (globalMinGap * 0.5),
+      startTime: 0,
+      duration: rand(1.2, 1.85),
+      start: new THREE.Vector3(),
+      dir: new THREE.Vector3(),
+      speed: rand(3600, 4800),
+      length: rand(1000, 1600),
+      opacity: 0,
+      headSize: rand(100, 140),
+    }));
+    readyRef.current = true;
+  }, [poolSize, minInterval, maxInterval, globalMinGap]);
 
   const lastSpawnAtRef = useRef<number>(-1e9);
   const clickQueueRef = useRef<{ x: number; y: number }[]>([]);
@@ -306,7 +307,10 @@ export default function ShootingStars({
   // reuse color object to avoid allocations
   const tmpColor = useMemo(() => new THREE.Color(), []);
 
-  function spawnToPointer(state: any, pointer: { x: number; y: number }) {
+  function spawnToPointer(state: RootState, pointer: { x: number; y: number }) {
+    if (!readyRef.current) return;
+    const stars = starsRef.current;
+
     // find free slot
     const idx = stars.findIndex((s) => !s.active);
     if (idx === -1) return;
@@ -319,7 +323,10 @@ export default function ShootingStars({
     // plane z = targetZ
     const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -targetZ);
     const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(pointer, state.camera);
+    raycaster.setFromCamera(
+      new THREE.Vector2(pointer.x, pointer.y),
+      state.camera
+    );
 
     const target = new THREE.Vector3();
     const hit = raycaster.ray.intersectPlane(plane, target);
@@ -340,7 +347,7 @@ export default function ShootingStars({
     // ---------- 2) choose side + guarantee "comes from distance" ----------
     // If click is near center, force a strong side choice so you still get travel
     const deadzone = 0.18;
-    let clickSign =
+    const clickSign =
       Math.abs(pointer.x) < deadzone
         ? Math.random() < 0.5
           ? -1
@@ -411,7 +418,7 @@ export default function ShootingStars({
     const minDownRatio = -0.1; // at least ~10% down
     const maxDownRatio = -0.28; // no steeper than ~28% down
 
-    let yRatio = dir.y / len;
+    const yRatio = dir.y / len;
 
     if (yRatio > minDownRatio) {
       // not down enough: make start a bit higher (deterministic)
@@ -467,6 +474,9 @@ export default function ShootingStars({
     const trail = trailRef.current;
     const head = headRef.current;
     if (!trail || !head) return;
+
+    if (!readyRef.current) return;
+    const stars = starsRef.current;
 
     // --- click spawns have priority and ignore timers ---
     // click spawns (always)

@@ -38,7 +38,6 @@ const PAGES_COUNT = 6;
 
 export default function Experience() {
   const { camera } = useThree();
-  const controlsRef = useRef<any>(null);
   const { first_name, last_name, tag_line, description } = useHeroPrimary();
 
   // ✅ single stable params object that GUI mutates
@@ -83,21 +82,14 @@ export default function Experience() {
   const applyCameraFromParams = useCallback(() => {
     const p = paramsRef.current;
 
-    // set camera
-    camera.position.copy(basePos);
-    camera.fov = p.fov;
-    camera.updateProjectionMatrix();
-
-    const controls = controlsRef.current;
-    if (controls) {
-      controls.target.copy(baseTarget);
-
-      // ✅ important: after changing camera/target, call update()
-      controls.update();
-    } else {
-      camera.lookAt(baseTarget);
+    if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
+      const perspective = camera as THREE.PerspectiveCamera;
+      // set camera
+      camera.position.copy(basePos);
+      perspective.fov = p.fov;
+      perspective.updateProjectionMatrix();
     }
-  }, [camera]);
+  }, [camera, basePos]);
 
   // apply on mount
   useEffect(() => {
@@ -171,7 +163,7 @@ export default function Experience() {
     <>
       <color attach="background" args={[0x000000]} />
 
-      {/* <OrbitControls ref={controlsRef} /> */}
+      {/* <OrbitControls /> */}
 
       <ScrollControls pages={PAGES_COUNT} damping={0.15}>
         <group ref={sceneRef}>

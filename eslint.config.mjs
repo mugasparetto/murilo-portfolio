@@ -18,6 +18,14 @@ const eslintConfig = [
       "next-env.d.ts",
     ],
   },
+
+  // ✅ Allow imperative Three.js / R3F code in the scene folder
+  {
+    files: ["src/app/components/scene/**/*.{ts,tsx}"],
+    rules: {
+      "react-compiler/react-compiler": "off",
+    },
+  },
 ];
 
 export default eslintConfig;

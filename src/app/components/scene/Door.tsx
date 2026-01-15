@@ -66,7 +66,7 @@ export default function Door({
   const lineGeo = useMemo(() => {
     const edges = new THREE.EdgesGeometry(doorGeometry);
     const pos = (edges.attributes.position as THREE.BufferAttribute)
-      .array as any;
+      .array as Float32Array;
 
     const g = new LineSegmentsGeometry();
     g.setPositions(pos);

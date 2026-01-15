@@ -115,7 +115,7 @@ export default function Steps({
   const stepLineGeo = useMemo(() => {
     const edges = new THREE.EdgesGeometry(stepGeometry);
     const pos = (edges.attributes.position as THREE.BufferAttribute)
-      .array as any;
+      .array as Float32Array;
 
     const g = new LineSegmentsGeometry();
     g.setPositions(pos);
