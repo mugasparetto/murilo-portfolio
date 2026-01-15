@@ -12,7 +12,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useScroll } from "@react-three/drei";
 
 import { progressInWindow, ScrollWindow } from "./ScrollRig";
-import { clamp } from "../../helpers/math";
+import { clamp, makeRanges, segmentProgress } from "../../helpers/scroll";
 
 type Props = {
   params: SceneParams;
@@ -131,14 +131,20 @@ export default function Door({
 
   const scroll = useScroll();
 
+  // scroll allocation per phase (you can tweak these)
+  const PHASE_WEIGHTS = [0.4, 0.6]; // portalsIn, text, portalsOut
+  const PHASES = makeRanges(PHASE_WEIGHTS);
+
   useFrame(() => {
     const t = progressInWindow(scroll.offset, totalPagesCount, scrollWindow);
 
+    const progressDoor = segmentProgress(t, PHASES, 1); // 0..1 in phase 1
+
     if (doorRef.current) {
-      doorRef.current.scale.y = params.doorScaleY * (1 - t);
+      doorRef.current.scale.y = params.doorScaleY * (1 - progressDoor);
     }
 
-    wire.scale.y = params.doorScaleY * (1 - t);
+    wire.scale.y = params.doorScaleY * (1 - progressDoor);
     wire.visible = t < 0.999;
   });
 

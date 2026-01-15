@@ -5,7 +5,7 @@ import { Text, useHelper, useScroll } from "@react-three/drei";
 import { KeyTextField } from "@prismicio/client";
 
 import { progressInWindow, ScrollWindow } from "./ScrollRig";
-import { easeCos } from "../../helpers/math";
+import { segmentProgress, makeRanges } from "../../helpers/scroll";
 
 type Props = {
   firstName: KeyTextField;
@@ -49,28 +49,6 @@ export default function Name({
 
   const scroll = useScroll();
 
-  // Convert weights (e.g. [0.25,0.5,0.25]) into cumulative ranges in 0..1
-  const makeRanges = (weights: number[]) => {
-    const sum = weights.reduce((a, b) => a + b, 0);
-    let acc = 0;
-    return weights.map((w) => {
-      const start = acc;
-      acc += w / sum;
-      return { start, end: acc };
-    });
-  };
-
-  // Local eased progress for segment i
-  const segP = (
-    t: number,
-    ranges: { start: number; end: number }[],
-    i: number
-  ) => {
-    const r = ranges[i];
-    const local = (t - r.start) / (r.end - r.start);
-    return easeCos(THREE.MathUtils.clamp(local, 0, 1));
-  };
-
   // scroll allocation per phase (you can tweak these)
   const PHASE_WEIGHTS = [0.2, 0.6, 0.2]; // portalsIn, text, portalsOut
   const PHASES = makeRanges(PHASE_WEIGHTS);
@@ -78,9 +56,9 @@ export default function Name({
   useFrame(() => {
     const t = progressInWindow(scroll.offset, totalPagesCount, scrollWindow); // 0..1
 
-    const pIn = segP(t, PHASES, 0); // 0..1 in phase 0
-    const pText = segP(t, PHASES, 1); // 0..1 in phase 1
-    const pOut = segP(t, PHASES, 2); // 0..1 in phase 2
+    const pIn = segmentProgress(t, PHASES, 0); // 0..1 in phase 0
+    const pText = segmentProgress(t, PHASES, 1); // 0..1 in phase 1
+    const pOut = segmentProgress(t, PHASES, 2); // 0..1 in phase 2
 
     // PORTALS: 0..1 then 1..0
     const portalY =

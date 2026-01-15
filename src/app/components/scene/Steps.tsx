@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { SceneParams } from "../scene-core/params";
 import { useThree, useFrame } from "@react-three/fiber";
@@ -12,7 +12,7 @@ import {
   stepReflectVertex,
 } from "../scene-core/reflectionShader";
 import { progressInWindow, ScrollWindow } from "./ScrollRig";
-import { easeCos } from "../../helpers/math";
+import { easeCos } from "../../helpers/scroll";
 
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
@@ -38,6 +38,7 @@ export default function Steps({
   const stepsRoot = useRef<THREE.Group>(null);
   const stepsPivot = useRef<THREE.Group>(null);
   const steps = useRef<THREE.Group>(null);
+  const humanRef = useRef<THREE.Group>(null);
 
   const stepWidth = 800;
   const stepHeight = 100;
@@ -254,6 +255,8 @@ export default function Steps({
   useFrame(() => {
     const t = progressInWindow(scroll.offset, totalPagesCount, scrollWindow);
 
+    if (humanRef.current) humanRef.current.visible = t < 0.999;
+
     // 5 equal segments: Z, Y, Z, Y, Z
     const segments = 5;
     const segLen = 1 / segments;
@@ -353,7 +356,7 @@ export default function Steps({
               fillMaterial={fillMat}
               scale={[1, 1, 0.98]}
             />
-            {children}
+            <group ref={humanRef}>{children}</group>
           </group>
           <group ref={registerStepGroup} position={[0, stepHeight, -stepDepth]}>
             <OutlinedSolid
