@@ -4,8 +4,8 @@ import {
   OrbitControls,
   Stats,
   Html,
-  Text,
   ScrollControls,
+  useHelper,
 } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
@@ -33,11 +33,13 @@ import { useFluidMaterials } from "./FluidMaterial";
 import { useHeroPrimary } from "../../../slices/Hero/hero-context";
 import ParallaxRig from "./ParallaxRig";
 import ScrollRig from "./ScrollRig";
+import Name from "./Name";
 
-const PAGES_COUNT = 6;
+const PAGES_COUNT = 10;
 
 export default function Experience() {
   const { camera } = useThree();
+  const controlsRef = useRef<any>(null);
   const { first_name, last_name, tag_line, description } = useHeroPrimary();
 
   // ✅ single stable params object that GUI mutates
@@ -88,6 +90,13 @@ export default function Experience() {
       camera.position.copy(basePos);
       perspective.fov = p.fov;
       perspective.updateProjectionMatrix();
+
+      const controls = controlsRef.current;
+      if (controls) {
+        controls.target.copy(baseTarget);
+      } else {
+        camera.lookAt(baseTarget);
+      }
     }
   }, [camera, basePos]);
 
@@ -150,20 +159,13 @@ export default function Experience() {
     [p.groupY]
   );
 
-  const textRef = useRef<THREE.Mesh | null>(null);
   const sceneRef = useRef<THREE.Object3D | null>(null);
-
-  // --- billboard both to camera every frame
-  useFrame(() => {
-    const q = camera.quaternion;
-    if (textRef.current) textRef.current.quaternion.copy(q);
-  });
 
   return (
     <>
       <color attach="background" args={[0x000000]} />
 
-      {/* <OrbitControls /> */}
+      {/* <OrbitControls ref={controlsRef} /> */}
 
       <ScrollControls pages={PAGES_COUNT} damping={0.15}>
         <group ref={sceneRef}>
@@ -173,7 +175,7 @@ export default function Experience() {
               params={p}
               doorFluidTextureRef={fluidTextureRef}
               totalPagesCount={PAGES_COUNT}
-              scrollWindow={{ startPage: 1, endPage: 3 }}
+              scrollWindow={{ startPage: 3, endPage: 6 }}
             >
               <HumanModel onMeshesReady={handleMeshesReady} />
             </Steps>
@@ -188,24 +190,12 @@ export default function Experience() {
           <Sky />
 
           <Suspense fallback={null}>
-            <group ref={textRef}>
-              <Text
-                position={[-1900, 2350, -5750]}
-                font="/fonts/Morganite-Black.ttf"
-                fontSize={2000}
-                color="white"
-              >
-                {first_name}
-              </Text>
-              <Text
-                position={[2450, 600, -5650]}
-                font="/fonts/Morganite-Black.ttf"
-                fontSize={2000}
-                color="white"
-              >
-                {last_name}
-              </Text>
-            </group>
+            <Name
+              firstName={first_name}
+              lastName={last_name}
+              totalPagesCount={PAGES_COUNT}
+              scrollWindow={{ startPage: 1, endPage: 3 }}
+            />
           </Suspense>
 
           <Html
@@ -225,7 +215,7 @@ export default function Experience() {
         <ScrollRig
           pages={PAGES_COUNT}
           targetRef={sceneRef}
-          windows={[{ startPage: 4, endPage: 7 }]}
+          windows={[{ startPage: 7, endPage: 11 }]}
           unit="viewport"
           viewportDistancePerWeight={2}
           smoothing={8}
