@@ -18,8 +18,6 @@ import {
   Suspense,
 } from "react";
 
-import { useFrame } from "@react-three/fiber";
-
 import { defaultParams, type SceneParams } from "../scene-core/params";
 import { useLilGui } from "../scene-core/useLilGui";
 
