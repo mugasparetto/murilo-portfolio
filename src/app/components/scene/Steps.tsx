@@ -12,6 +12,7 @@ import {
   stepReflectVertex,
 } from "../scene-core/reflectionShader";
 import { progressInWindow, ScrollWindow } from "./ScrollRig";
+import { easeCos } from "../../helpers/math";
 
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
@@ -250,9 +251,6 @@ export default function Steps({
   const scroll = useScroll();
   const stepCount = 3;
 
-  const easeCos = (x: number) => 0.5 - 0.5 * Math.cos(Math.PI * x);
-  const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
-
   useFrame(() => {
     const t = progressInWindow(scroll.offset, totalPagesCount, scrollWindow);
 
@@ -263,7 +261,7 @@ export default function Steps({
     // progress inside segment k (0..1)
     const segP = (k: number) => {
       const local = (t - k * segLen) / segLen;
-      return easeCos(clamp01(local));
+      return easeCos(THREE.MathUtils.clamp(local, 0, 1));
     };
 
     // Accumulate offsets:

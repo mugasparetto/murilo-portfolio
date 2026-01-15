@@ -5,6 +5,7 @@ import { Text, useHelper, useScroll } from "@react-three/drei";
 import { KeyTextField } from "@prismicio/client";
 
 import { progressInWindow, ScrollWindow } from "./ScrollRig";
+import { easeCos } from "../../helpers/math";
 
 type Props = {
   firstName: KeyTextField;
@@ -48,9 +49,6 @@ export default function Name({
 
   const scroll = useScroll();
 
-  const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
-  const easeCos = (x: number) => 0.5 - 0.5 * Math.cos(Math.PI * x);
-
   // Convert weights (e.g. [0.25,0.5,0.25]) into cumulative ranges in 0..1
   const makeRanges = (weights: number[]) => {
     const sum = weights.reduce((a, b) => a + b, 0);
@@ -70,7 +68,7 @@ export default function Name({
   ) => {
     const r = ranges[i];
     const local = (t - r.start) / (r.end - r.start);
-    return easeCos(clamp01(local));
+    return easeCos(THREE.MathUtils.clamp(local, 0, 1));
   };
 
   // scroll allocation per phase (you can tweak these)

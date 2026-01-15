@@ -185,6 +185,8 @@ export default function Experience() {
               displayMat={displayMat}
               pointerUvRef={pointerUvRef}
               pointerActiveRef={pointerActiveRef}
+              totalPagesCount={PAGES_COUNT}
+              scrollWindow={{ startPage: 6, endPage: 7 }}
             />
           </group>
 

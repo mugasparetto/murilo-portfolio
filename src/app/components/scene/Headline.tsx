@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html, useScroll } from "@react-three/drei";
+import * as THREE from "three";
 import { progressInWindow, ScrollWindow } from "./ScrollRig";
 import { KeyTextField } from "@prismicio/client";
 
@@ -10,8 +11,6 @@ type Props = {
   totalPagesCount: number;
   scrollWindow: ScrollWindow;
 };
-
-const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 export default function Headline({
   tagline = "",
@@ -25,7 +24,7 @@ export default function Headline({
 
   useFrame(() => {
     const t = progressInWindow(scroll.offset, totalPagesCount, scrollWindow);
-    const open = 1 - clamp01(t); // 1..0
+    const open = 1 - THREE.MathUtils.clamp(t, 0, 1); // 1..0
 
     const fL = firstLineRef.current;
     if (!fL) return;

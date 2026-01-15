@@ -9,12 +9,18 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 
 import { useFrame, useThree } from "@react-three/fiber";
+import { useScroll } from "@react-three/drei";
+
+import { progressInWindow, ScrollWindow } from "./ScrollRig";
+import { clamp } from "../../helpers/math";
 
 type Props = {
   params: SceneParams;
   displayMat: THREE.ShaderMaterial;
   pointerUvRef: React.MutableRefObject<THREE.Vector2 | null>;
   pointerActiveRef: React.MutableRefObject<boolean>;
+  totalPagesCount: number;
+  scrollWindow: ScrollWindow;
 };
 
 const BLOOM_LAYER = 1;
@@ -24,6 +30,8 @@ export default function Door({
   displayMat,
   pointerUvRef,
   pointerActiveRef,
+  totalPagesCount = 0,
+  scrollWindow = { startPage: 1, endPage: 2 },
 }: Props) {
   const { size, camera, gl } = useThree();
   const dpr = gl.getPixelRatio();
@@ -119,6 +127,19 @@ export default function Door({
     const q = camera.quaternion;
     if (doorRef.current) doorRef.current.quaternion.copy(q);
     wire.quaternion.copy(q);
+  });
+
+  const scroll = useScroll();
+
+  useFrame(() => {
+    const t = progressInWindow(scroll.offset, totalPagesCount, scrollWindow);
+
+    if (doorRef.current) {
+      doorRef.current.scale.y = params.doorScaleY * (1 - t);
+    }
+
+    wire.scale.y = params.doorScaleY * (1 - t);
+    wire.visible = t < 0.999;
   });
 
   return (
