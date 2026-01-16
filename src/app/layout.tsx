@@ -27,6 +27,7 @@ export default function RootLayout({
             // put your Lenis options here
             lerp: 0.1,
             smoothWheel: true,
+            autoRaf: false,
           }}
         >
           {children}

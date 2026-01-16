@@ -1,6 +1,6 @@
 "use client";
 
-import { OrbitControls, Stats, ScrollControls } from "@react-three/drei";
+import { OrbitControls, Stats } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import {
@@ -28,7 +28,7 @@ import ScrollRig from "./ScrollRig";
 import Name from "./Name";
 import Headline from "./Headline";
 
-const PAGES_COUNT = 10;
+const PAGES_COUNT = 8;
 
 export default function Experience() {
   const { camera } = useThree();
@@ -201,10 +201,10 @@ export default function Experience() {
       <ScrollRig
         pages={PAGES_COUNT}
         targetRef={sceneRef}
-        windows={[{ startPage: 7, endPage: 11 }]}
+        windows={[{ startPage: 7, endPage: 9 }]}
         unit="viewport"
-        viewportDistancePerWeight={2}
-        smoothing={8}
+        viewportDistancePerWeight={0.065}
+        // smoothing={8}
         direction={1}
       />
 

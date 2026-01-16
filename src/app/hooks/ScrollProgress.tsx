@@ -64,6 +64,7 @@ export function ScrollProgressProvider({
   const scrollProgress = useRef<number>(0);
 
   useFrame((state, delta) => {
+    lenis?.raf(state.clock.elapsedTime * 1000);
     const scrollY = lenis?.animatedScroll ?? window.scrollY;
 
     const start = elementTop.current;
