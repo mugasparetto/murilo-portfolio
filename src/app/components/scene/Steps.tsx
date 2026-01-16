@@ -250,7 +250,63 @@ export default function Steps({
   }, [gl]);
 
   const { scrollProgress } = useScrollProgress();
-  const stepCount = 3;
+
+  // OLD ANIMATION: one step at a time
+  // useFrame(() => {
+  //   const t = progressInWindow(
+  //     scrollProgress.current,
+  //     totalPagesCount,
+  //     scrollWindow
+  //   );
+
+  //   if (humanRef.current) humanRef.current.visible = t < 0.999;
+  //   if (stepsRoot.current) stepsRoot.current.visible = t < 0.999;
+
+  //   // 5 equal segments: Z, Y, Z, Y, Z
+  //   const segments = 5;
+  //   const segLen = 1 / segments;
+
+  //   // progress inside segment k (0..1)
+  //   const segP = (k: number) => {
+  //     const local = (t - k * segLen) / segLen;
+  //     return easeCos(THREE.MathUtils.clamp(local, 0, 1));
+  //   };
+
+  //   // Accumulate offsets:
+  //   // Each completed segment contributes 1 full step (Z or Y),
+  //   // and the current active segment contributes partial progress.
+  //   let zSteps = 0;
+  //   let ySteps = 0;
+
+  //   // Segment 0: Z (0..1 step)
+  //   zSteps += segP(0);
+
+  //   // Segment 1: Y (0..1 step)
+  //   ySteps += segP(1);
+
+  //   // Segment 2: Z
+  //   zSteps += segP(2);
+
+  //   // Segment 3: Y
+  //   ySteps += segP(3);
+
+  //   // Segment 4: Z
+  //   zSteps += segP(4);
+
+  //   // Convert "steps" to world distances
+  //   const offsetZ = -zSteps * stepDepth;
+  //   const offsetY = ySteps * stepHeight;
+
+  //   for (let i = 0; i < stepCount; i++) {
+  //     const group = stepGroups.current[i];
+  //     if (!group) continue;
+
+  //     const baseY = i * stepHeight;
+  //     const baseZ = -i * stepDepth;
+
+  //     group.position.set(0, baseY + offsetY, baseZ + offsetZ);
+  //   }
+  // });
 
   useFrame(() => {
     const t = progressInWindow(
@@ -262,50 +318,22 @@ export default function Steps({
     if (humanRef.current) humanRef.current.visible = t < 0.999;
     if (stepsRoot.current) stepsRoot.current.visible = t < 0.999;
 
-    // 5 equal segments: Z, Y, Z, Y, Z
-    const segments = 5;
-    const segLen = 1 / segments;
+    // ---- GLOBAL MOTION ----
+    // how far the staircase travels overall
+    const totalSteps = 3;
+    const travel = t * totalSteps;
 
-    // progress inside segment k (0..1)
-    const segP = (k: number) => {
-      const local = (t - k * segLen) / segLen;
-      return easeCos(THREE.MathUtils.clamp(local, 0, 1));
-    };
+    const offsetY = travel * stepHeight;
+    const offsetZ = travel * -stepDepth;
 
-    // Accumulate offsets:
-    // Each completed segment contributes 1 full step (Z or Y),
-    // and the current active segment contributes partial progress.
-    let zSteps = 0;
-    let ySteps = 0;
-
-    // Segment 0: Z (0..1 step)
-    zSteps += segP(0);
-
-    // Segment 1: Y (0..1 step)
-    ySteps += segP(1);
-
-    // Segment 2: Z
-    zSteps += segP(2);
-
-    // Segment 3: Y
-    ySteps += segP(3);
-
-    // Segment 4: Z
-    zSteps += segP(4);
-
-    // Convert "steps" to world distances
-    const offsetZ = -zSteps * stepDepth;
-    const offsetY = ySteps * stepHeight;
-
-    for (let i = 0; i < stepCount; i++) {
-      const group = stepGroups.current[i];
-      if (!group) continue;
-
+    stepGroups.current.forEach((step, i) => {
+      // base position (static staircase)
       const baseY = i * stepHeight;
       const baseZ = -i * stepDepth;
 
-      group.position.set(0, baseY + offsetY, baseZ + offsetZ);
-    }
+      // everyone moves together
+      step.position.set(0, baseY + offsetY, baseZ + offsetZ);
+    });
   });
 
   // shared plane object used by LineMaterial (and optionally other materials)
