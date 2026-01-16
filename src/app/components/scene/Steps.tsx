@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { SceneParams } from "../scene-core/params";
 import { useThree, useFrame } from "@react-three/fiber";
-import { useScroll } from "@react-three/drei";
 
 import OutlinedSolid from "./OutlinedSolid";
 import {
@@ -16,6 +15,7 @@ import { easeCos } from "../../helpers/scroll";
 
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
+import { useScrollProgress } from "@/app/hooks/ScrollProgress";
 
 type Props = {
   params: SceneParams;
@@ -249,11 +249,15 @@ export default function Steps({
     gl.localClippingEnabled = true;
   }, [gl]);
 
-  const scroll = useScroll();
+  const { scrollProgress } = useScrollProgress();
   const stepCount = 3;
 
   useFrame(() => {
-    const t = progressInWindow(scroll.offset, totalPagesCount, scrollWindow);
+    const t = progressInWindow(
+      scrollProgress.current,
+      totalPagesCount,
+      scrollWindow
+    );
 
     if (humanRef.current) humanRef.current.visible = t < 0.999;
     if (stepsRoot.current) stepsRoot.current.visible = t < 0.999;

@@ -1,9 +1,10 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Html, useScroll } from "@react-three/drei";
+import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { progressInWindow, ScrollWindow } from "./ScrollRig";
 import { KeyTextField } from "@prismicio/client";
+import { useScrollProgress } from "@/app/hooks/ScrollProgress";
 
 type Props = {
   tagline: KeyTextField;
@@ -20,10 +21,14 @@ export default function Headline({
 }: Props) {
   const firstLineRef = useRef<HTMLSpanElement | null>(null);
   const secondLineRef = useRef<HTMLSpanElement | null>(null);
-  const scroll = useScroll();
+  const { scrollProgress } = useScrollProgress();
 
   useFrame(() => {
-    const t = progressInWindow(scroll.offset, totalPagesCount, scrollWindow);
+    const t = progressInWindow(
+      scrollProgress.current,
+      totalPagesCount,
+      scrollWindow
+    );
     const open = 1 - THREE.MathUtils.clamp(t, 0, 1); // 1..0
 
     const fL = firstLineRef.current;

@@ -15,6 +15,7 @@ const About: FC<AboutProps> = ({ slice }) => {
     <section
       data-slice-type={slice.slice_type}
       data-slice-variation={slice.variation}
+      style={{ height: "100vh" }}
     >
       Placeholder component for about (variation: {slice.variation}) slices.
       <br />

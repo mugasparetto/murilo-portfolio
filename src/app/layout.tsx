@@ -1,6 +1,8 @@
 import { PrismicPreview } from "@prismicio/next";
 import { repositoryName } from "@/prismicio";
 
+import { ReactLenis } from "lenis/react";
+
 import "./globals.css";
 
 import { Inter } from "next/font/google";
@@ -18,7 +20,18 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={inter.variable}>
-      <body>{children}</body>
+      <body>
+        <ReactLenis
+          root
+          options={{
+            // put your Lenis options here
+            lerp: 0.1,
+            smoothWheel: true,
+          }}
+        >
+          {children}
+        </ReactLenis>
+      </body>
       <PrismicPreview repositoryName={repositoryName} />
     </html>
   );

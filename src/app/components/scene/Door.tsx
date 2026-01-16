@@ -9,10 +9,10 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 
 import { useFrame, useThree } from "@react-three/fiber";
-import { useScroll } from "@react-three/drei";
 
 import { progressInWindow, ScrollWindow } from "./ScrollRig";
-import { clamp, makeRanges, segmentProgress } from "../../helpers/scroll";
+import { makeRanges, segmentProgress } from "../../helpers/scroll";
+import { useScrollProgress } from "@/app/hooks/ScrollProgress";
 
 type Props = {
   params: SceneParams;
@@ -129,14 +129,18 @@ export default function Door({
     wire.quaternion.copy(q);
   });
 
-  const scroll = useScroll();
+  const { scrollProgress } = useScrollProgress();
 
   // scroll allocation per phase (you can tweak these)
   const PHASE_WEIGHTS = [0.4, 0.6]; // portalsIn, text, portalsOut
   const PHASES = makeRanges(PHASE_WEIGHTS);
 
   useFrame(() => {
-    const t = progressInWindow(scroll.offset, totalPagesCount, scrollWindow);
+    const t = progressInWindow(
+      scrollProgress.current,
+      totalPagesCount,
+      scrollWindow
+    );
 
     const progressDoor = segmentProgress(t, PHASES, 1); // 0..1 in phase 1
 

@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useScroll } from "@react-three/drei";
+import { useScrollProgress } from "@/app/hooks/ScrollProgress";
 
 export type ScrollWindow = {
   /**
@@ -145,7 +145,7 @@ export default function ScrollRig({
   direction = -1,
   smoothing = 0,
 }: ScrollRigProps) {
-  const scroll = useScroll();
+  // const scroll = useScroll();
   const { viewport, scene } = useThree();
 
   const weightsSum = useMemo(
@@ -153,11 +153,13 @@ export default function ScrollRig({
     [windows]
   );
 
+  const { scrollProgress } = useScrollProgress();
+
   useFrame((state, dt) => {
     const target = targetRef?.current ?? scene;
 
     // Progress in [0..sum(weights)]
-    const prog = windowedProgress(scroll.offset, pages, windows);
+    const prog = windowedProgress(scrollProgress.current, pages, windows);
 
     // Convert progress -> distance
     let distPerWeight: number;

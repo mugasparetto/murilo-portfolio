@@ -1,11 +1,12 @@
 import { useRef, useMemo } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Text, useHelper, useScroll } from "@react-three/drei";
+import { Text, useHelper } from "@react-three/drei";
 import { KeyTextField } from "@prismicio/client";
 
 import { progressInWindow, ScrollWindow } from "./ScrollRig";
-import { segmentProgress, makeRanges } from "../../helpers/scroll";
+import { segmentProgress, makeRanges } from "@/app/helpers/scroll";
+import { useScrollProgress } from "@/app/hooks/ScrollProgress";
 
 type Props = {
   firstName: KeyTextField;
@@ -47,14 +48,18 @@ export default function Name({
     if (textRef.current) textRef.current.quaternion.copy(q);
   });
 
-  const scroll = useScroll();
+  const { scrollProgress } = useScrollProgress();
 
   // scroll allocation per phase (you can tweak these)
   const PHASE_WEIGHTS = [0.2, 0.6, 0.2]; // portalsIn, text, portalsOut
   const PHASES = makeRanges(PHASE_WEIGHTS);
 
   useFrame(() => {
-    const t = progressInWindow(scroll.offset, totalPagesCount, scrollWindow); // 0..1
+    const t = progressInWindow(
+      scrollProgress.current,
+      totalPagesCount,
+      scrollWindow
+    ); // 0..1
 
     const pIn = segmentProgress(t, PHASES, 0); // 0..1 in phase 0
     const pText = segmentProgress(t, PHASES, 1); // 0..1 in phase 1

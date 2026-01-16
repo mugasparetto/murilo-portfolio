@@ -1,10 +1,17 @@
 "use client";
 
+import { RefObject, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import Experience from "./Experience";
 
-export default function Scene() {
+import { ScrollProgressProvider } from "@/app/hooks/ScrollProgress";
+
+type Props = {
+  scrollRef: RefObject<HTMLElement | null>;
+};
+
+export default function Scene({ scrollRef }: Props) {
   return (
     <Canvas
       dpr={[1, 2]}
@@ -21,7 +28,13 @@ export default function Scene() {
       }}
       style={{ width: "100%", height: "100%", display: "block" }}
     >
-      <Experience />
+      <ScrollProgressProvider
+        elementTop={useRef(0)}
+        elementHeight={useRef(0)}
+        elementRef={scrollRef}
+      >
+        <Experience />
+      </ScrollProgressProvider>
     </Canvas>
   );
 }

@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  OrbitControls,
-  Stats,
-  Html,
-  ScrollControls,
-  useHelper,
-} from "@react-three/drei";
+import { OrbitControls, Stats, ScrollControls } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import {
@@ -165,57 +159,54 @@ export default function Experience() {
       <color attach="background" args={[0x000000]} />
 
       {/* <OrbitControls ref={controlsRef} /> */}
+      <group ref={sceneRef}>
+        <group position={groupPosition}>
+          <Terrain params={p} tiles={3} />
+          <Steps
+            params={p}
+            doorFluidTextureRef={fluidTextureRef}
+            totalPagesCount={PAGES_COUNT}
+            scrollWindow={{ startPage: 3, endPage: 6 }}
+          >
+            <HumanModel onMeshesReady={handleMeshesReady} />
+          </Steps>
+          <Door
+            params={p}
+            displayMat={displayMat}
+            pointerUvRef={pointerUvRef}
+            pointerActiveRef={pointerActiveRef}
+            totalPagesCount={PAGES_COUNT}
+            scrollWindow={{ startPage: 6, endPage: 7 }}
+          />
+        </group>
 
-      <ScrollControls pages={PAGES_COUNT} damping={0.15}>
-        <group ref={sceneRef}>
-          <group position={groupPosition}>
-            <Terrain params={p} tiles={3} />
-            <Steps
-              params={p}
-              doorFluidTextureRef={fluidTextureRef}
-              totalPagesCount={PAGES_COUNT}
-              scrollWindow={{ startPage: 3, endPage: 6 }}
-            >
-              <HumanModel onMeshesReady={handleMeshesReady} />
-            </Steps>
-            <Door
-              params={p}
-              displayMat={displayMat}
-              pointerUvRef={pointerUvRef}
-              pointerActiveRef={pointerActiveRef}
-              totalPagesCount={PAGES_COUNT}
-              scrollWindow={{ startPage: 6, endPage: 7 }}
-            />
-          </group>
+        <Sky />
 
-          <Sky />
-
-          <Suspense fallback={null}>
-            <Name
-              firstName={first_name}
-              lastName={last_name}
-              totalPagesCount={PAGES_COUNT}
-              scrollWindow={{ startPage: 1, endPage: 3 }}
-            />
-          </Suspense>
-
-          <Headline
-            tagline={tag_line}
-            description={description}
+        <Suspense fallback={null}>
+          <Name
+            firstName={first_name}
+            lastName={last_name}
             totalPagesCount={PAGES_COUNT}
             scrollWindow={{ startPage: 1, endPage: 3 }}
           />
-        </group>
-        <ScrollRig
-          pages={PAGES_COUNT}
-          targetRef={sceneRef}
-          windows={[{ startPage: 7, endPage: 11 }]}
-          unit="viewport"
-          viewportDistancePerWeight={2}
-          smoothing={8}
-          direction={1}
+        </Suspense>
+
+        <Headline
+          tagline={tag_line}
+          description={description}
+          totalPagesCount={PAGES_COUNT}
+          scrollWindow={{ startPage: 1, endPage: 3 }}
         />
-      </ScrollControls>
+      </group>
+      <ScrollRig
+        pages={PAGES_COUNT}
+        targetRef={sceneRef}
+        windows={[{ startPage: 7, endPage: 11 }]}
+        unit="viewport"
+        viewportDistancePerWeight={2}
+        smoothing={8}
+        direction={1}
+      />
 
       <Postprocessing selected={outlined} />
 

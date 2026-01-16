@@ -3,9 +3,9 @@
 import { useMemo, useRef, useEffect } from "react";
 import * as THREE from "three";
 import { useFrame, useThree, RootState } from "@react-three/fiber";
-import { useScroll } from "@react-three/drei";
 
 import SkyBoundsDebug from "./SkyBoundsDebug";
+import { useScrollProgress } from "@/app/hooks/ScrollProgress";
 
 type Star = {
   active: boolean;
@@ -611,10 +611,11 @@ export default function ShootingStars({
     if (head.instanceColor) head.instanceColor.needsUpdate = true;
   });
 
-  const scroll = useScroll();
+  const { scrollElement } = useScrollProgress();
+
   const { gl } = useThree();
   useEffect(() => {
-    const el = scroll.el; // this is the scroll container that receives events
+    const el = scrollElement; // this is the scroll container that receives events
     const onPointerDown = (e: PointerEvent) => {
       const rect = (gl.domElement as HTMLCanvasElement).getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -622,9 +623,9 @@ export default function ShootingStars({
       clickQueueRef.current.push({ x, y });
     };
 
-    el.addEventListener("pointerdown", onPointerDown);
-    return () => el.removeEventListener("pointerdown", onPointerDown);
-  }, [gl, scroll]);
+    el?.addEventListener("pointerdown", onPointerDown);
+    return () => el?.removeEventListener("pointerdown", onPointerDown);
+  }, [gl, scrollElement]);
 
   return (
     <group>
