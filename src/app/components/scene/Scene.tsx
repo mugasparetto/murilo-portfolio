@@ -14,7 +14,7 @@ type Props = {
 export default function Scene({ scrollRef }: Props) {
   return (
     <Canvas
-      dpr={[1, 2]}
+      dpr={[1, 1.5]}
       gl={{ antialias: true }}
       camera={{ fov: 40, near: 50, far: 100000, position: [0, 200, 3380] }}
       onCreated={({ gl }) => {

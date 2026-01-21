@@ -5,6 +5,7 @@ import {
   EffectComposer,
   Outline,
   SelectiveBloom,
+  Bloom,
   Vignette,
   Noise,
   SMAA,
@@ -32,13 +33,20 @@ export default function PostProcessing({ selected }: Props) {
 
       <SMAA />
 
-      <SelectiveBloom
+      <Bloom
+        intensity={1.35}
+        luminanceThreshold={0.8}
+        luminanceSmoothing={0.8}
+        mipmapBlur
+      />
+
+      {/* <SelectiveBloom
         selectionLayer={1}
         intensity={1.15}
         luminanceThreshold={0.55}
         luminanceSmoothing={0.8}
         mipmapBlur
-      />
+      /> */}
 
       <Vignette eskil={false} offset={0.2} darkness={0.7} />
       <Noise premultiply opacity={0.4} />
