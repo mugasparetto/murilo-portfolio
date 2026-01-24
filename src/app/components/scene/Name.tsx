@@ -35,46 +35,46 @@ const RESPONSIVE: Record<
 > = {
   md: {
     firstName: {
-      position: { x: -1510, y: 2500 },
-      fontSize: 1500,
+      position: { x: -1310, y: 2600 },
+      fontSize: 1300,
       offset: 2500,
-      planeConstant: -370,
-      portal: { x: -350, y: 3600, scaleY: 1850 },
+      planeConstant: -320,
+      portal: { x: -300, y: 3600, scaleY: 1850 },
     },
     lastName: {
-      position: { x: 2450, y: 600 },
-      fontSize: 1500,
-      offset: -5100,
+      position: { x: 1600, y: 600 },
+      fontSize: 1300,
+      offset: -3400,
       planeConstant: 100,
-      portal: { x: -130, y: 1850, scaleY: 1850 },
+      portal: { x: -130, y: 1600, scaleY: 1400 },
     },
   },
   lg: {
     firstName: {
-      position: { x: -1900, y: 2350 },
-      fontSize: 2000,
-      offset: 3250,
-      planeConstant: -200,
-      portal: { x: -180, y: 3750, scaleY: 1850 },
+      position: { x: -1660, y: 2500 },
+      fontSize: 1650,
+      offset: 2550,
+      planeConstant: -380,
+      portal: { x: -360, y: 3650, scaleY: 1850 },
     },
     lastName: {
-      position: { x: 2450, y: 600 },
-      fontSize: 2000,
-      offset: -5100,
+      position: { x: 2100, y: 750 },
+      fontSize: 1650,
+      offset: -4350,
       planeConstant: 100,
-      portal: { x: -130, y: 1850, scaleY: 1850 },
+      portal: { x: -130, y: 1750, scaleY: 1550 },
     },
   },
   xl: {
     firstName: {
-      position: { x: -1900, y: 2350 },
+      position: { x: -1900, y: 2450 },
       fontSize: 2000,
       offset: 3250,
       planeConstant: -200,
       portal: { x: -180, y: 3750, scaleY: 1850 },
     },
     lastName: {
-      position: { x: 2450, y: 600 },
+      position: { x: 2450, y: 820 },
       fontSize: 2000,
       offset: -5100,
       planeConstant: 100,
@@ -83,30 +83,19 @@ const RESPONSIVE: Record<
   },
   "2xl": {
     firstName: {
-      position: { x: -1900, y: 2350 },
+      position: { x: -1900, y: 2450 },
       fontSize: 2000,
       offset: 3250,
       planeConstant: -200,
       portal: { x: -180, y: 3750, scaleY: 1850 },
     },
     lastName: {
-      position: { x: 2450, y: 600 },
+      position: { x: 2450, y: 820 },
       fontSize: 2000,
       offset: -5100,
       planeConstant: 100,
       portal: { x: -130, y: 1850, scaleY: 1850 },
     },
-  },
-};
-
-const POSITIONS = {
-  firstName: {
-    mobile: { start: -1000, offset: 3250 },
-    deskTop: { start: -1900, offset: 3250 },
-  },
-  lastName: {
-    mobile: { start: -570, offset: -5100 },
-    desktop: { start: 2450, offset: -5100 },
   },
 };
 
@@ -169,8 +158,8 @@ export default function Name({
 
     if (lastNameRef.current)
       lastNameRef.current.position.x =
-        POSITIONS.lastName.desktop.start +
-        pText * POSITIONS.lastName.desktop.offset;
+        RESPONSIVE[tier]?.lastName.position.x +
+        pText * RESPONSIVE[tier]?.lastName.offset;
 
     const open = 1 - THREE.MathUtils.clamp(pText, 0, 1); // 1..0
 
@@ -206,11 +195,6 @@ export default function Name({
       ),
     [tier],
   );
-
-  useEffect(() => {
-    console.log(tier);
-    console.log(RESPONSIVE[tier]);
-  }, [tier]);
 
   function ClippingPlaneDebug({ plane }) {
     const planeRef = useRef(plane);

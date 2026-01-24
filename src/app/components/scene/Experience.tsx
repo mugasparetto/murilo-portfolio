@@ -222,7 +222,7 @@ export default function Experience() {
         />
       )}
 
-      <Stats />
+      {/* <Stats /> */}
     </>
   );
 }

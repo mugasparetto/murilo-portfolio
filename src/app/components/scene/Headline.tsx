@@ -14,6 +14,28 @@ type Props = {
   scrollWindow: ScrollWindow;
 };
 
+type Tier = keyof typeof BREAKPOINTS;
+
+const RESPONSIVE: Record<
+  Tier,
+  {
+    position: { x: number; y: number };
+  }
+> = {
+  md: {
+    position: { x: -3000, y: 2400 },
+  },
+  lg: {
+    position: { x: -3400, y: 2255 },
+  },
+  xl: {
+    position: { x: -3660, y: 2150 },
+  },
+  "2xl": {
+    position: { x: -3860, y: 1955 },
+  },
+};
+
 export default function Headline({
   tagline = "",
   description = "",
@@ -23,7 +45,7 @@ export default function Headline({
   const firstLineRef = useRef<HTMLSpanElement | null>(null);
   const secondLineRef = useRef<HTMLSpanElement | null>(null);
   const { scrollProgress } = useScrollProgress();
-  const { up } = useBreakpoints(BREAKPOINTS);
+  const { up, tier } = useBreakpoints(BREAKPOINTS);
 
   useFrame(() => {
     const t = progressInWindow(
@@ -49,20 +71,24 @@ export default function Headline({
     <Html
       fullscreen={!up.md ? true : false}
       wrapperClass="fixed!"
-      position={[!up.md ? 0 : -3860, !up.md ? 90 : 1955, !up.md ? 0 : -5500]}
-      className="w-[22rem] md:w-[24rem] opacity-75 md:opacity-100 px-5! md:px-0! max-w-100 left-[50%]! md:left-0! translate-x-[-50%] md:translate-x-0"
+      position={[
+        !up.md ? 0 : RESPONSIVE[tier]?.position.x,
+        !up.md ? 90 : RESPONSIVE[tier]?.position.y,
+        !up.md ? 0 : -5500,
+      ]}
+      className="w-[22rem] md:w-[16rem] xl:w-[18rem] opacity-75 md:opacity-100 px-5! md:px-0! max-w-100 left-[50%]! md:left-0! translate-x-[-50%] md:translate-x-0"
     >
       <div className="flex flex-col pointer-events-none">
         <span
           ref={firstLineRef}
-          className="blind-shutter font-bold text-white lowercase md:text-2xl text-lg relative with-star"
+          className="blind-shutter font-bold text-white lowercase md:text-xl xl:text-2xl text-lg relative with-star"
           style={{ wordSpacing: !up.md ? 32 : 56 }}
         >
           {tagline}
         </span>
         <span
           ref={secondLineRef}
-          className="blind-shutter lowercase text-white/90 text-sm md:text-base"
+          className="blind-shutter lowercase text-white/90 text-sm md:text-sm xl:text-base"
           style={{ letterSpacing: !up.md ? -0.2 : undefined }}
         >
           {description}

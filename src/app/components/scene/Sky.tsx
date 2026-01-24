@@ -70,7 +70,7 @@ export default function Sky() {
 
   // positions
   const cubePos: [number, number, number] = [-4000, 5000, -7000];
-  const pyramidPos: [number, number, number] = [6200, 4000, -7000];
+  const pyramidPos: [number, number, number] = [5700, 4000, -7000];
 
   const starsPositions = useMemo(() => {
     const pts: [number, number, number][] = [];
