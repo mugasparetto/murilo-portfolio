@@ -1,12 +1,13 @@
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useEffect } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Text, useHelper } from "@react-three/drei";
+import { Text, useHelper, Html } from "@react-three/drei";
 import { KeyTextField } from "@prismicio/client";
 
 import { progressInWindow, ScrollWindow } from "./ScrollRig";
 import { segmentProgress, makeRanges } from "@/app/helpers/scroll";
 import { useScrollProgress } from "@/app/hooks/ScrollProgress";
+import { useBreakpoints, BREAKPOINTS } from "@/app/hooks/breakpoints";
 
 type Props = {
   firstName: KeyTextField;
@@ -15,17 +16,97 @@ type Props = {
   scrollWindow: ScrollWindow;
 };
 
-const FIRST_NAME_PLANE_BASE = -200;
-const LAST_NAME_PLANE_BASE = 100;
+type Tier = keyof typeof BREAKPOINTS;
+
+type NameProperties = {
+  position: { x: number; y: number };
+  portal: { x: number; y: number; scaleY: number };
+  fontSize: number;
+  offset: number;
+  planeConstant: number;
+};
+
+const RESPONSIVE: Record<
+  Tier,
+  {
+    firstName: NameProperties;
+    lastName: NameProperties;
+  }
+> = {
+  md: {
+    firstName: {
+      position: { x: -1510, y: 2500 },
+      fontSize: 1500,
+      offset: 2500,
+      planeConstant: -370,
+      portal: { x: -350, y: 3600, scaleY: 1850 },
+    },
+    lastName: {
+      position: { x: 2450, y: 600 },
+      fontSize: 1500,
+      offset: -5100,
+      planeConstant: 100,
+      portal: { x: -130, y: 1850, scaleY: 1850 },
+    },
+  },
+  lg: {
+    firstName: {
+      position: { x: -1900, y: 2350 },
+      fontSize: 2000,
+      offset: 3250,
+      planeConstant: -200,
+      portal: { x: -180, y: 3750, scaleY: 1850 },
+    },
+    lastName: {
+      position: { x: 2450, y: 600 },
+      fontSize: 2000,
+      offset: -5100,
+      planeConstant: 100,
+      portal: { x: -130, y: 1850, scaleY: 1850 },
+    },
+  },
+  xl: {
+    firstName: {
+      position: { x: -1900, y: 2350 },
+      fontSize: 2000,
+      offset: 3250,
+      planeConstant: -200,
+      portal: { x: -180, y: 3750, scaleY: 1850 },
+    },
+    lastName: {
+      position: { x: 2450, y: 600 },
+      fontSize: 2000,
+      offset: -5100,
+      planeConstant: 100,
+      portal: { x: -130, y: 1850, scaleY: 1850 },
+    },
+  },
+  "2xl": {
+    firstName: {
+      position: { x: -1900, y: 2350 },
+      fontSize: 2000,
+      offset: 3250,
+      planeConstant: -200,
+      portal: { x: -180, y: 3750, scaleY: 1850 },
+    },
+    lastName: {
+      position: { x: 2450, y: 600 },
+      fontSize: 2000,
+      offset: -5100,
+      planeConstant: 100,
+      portal: { x: -130, y: 1850, scaleY: 1850 },
+    },
+  },
+};
 
 const POSITIONS = {
   firstName: {
-    start: -1900,
-    offset: 3250,
+    mobile: { start: -1000, offset: 3250 },
+    deskTop: { start: -1900, offset: 3250 },
   },
   lastName: {
-    start: 2450,
-    offset: -5100,
+    mobile: { start: -570, offset: -5100 },
+    desktop: { start: 2450, offset: -5100 },
   },
 };
 
@@ -41,6 +122,10 @@ export default function Name({
   const lastNameRef = useRef<THREE.Mesh | null>(null);
   const portalFirstNameRef = useRef<THREE.Mesh | null>(null);
   const portalLastNameRef = useRef<THREE.Mesh | null>(null);
+  const firstNameHtml = useRef<HTMLHeadingElement | null>(null);
+  const lastNameHtml = useRef<HTMLHeadingElement | null>(null);
+  const portalFirstNameHtml = useRef<HTMLDivElement | null>(null);
+  const portalLastNameHtml = useRef<HTMLDivElement | null>(null);
 
   // --- billboard both to camera every frame
   useFrame(() => {
@@ -49,6 +134,10 @@ export default function Name({
   });
 
   const { scrollProgress } = useScrollProgress();
+  const { up, tier } = useBreakpoints(
+    Object.assign(BREAKPOINTS, { ["xs"]: "23.5rem" }),
+    { defaultTier: "xl" },
+  );
 
   // scroll allocation per phase (you can tweak these)
   const PHASE_WEIGHTS = [0.2, 0.6, 0.2]; // portalsIn, text, portalsOut
@@ -58,7 +147,7 @@ export default function Name({
     const t = progressInWindow(
       scrollProgress.current,
       totalPagesCount,
-      scrollWindow
+      scrollWindow,
     ); // 0..1
 
     const pIn = segmentProgress(t, PHASES, 0); // 0..1 in phase 0
@@ -75,76 +164,155 @@ export default function Name({
 
     if (firstNameRef.current)
       firstNameRef.current.position.x =
-        POSITIONS.firstName.start + pText * POSITIONS.firstName.offset;
+        RESPONSIVE[tier]?.firstName.position.x +
+        pText * RESPONSIVE[tier]?.firstName.offset;
+
     if (lastNameRef.current)
       lastNameRef.current.position.x =
-        POSITIONS.lastName.start + pText * POSITIONS.lastName.offset;
+        POSITIONS.lastName.desktop.start +
+        pText * POSITIONS.lastName.desktop.offset;
+
+    const open = 1 - THREE.MathUtils.clamp(pText, 0, 1); // 1..0
+
+    const fN = firstNameHtml.current;
+    if (!fN) return;
+
+    fN.style.setProperty("--shift", `${(1 - open) * 100}%`);
+
+    const lN = lastNameHtml.current;
+    if (!lN) return;
+
+    lN.style.setProperty("--shift", `${(1 - open) * 100}%`);
+
+    if (portalFirstNameHtml.current)
+      portalFirstNameHtml.current.style.scale = `100% ${portalY * 100}%`;
+
+    if (portalLastNameHtml.current)
+      portalLastNameHtml.current.style.scale = `100% ${portalY * 100}%`;
   });
 
-  const firstNameClipPlane = useMemo(
-    () =>
-      new THREE.Plane(
-        new THREE.Vector3(-1, 0, 0), // normal points LEFT
-        FIRST_NAME_PLANE_BASE
-      ),
-    []
-  );
+  const firstNameClipPlane = useMemo(() => {
+    return new THREE.Plane(
+      new THREE.Vector3(-1, 0, 0), // normal points LEFT
+      RESPONSIVE[tier]?.firstName.planeConstant,
+    );
+  }, [tier]);
 
   const lastNameClipPlane = useMemo(
     () =>
       new THREE.Plane(
         new THREE.Vector3(1, 0, 0), // normal points LEFT
-        LAST_NAME_PLANE_BASE
+        RESPONSIVE[tier]?.lastName.planeConstant,
       ),
-    []
+    [tier],
   );
 
-  //   function ClippingPlaneDebug({ plane }) {
-  //     const planeRef = useRef(plane);
+  useEffect(() => {
+    console.log(tier);
+    console.log(RESPONSIVE[tier]);
+  }, [tier]);
 
-  //     useHelper(planeRef, THREE.PlaneHelper, 5000, "hotpink");
+  function ClippingPlaneDebug({ plane }) {
+    const planeRef = useRef(plane);
 
-  //     return null;
-  //   }
+    useHelper(planeRef, THREE.PlaneHelper, 5000, "hotpink");
+
+    return null;
+  }
 
   return (
     <>
-      <mesh ref={portalFirstNameRef} position={[-180, 3750, -5750]}>
-        <planeGeometry args={[30, 1850]} />
-        <meshBasicMaterial color={"white"} />
-      </mesh>
-      <mesh ref={portalLastNameRef} position={[-130, 1850, -5100]}>
-        <planeGeometry args={[30, 1850]} />
-        <meshBasicMaterial color={"white"} />
-      </mesh>
-      <group ref={textRef}>
-        {/* <ClippingPlaneDebug plane={firstNameClipPlane} /> */}
-        {/* <ClippingPlaneDebug plane={lastNameClipPlane} /> */}
-
-        <Text
-          ref={firstNameRef}
-          position={[POSITIONS.firstName.start, 2350, -5750]}
-          font="/fonts/Morganite-Black.ttf"
-          fontSize={2000}
-          color="white"
-          material-clippingPlanes={[firstNameClipPlane]}
-          material-clipIntersection={true}
+      {!up.md ? (
+        <Html
+          fullscreen
+          wrapperClass="fixed!"
+          position={[0, !up.xs ? 650 : 570, 0]}
+          className="px-5! lg:px-0! font-display text-8xl relative leading-22 max-w-100 left-[50%]! translate-x-[-50%]"
         >
-          {firstName}
-        </Text>
+          <div
+            className="bg-white absolute w-1 h-19 left-39.25 -top-3 z-50"
+            ref={portalFirstNameHtml}
+          ></div>
+          <div
+            className="bg-white absolute w-1 h-19 left-64 top-16 z-50"
+            ref={portalLastNameHtml}
+          ></div>
+          <div className="reveal absolute -top-4 left-5">
+            <h1 className="reveal__text" ref={firstNameHtml}>
+              {firstName}
+            </h1>
+          </div>
 
-        <Text
-          ref={lastNameRef}
-          position={[POSITIONS.lastName.start, 600, -5650]}
-          font="/fonts/Morganite-Black.ttf"
-          fontSize={2000}
-          color="white"
-          material-clippingPlanes={[lastNameClipPlane]}
-          material-clipIntersection={true}
-        >
-          {lastName}
-        </Text>
-      </group>
+          <div className="reveal absolute top-15 left-5">
+            <h1 className="reveal__text" ref={lastNameHtml}>
+              {lastName}
+            </h1>
+          </div>
+        </Html>
+      ) : (
+        <>
+          <mesh
+            ref={portalFirstNameRef}
+            position={[
+              RESPONSIVE[tier]?.firstName.portal.x,
+              RESPONSIVE[tier]?.firstName.portal.y,
+              -5750,
+            ]}
+          >
+            <planeGeometry args={[30, 1850]} />
+            <meshBasicMaterial color={"white"} />
+          </mesh>
+          <mesh
+            ref={portalLastNameRef}
+            position={[
+              RESPONSIVE[tier]?.lastName.portal.x,
+              RESPONSIVE[tier]?.lastName.portal.y,
+              -5100,
+            ]}
+          >
+            <planeGeometry
+              args={[30, RESPONSIVE[tier]?.lastName.portal.scaleY]}
+            />
+            <meshBasicMaterial color={"white"} />
+          </mesh>
+          <group ref={textRef}>
+            {/* <ClippingPlaneDebug plane={firstNameClipPlane} />
+        <ClippingPlaneDebug plane={lastNameClipPlane} /> */}
+
+            <Text
+              ref={firstNameRef}
+              position={[
+                RESPONSIVE[tier]?.firstName.position.x,
+                RESPONSIVE[tier]?.firstName.position.y,
+                -5750,
+              ]}
+              font="/fonts/Morganite-Black.ttf"
+              fontSize={RESPONSIVE[tier]?.firstName.fontSize}
+              color="white"
+              material-clippingPlanes={[firstNameClipPlane]}
+              material-clipIntersection={true}
+            >
+              {firstName}
+            </Text>
+
+            <Text
+              ref={lastNameRef}
+              position={[
+                RESPONSIVE[tier]?.lastName.position.x,
+                RESPONSIVE[tier]?.lastName.position.y,
+                -5650,
+              ]}
+              font="/fonts/Morganite-Black.ttf"
+              fontSize={RESPONSIVE[tier]?.lastName.fontSize}
+              color="white"
+              material-clippingPlanes={[lastNameClipPlane]}
+              material-clipIntersection={true}
+            >
+              {lastName}
+            </Text>
+          </group>
+        </>
+      )}
     </>
   );
 }

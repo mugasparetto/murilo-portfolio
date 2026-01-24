@@ -27,6 +27,7 @@ import ParallaxRig from "./ParallaxRig";
 import ScrollRig from "./ScrollRig";
 import Name from "./Name";
 import Headline from "./Headline";
+import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 
 const PAGES_COUNT = 8;
 
@@ -34,6 +35,7 @@ export default function Experience() {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
   const { first_name, last_name, tag_line, description } = useHeroPrimary();
+  const { up } = useBreakpoints(BREAKPOINTS);
 
   // ✅ single stable params object that GUI mutates
   const paramsRef = useRef<SceneParams>({ ...defaultParams });
@@ -46,7 +48,7 @@ export default function Experience() {
   const [outlined, setOutlined] = useState<THREE.Object3D[]>([]);
   const handleMeshesReady = useCallback(
     (meshes: THREE.Object3D[]) => setOutlined(meshes),
-    []
+    [],
   );
 
   useEffect(() => {
@@ -59,9 +61,9 @@ export default function Experience() {
       new THREE.Vector3(
         paramsRef.current.cameraX,
         paramsRef.current.cameraY,
-        paramsRef.current.cameraZ
+        paramsRef.current.cameraZ,
       ),
-    []
+    [],
   );
 
   const baseTarget = useMemo(
@@ -69,9 +71,9 @@ export default function Experience() {
       new THREE.Vector3(
         paramsRef.current.targetX,
         paramsRef.current.targetY,
-        paramsRef.current.targetZ
+        paramsRef.current.targetZ,
       ),
-    []
+    [],
   );
 
   const applyCameraFromParams = useCallback(() => {
@@ -148,8 +150,8 @@ export default function Experience() {
   });
 
   const groupPosition = useMemo<[number, number, number]>(
-    () => [0, p.groupY, 0],
-    [p.groupY]
+    () => [0, !up.md ? -250 : p.groupY, 0],
+    [p.groupY, up.md],
   );
 
   const sceneRef = useRef<THREE.Object3D | null>(null);
@@ -210,13 +212,15 @@ export default function Experience() {
 
       <Postprocessing selected={outlined} />
 
-      <ParallaxRig
-        basePosition={basePos}
-        baseTarget={baseTarget}
-        strength={170}
-        damp={6}
-        targetStrength={0.2}
-      />
+      {up.md && (
+        <ParallaxRig
+          basePosition={basePos}
+          baseTarget={baseTarget}
+          strength={170}
+          damp={6}
+          targetStrength={0.2}
+        />
+      )}
 
       <Stats />
     </>

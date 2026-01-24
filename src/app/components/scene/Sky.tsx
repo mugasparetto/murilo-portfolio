@@ -9,6 +9,7 @@ import { Stars } from "@react-three/drei";
 import OutlinedSolid from "./OutlinedSolid"; // adjust path if needed
 import Star from "./Star";
 import ShootingStars from "./ShootingStars";
+import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 
 const STARS_COUNT = 200;
 const DOME_RADIUS = 6000;
@@ -16,6 +17,7 @@ const DOME_RADIUS = 6000;
 export default function Sky() {
   const { size, gl } = useThree();
   const dpr = gl.getPixelRatio();
+  const { up } = useBreakpoints(BREAKPOINTS);
 
   // Animate groups (so both fill + outline rotate together)
   const cubeGroup = useRef<THREE.Group>(null);
@@ -27,13 +29,13 @@ export default function Sky() {
   // Square-base pyramid: cone with 4 segments
   const pyramidGeometry = useMemo(
     () => new THREE.ConeGeometry(600, 800, 4, 1),
-    []
+    [],
   );
 
   // --- fill materials
   const blackMat = useMemo(
     () => new THREE.MeshBasicMaterial({ color: "black" }),
-    []
+    [],
   );
 
   // --- shared fat line material (recommended)
@@ -109,32 +111,36 @@ export default function Sky() {
 
   return (
     <group>
-      {/* Cube */}
-      <group ref={cubeGroup} position={cubePos}>
-        <OutlinedSolid
-          geometry={cubeGeometry}
-          fillMaterial={blackMat}
-          lineMaterial={lineMat}
-          // z-fighting + distance stability
-          polygonOffset
-          polygonOffsetFactor={2}
-          polygonOffsetUnits={2}
-          wireScale={1.002}
-        />
-      </group>
+      {up.md && (
+        <>
+          {/* Cube */}
+          <group ref={cubeGroup} position={cubePos}>
+            <OutlinedSolid
+              geometry={cubeGeometry}
+              fillMaterial={blackMat}
+              lineMaterial={lineMat}
+              // z-fighting + distance stability
+              polygonOffset
+              polygonOffsetFactor={2}
+              polygonOffsetUnits={2}
+              wireScale={1.002}
+            />
+          </group>
 
-      {/* Pyramid (square base) */}
-      <group ref={pyramidGroup} position={pyramidPos}>
-        <OutlinedSolid
-          geometry={pyramidGeometry}
-          fillMaterial={blackMat}
-          lineMaterial={lineMat}
-          polygonOffset
-          polygonOffsetFactor={2}
-          polygonOffsetUnits={2}
-          wireScale={1.002}
-        />
-      </group>
+          {/* Pyramid (square base) */}
+          <group ref={pyramidGroup} position={pyramidPos}>
+            <OutlinedSolid
+              geometry={pyramidGeometry}
+              fillMaterial={blackMat}
+              lineMaterial={lineMat}
+              polygonOffset
+              polygonOffsetFactor={2}
+              polygonOffsetUnits={2}
+              wireScale={1.002}
+            />
+          </group>
+        </>
+      )}
 
       <Stars
         radius={1500}

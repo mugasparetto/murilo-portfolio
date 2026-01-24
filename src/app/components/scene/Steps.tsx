@@ -16,6 +16,7 @@ import { easeCos } from "../../helpers/scroll";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { useScrollProgress } from "@/app/hooks/ScrollProgress";
+import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 
 type Props = {
   params: SceneParams;
@@ -40,6 +41,8 @@ export default function Steps({
   const steps = useRef<THREE.Group>(null);
   const humanRef = useRef<THREE.Group>(null);
 
+  const { up } = useBreakpoints(BREAKPOINTS);
+
   const stepWidth = 800;
   const stepHeight = 100;
   const stepDepth = 550;
@@ -47,7 +50,7 @@ export default function Steps({
   // Shared geometry (fill)
   const stepGeometry = useMemo(
     () => new THREE.BoxGeometry(stepWidth, stepHeight, stepDepth, 1, 1, 1),
-    []
+    [],
   );
 
   // Shared fat-line material for all steps
@@ -154,11 +157,22 @@ export default function Steps({
   useEffect(() => {
     if (!stepsRoot.current || !stepsPivot.current) return;
 
-    stepsRoot.current.position.set(params.stepX, params.stepY, params.stepZ);
+    stepsRoot.current.position.set(
+      !up.md ? -240 : params.stepX,
+      !up.md ? 240 : params.stepY,
+      params.stepZ,
+    );
     stepsPivot.current.rotation.y = params.rotY;
     stepsPivot.current.rotation.x = params.rotZ;
-    stepsPivot.current.scale.setScalar(1.6);
-  }, [params.stepX, params.stepY, params.stepZ, params.rotY, params.rotZ]);
+    stepsPivot.current.scale.setScalar(!up.md ? 1.1 : 1.6);
+  }, [
+    params.stepX,
+    params.stepY,
+    params.stepZ,
+    params.rotY,
+    params.rotZ,
+    up.md,
+  ]);
 
   const stepGroups = useRef<THREE.Group[]>([]);
   stepGroups.current = [];
@@ -172,7 +186,7 @@ export default function Steps({
     fillMat.uniforms.uDoorPos.value.set(
       params.doorX,
       params.doorY,
-      params.doorZ
+      params.doorZ,
     );
 
     // door basis: since door billboards to camera, use camera right/up
@@ -205,23 +219,23 @@ export default function Steps({
     fillMat.uniforms.uSoftness.value = params.softness;
 
     (fillMat.uniforms.uColor1.value as THREE.Vector3).copy(
-      hexToLinearVec3(params.color1)
+      hexToLinearVec3(params.color1),
     );
     (fillMat.uniforms.uColor2.value as THREE.Vector3).copy(
-      hexToLinearVec3(params.color2)
+      hexToLinearVec3(params.color2),
     );
     (fillMat.uniforms.uColor3.value as THREE.Vector3).copy(
-      hexToLinearVec3(params.color3)
+      hexToLinearVec3(params.color3),
     );
     (fillMat.uniforms.uColor4.value as THREE.Vector3).copy(
-      hexToLinearVec3(params.color4)
+      hexToLinearVec3(params.color4),
     );
 
     // door center
     fillMat.uniforms.uDoorPos.value.set(
       params.doorX,
       params.doorY,
-      params.doorZ
+      params.doorZ,
     );
 
     // door basis from camera because door is billboarded
@@ -312,7 +326,7 @@ export default function Steps({
     const t = progressInWindow(
       scrollProgress.current,
       totalPagesCount,
-      scrollWindow
+      scrollWindow,
     );
 
     if (humanRef.current) humanRef.current.visible = t < 0.999;

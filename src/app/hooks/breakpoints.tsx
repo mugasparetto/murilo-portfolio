@@ -54,7 +54,7 @@ export function useBreakpoints<T extends Breakpoints>(
   const signature = useMemo(
     () =>
       Object.entries(screens)
-        .sort(([a], [b]) => a.localeCompare(b))
+        .sort(([a], [, b]) => a.localeCompare(b))
         .map(([k, v]) => `${k}:${v}`)
         .join("|"),
     [screens],
@@ -73,32 +73,48 @@ export function useBreakpoints<T extends Breakpoints>(
   const fallbackTier = (sorted[0]?.[0] ?? "base") as keyof T;
   const defaultTier = (options?.defaultTier ?? fallbackTier) as keyof T;
 
-  const [width, setWidth] = useState<number>(options?.defaultWidth ?? 0);
-  const [tier, setTier] = useState<keyof T>(defaultTier);
-  const [up, setUp] = useState<Record<keyof T, boolean>>(() => {
-    const init = {} as Record<keyof T, boolean>;
-    for (const k of keys) init[k] = false;
-    return init;
-  });
+  const pickTier = (w: number) => {
+    let current = sorted[0]?.[0] ?? defaultTier;
+    for (const [k, min] of sorted) {
+      if (w >= min) current = k;
+      else break;
+    }
+    return current;
+  };
 
-  const [down, setDown] = useState<Record<keyof T, boolean>>(() => {
-    const init = {} as Record<keyof T, boolean>;
-    for (const k of keys) init[k] = false;
-    return init;
-  });
+  const computeUpDown = (w: number) => {
+    const nextUp = {} as Record<keyof T, boolean>;
+    const nextDown = {} as Record<keyof T, boolean>;
+
+    // For `down`, use each tier’s max as the next tier’s min - 0.02px (CSS practice).
+    // This makes ranges non-overlapping in spirit.
+    for (let i = 0; i < sorted.length; i++) {
+      const [k, min] = sorted[i];
+      const nextMin = sorted[i + 1]?.[1];
+      nextUp[k] = w >= min;
+      nextDown[k] = nextMin == null ? true : w < nextMin; // “k and down”
+    }
+
+    return { nextUp, nextDown };
+  };
+
+  const getInitialWidth = () => {
+    // client: use real width immediately (prevents "all false" first render)
+    if (typeof window !== "undefined") return window.innerWidth;
+    return options?.defaultWidth ?? 0;
+  };
+
+  const initialWidth = getInitialWidth();
+  const initialTier = pickTier(initialWidth);
+  const { nextUp: initialUp, nextDown: initialDown } =
+    computeUpDown(initialWidth);
+
+  const [width, setWidth] = useState<number>(initialWidth);
+  const [tier, setTier] = useState<keyof T>(initialTier);
+  const [up, setUp] = useState<Record<keyof T, boolean>>(initialUp);
+  const [down, setDown] = useState<Record<keyof T, boolean>>(initialDown);
 
   useEffect(() => {
-    const mins = new Map<keyof T, number>(sorted);
-
-    const pickTier = (w: number) => {
-      let current = sorted[0]?.[0] ?? defaultTier;
-      for (const [k, min] of sorted) {
-        if (w >= min) current = k;
-        else break;
-      }
-      return current;
-    };
-
     const update = () => {
       const w = window.innerWidth;
 
@@ -106,17 +122,7 @@ export function useBreakpoints<T extends Breakpoints>(
       const nextTier = pickTier(w);
 
       // compute up/down
-      const nextUp = {} as Record<keyof T, boolean>;
-      const nextDown = {} as Record<keyof T, boolean>;
-
-      // For `down`, use each tier’s max as the next tier’s min - 0.02px (CSS practice).
-      // This makes ranges non-overlapping in spirit.
-      for (let i = 0; i < sorted.length; i++) {
-        const [k, min] = sorted[i];
-        const nextMin = sorted[i + 1]?.[1];
-        nextUp[k] = w >= min;
-        nextDown[k] = nextMin == null ? true : w < nextMin; // “k and down”
-      }
+      const { nextUp, nextDown } = computeUpDown(w);
 
       setWidth((prev) => (prev === w ? prev : w));
       setTier((prev) => (prev === nextTier ? prev : nextTier));
@@ -140,7 +146,7 @@ export function useBreakpoints<T extends Breakpoints>(
       window.removeEventListener("resize", update);
       window.removeEventListener("orientationchange", update);
     };
-  }, [sorted, keys, defaultTier]);
+  }, [sorted, keys, defaultTier]); // pickTier/computeUpDown close over sorted/defaultTier
 
   const between = useMemo(() => {
     const mins = new Map<keyof T, number>(sorted);

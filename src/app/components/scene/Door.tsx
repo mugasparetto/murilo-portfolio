@@ -13,6 +13,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { progressInWindow, ScrollWindow } from "./ScrollRig";
 import { makeRanges, segmentProgress } from "../../helpers/scroll";
 import { useScrollProgress } from "@/app/hooks/ScrollProgress";
+import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 
 type Props = {
   params: SceneParams;
@@ -35,7 +36,7 @@ export default function Door({
 }: Props) {
   const { size, camera, gl } = useThree();
   const dpr = gl.getPixelRatio();
-
+  const { up } = useBreakpoints(BREAKPOINTS);
   const doorRef = useRef<THREE.Mesh>(null);
 
   const stepWidth = 800;
@@ -43,7 +44,7 @@ export default function Door({
   // --- geometry/material (stable)
   const doorGeometry = useMemo(
     () => new THREE.BoxGeometry(stepWidth, 2 * stepWidth, 1),
-    []
+    [],
   );
 
   // --- fat line material
@@ -102,17 +103,23 @@ export default function Door({
     };
   }, [doorGeometry, displayMat, lineGeo, lineMat]);
 
+  const scale = useMemo(() => {
+    return !up.md
+      ? { x: 1.15, y: 1.1 }
+      : { x: params.doorScaleX, y: params.doorScaleY };
+  }, [up.md, params.doorScaleX, params.doorScaleY]);
+
   // --- keep mesh + wire perfectly in sync
   useEffect(() => {
     const px = params.doorX;
     const py = params.doorY;
     const pz = params.doorZ;
 
-    doorRef.current?.position.set(px, py, pz);
-    wire.position.set(px, py, pz + 3);
+    doorRef.current?.position.set(!up.md ? 0 : px, !up.md ? 1510 : py, pz);
+    wire.position.set(!up.md ? 0 : px, !up.md ? 1510 : py, pz + 3);
 
-    doorRef.current?.scale.set(params.doorScaleX, params.doorScaleY, 1);
-    wire.scale.set(params.doorScaleX, params.doorScaleY, 1);
+    doorRef.current?.scale.set(scale.x, scale.y, 1);
+    wire.scale.set(scale.x, scale.y, 1);
   }, [
     params.doorX,
     params.doorY,
@@ -120,6 +127,9 @@ export default function Door({
     params.doorScaleX,
     params.doorScaleY,
     wire,
+    scale.x,
+    scale.y,
+    up.md,
   ]);
 
   // --- billboard both to camera every frame
@@ -139,17 +149,17 @@ export default function Door({
     const t = progressInWindow(
       scrollProgress.current,
       totalPagesCount,
-      scrollWindow
+      scrollWindow,
     );
 
     const progressDoor = segmentProgress(t, PHASES, 1); // 0..1 in phase 1
 
     if (doorRef.current) {
-      doorRef.current.scale.y = params.doorScaleY * (1 - progressDoor);
+      doorRef.current.scale.y = scale.y * (1 - progressDoor);
       doorRef.current.visible = t < 0.999;
     }
 
-    wire.scale.y = params.doorScaleY * (1 - progressDoor);
+    wire.scale.y = scale.y * (1 - progressDoor);
     wire.visible = t < 0.999;
   });
 
