@@ -180,6 +180,11 @@ export default function Experience() {
             totalPagesCount={PAGES_COUNT}
             scrollWindow={{ startPage: 6, endPage: 7 }}
           />
+
+          <mesh position={[0, -1000, 3100]}>
+            <planeGeometry args={[2000, 2000]} />
+            <meshBasicMaterial color="black" side={THREE.DoubleSide} />
+          </mesh>
         </group>
 
         <Sky />
@@ -201,12 +206,13 @@ export default function Experience() {
         />
       </group>
       <ScrollRig
-        pages={PAGES_COUNT}
+        pages={PAGES_COUNT + 1}
         targetRef={sceneRef}
-        windows={[{ startPage: 7, endPage: 9 }]}
-        unit="viewport"
-        viewportDistancePerWeight={0.065}
-        // smoothing={8}
+        windows={[{ startPage: 7, endPage: 10 }]}
+        unit="world"
+        // viewportDistancePerWeight={0.065}
+        worldDistancePerWeight={260}
+        smoothing={0}
         direction={1}
       />
 
