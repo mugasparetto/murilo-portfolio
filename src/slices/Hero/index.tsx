@@ -4,7 +4,7 @@ import { FC, useRef } from "react";
 import { Content } from "@prismicio/client";
 import { SliceComponentProps } from "@prismicio/react";
 
-import Scene from "../../app/components/scene/Scene";
+import Scene from "./scene/Scene";
 import { HeroPrimaryProvider } from "./hero-context";
 
 /**

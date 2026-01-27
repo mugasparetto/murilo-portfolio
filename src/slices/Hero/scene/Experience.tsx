@@ -15,14 +15,14 @@ import {
 import { defaultParams, type SceneParams } from "../scene-core/params";
 import { useLilGui } from "../scene-core/useLilGui";
 
-import Postprocessing from "./PostProcessing";
+import Postprocessing from "@/app/components/PostProcessing";
 import Terrain from "./Terrain";
 import Steps from "./Steps";
 import Door from "./Door";
 import HumanModel from "./HumanModel";
 import Sky from "./Sky";
-import { useFluidMaterials } from "./FluidMaterial";
-import { useHeroPrimary } from "../../../slices/Hero/hero-context";
+import { useFluidMaterials } from "@/app/components/FluidMaterial";
+import { useHeroPrimary } from "../hero-context";
 import ParallaxRig from "./ParallaxRig";
 import ScrollRig from "./ScrollRig";
 import Name from "./Name";
@@ -228,7 +228,7 @@ export default function Experience() {
         />
       )}
 
-      {/* <Stats /> */}
+      <Stats />
     </>
   );
 }

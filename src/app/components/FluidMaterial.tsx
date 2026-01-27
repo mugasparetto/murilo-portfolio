@@ -5,11 +5,7 @@ import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useFBO } from "@react-three/drei";
 
-import {
-  vertexShader,
-  fluidShader,
-  displayShader,
-} from "../scene-core/fluidShader";
+import { vertexShader, fluidShader, displayShader } from "./fluidShader";
 
 export type FluidConfig = {
   brushSize: number;
@@ -94,7 +90,7 @@ export function useFluidMaterials({
   const simScene = useMemo(() => new THREE.Scene(), []);
   const simCam = useMemo(
     () => new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1),
-    []
+    [],
   );
 
   const timeRef = useRef(0);
@@ -219,16 +215,16 @@ export function useFluidMaterials({
     displayMat.uniforms.uColorIntensity.value = config.colorIntensity;
     displayMat.uniforms.uSoftness.value = config.softness;
     (displayMat.uniforms.uColor1.value as THREE.Vector3).copy(
-      hexToLinearVec3(config.color1)
+      hexToLinearVec3(config.color1),
     );
     (displayMat.uniforms.uColor2.value as THREE.Vector3).copy(
-      hexToLinearVec3(config.color2)
+      hexToLinearVec3(config.color2),
     );
     (displayMat.uniforms.uColor3.value as THREE.Vector3).copy(
-      hexToLinearVec3(config.color3)
+      hexToLinearVec3(config.color3),
     );
     (displayMat.uniforms.uColor4.value as THREE.Vector3).copy(
-      hexToLinearVec3(config.color4)
+      hexToLinearVec3(config.color4),
     );
 
     // --- ping-pong render

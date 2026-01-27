@@ -5,13 +5,13 @@ import * as THREE from "three";
 import type { SceneParams } from "../scene-core/params";
 import { useThree, useFrame } from "@react-three/fiber";
 
-import OutlinedSolid from "./OutlinedSolid";
+import OutlinedSolid from "../../../app/components/OutlinedSolid";
 import {
   stepReflectFragment,
   stepReflectVertex,
 } from "../scene-core/reflectionShader";
 import { progressInWindow, ScrollWindow } from "./ScrollRig";
-import { easeCos } from "../../helpers/scroll";
+import { easeCos } from "../../../app/helpers/scroll";
 
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";

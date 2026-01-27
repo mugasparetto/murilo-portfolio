@@ -6,7 +6,7 @@ import { useThree, useFrame } from "@react-three/fiber";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { Stars } from "@react-three/drei";
 
-import OutlinedSolid from "./OutlinedSolid"; // adjust path if needed
+import OutlinedSolid from "../../../app/components/OutlinedSolid"; // adjust path if needed
 import Star from "./Star";
 import ShootingStars from "./ShootingStars";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
