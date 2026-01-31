@@ -1,7 +1,7 @@
 import { PrismicPreview } from "@prismicio/next";
 import { repositoryName } from "@/prismicio";
 
-import { ReactLenis } from "lenis/react";
+import ClientProvider from "./components/ClientProvider";
 
 import "./globals.css";
 
@@ -21,17 +21,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body>
-        <ReactLenis
-          root
-          options={{
-            // put your Lenis options here
-            lerp: 0.12,
-            smoothWheel: true,
-            autoRaf: false,
-          }}
-        >
-          {children}
-        </ReactLenis>
+        <ClientProvider>{children}</ClientProvider>
       </body>
       <PrismicPreview repositoryName={repositoryName} />
     </html>
