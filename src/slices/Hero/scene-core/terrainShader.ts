@@ -104,6 +104,7 @@ export const terrainVertex = /* glsl */ `
 export const terrainFragment = /* glsl */ `
   varying vec2 vUv;
   varying float vWorldZ;
+  uniform float uClipZ;
 
   uniform float uLineWidth;
   uniform vec3 uLineColor;
@@ -136,6 +137,8 @@ export const terrainFragment = /* glsl */ `
   }
 
   void main() {
+    if (vWorldZ > uClipZ) discard;
+    
     float grid = gridFactor(vUv, uGrid, uLineWidth);
 
     // On lines => grid~0 => lineColor. Inside => grid~1 => fillColor.

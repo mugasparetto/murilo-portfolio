@@ -6,6 +6,8 @@ import { SliceComponentProps } from "@prismicio/react";
 
 import { useSceneRegistry } from "@/app/hooks/SceneRegistry";
 
+import Scene from "./scene/Scene";
+
 /**
  * Props for `About`.
  */
@@ -24,14 +26,7 @@ const About: FC<AboutProps> = ({ slice }) => {
     register({
       id,
       priority: 20,
-      node: (
-        <group>
-          <mesh>
-            <boxGeometry args={[500, 500, 500]} />
-            <meshBasicMaterial color={"red"} />
-          </mesh>
-        </group>
-      ),
+      node: <Scene />,
       active: true,
     });
 

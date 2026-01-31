@@ -172,11 +172,6 @@ export default function Experience() {
             totalPagesCount={PAGES_COUNT}
             scrollWindow={{ startPage: 6, endPage: 7 }}
           />
-
-          {/* <mesh position={[0, -1000, 3100]}>
-            <planeGeometry args={[2000, 2000]} />
-            <meshBasicMaterial color="black" side={THREE.DoubleSide} />
-          </mesh> */}
         </group>
 
         <Sky />

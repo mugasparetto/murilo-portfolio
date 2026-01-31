@@ -1,20 +1,33 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useScrollProgress } from "@/app/hooks/ScrollProgress";
+import { CameraPose } from "./SceneManager";
 
-export type ScrollWindow = {
+export type RigPose = {
+  /**
+   * Camera position in world space.
+   */
+  position: THREE.Vector3 | [number, number, number];
+
+  /**
+   * Camera look target in world space.
+   */
+  lookAt: THREE.Vector3 | [number, number, number];
+};
+
+export type PoseWindow = {
   /**
    * 1-based, inclusive start page.
-   * Example: startPage=3 means "begin moving at the start of page 3"
+   * Example: startPage=3 means "begin transitioning at the start of page 3"
    */
   startPage: number;
 
   /**
    * 1-based, exclusive end page.
-   * Example: endPage=4 means "stop moving at the start of page 4"
+   * Example: endPage=4 means "stop transitioning at the start of page 4"
    *
    * For the very last page in a N-page ScrollControls:
    * use endPage = N + 1
@@ -22,99 +35,57 @@ export type ScrollWindow = {
   endPage: number;
 
   /**
-   * How many "units" of travel this window contributes when fully scrolled through.
-   * Default: 1 (one segment).
+   * Pose at the start of this window (t=0).
    */
-  weight?: number;
+  from: RigPose;
+
+  /**
+   * Pose at the end of this window (t=1).
+   */
+  to: RigPose;
+
+  /**
+   * Optional easing for this window’s interpolation (t in [0..1]).
+   * Defaults to linear.
+   */
+  ease?: (t: number) => number;
 };
 
 export type ScrollRigProps = {
-  /**
-   * Total pages passed to <ScrollControls pages={...} />
-   */
   pages: number;
-
-  /**
-   * Which page ranges should actually drive motion.
-   * All other ranges are effectively "frozen" (motion holds).
-   */
-  windows: ScrollWindow[];
-
-  /**
-   * What to move.
-   * - If you pass targetRef, it will move that object (recommended).
-   * - If you don't, it will move the default R3F scene (less common).
-   */
-  targetRef?: React.RefObject<THREE.Object3D | null>;
-
-  /**
-   * Axis to move along (default: "y")
-   */
-  axis?: "x" | "y" | "z";
-
-  /**
-   * Distance per full window "weight".
-   * - "viewport": distance is multiplied by viewport width/height (depending on axis)
-   * - "world": distance is used directly as world units
-   */
-  unit?: "viewport" | "world";
-
-  /**
-   * For unit="viewport", how many viewports of travel per weight.
-   * For example, 1 means each weight moves by 1 viewport (height for y, width for x).
-   */
-  viewportDistancePerWeight?: number;
-
-  /**
-   * For unit="world", how many world units of travel per weight.
-   */
-  worldDistancePerWeight?: number;
-
-  /**
-   * Direction multiplier (default: -1).
-   * Typical scroll down = move scene down => -1 on Y.
-   */
-  direction?: number;
-
-  /**
-   * Smooth the motion (simple exponential damping).
-   * 0 disables smoothing.
-   */
+  windows: PoseWindow[];
+  cameraRef?: React.RefObject<THREE.Camera | null>;
   smoothing?: number;
+
+  basePoseRef?: React.RefObject<CameraPose | null>;
+
+  /**
+   * If false, ScrollRig will NOT write to the camera, only to basePoseRef.
+   * Recommended: set false when using ParallaxRig.
+   */
+  applyToCamera?: boolean;
+
+  /**
+   * Ensures ordering vs other camera writers (controls/effects).
+   * Higher runs later.
+   */
+  priority?: number;
 };
+
+function toV3(v: THREE.Vector3 | [number, number, number]) {
+  return Array.isArray(v) ? new THREE.Vector3(v[0], v[1], v[2]) : v;
+}
 
 export function progressInWindow(
   offset: number,
   pages: number,
-  w: ScrollWindow
+  w: { startPage: number; endPage: number },
 ) {
   const p = 1 / pages;
   const a = (w.startPage - 1) * p;
   const b = (w.endPage - 1) * p;
   if (b <= a) return 0;
   return THREE.MathUtils.clamp((offset - a) / (b - a), 0, 1);
-}
-
-/**
- * Convert ScrollControls offset (0..1) into a piecewise-linear progress value.
- * Progress is the sum of contributions from each window:
- * - before a window: contributes 0
- * - inside a window: contributes 0..weight
- * - after a window: contributes weight
- *
- * Result range: [0 .. sum(weights)]
- */
-function windowedProgress(
-  offset: number,
-  pages: number,
-  windows: ScrollWindow[]
-) {
-  let total = 0;
-  for (const w of windows) {
-    const weight = w.weight ?? 1;
-    total += progressInWindow(offset, pages, w) * weight;
-  }
-  return total;
 }
 
 function damp(current: number, target: number, lambda: number, dt: number) {
@@ -125,71 +96,166 @@ function damp(current: number, target: number, lambda: number, dt: number) {
 }
 
 /**
- * ScrollRig
- * Use with <ScrollControls pages={N}> and define "windows" for when motion should happen.
+ * ScrollRig (pose-based)
  *
- * Example:
- * windows={[
- *   { startPage: 3, endPage: 4 }, // scroll only on page 3
- *   { startPage: 6, endPage: 7 }, // scroll only on page 6 (endPage is N+1)
- * ]}
+ * Instead of moving an object by distance, this rig interpolates the camera
+ * between discrete poses (position + lookAt target) across scroll windows.
  */
 export default function ScrollRig({
   pages,
   windows,
-  targetRef,
-  axis = "y",
-  unit = "viewport",
-  viewportDistancePerWeight = 1,
-  worldDistancePerWeight = 1000,
-  direction = -1,
+  cameraRef,
   smoothing = 0,
+  basePoseRef,
+  applyToCamera,
 }: ScrollRigProps) {
-  // const scroll = useScroll();
-  const { viewport, scene } = useThree();
-
-  const weightsSum = useMemo(
-    () => windows.reduce((acc, w) => acc + (w.weight ?? 1), 0),
-    [windows]
-  );
-
+  const { camera } = useThree();
   const { scrollProgress } = useScrollProgress();
 
+  // Sort once for deterministic behavior if user passes out-of-order windows
+  const sorted = useMemo(() => {
+    const w = [...windows];
+    w.sort((a, b) => a.startPage - b.startPage);
+    return w;
+  }, [windows]);
+
+  // Cache first/last poses for outside-window holds
+  const firstFromPos = useMemo(
+    () => toV3(sorted[0]?.from.position ?? [0, 0, 5]).clone(),
+    [sorted],
+  );
+  const firstFromLook = useMemo(
+    () => toV3(sorted[0]?.from.lookAt ?? [0, 0, 0]).clone(),
+    [sorted],
+  );
+
+  // A reusable desired pose vector (no allocations per frame)
+  const desiredPos = useRef(new THREE.Vector3());
+  const desiredLook = useRef(new THREE.Vector3());
+
+  // Smoothed current pose (what we actually apply)
+  const currentPos = useRef(new THREE.Vector3().copy(firstFromPos));
+  const currentLook = useRef(new THREE.Vector3().copy(firstFromLook));
+
   useFrame((state, dt) => {
-    const target = targetRef?.current ?? scene;
+    const cam = cameraRef?.current ?? camera;
+    const offset = scrollProgress.current;
 
-    // Progress in [0..sum(weights)]
-    const prog = windowedProgress(scrollProgress.current, pages, windows);
+    if (sorted.length === 0) return;
 
-    // Convert progress -> distance
-    let distPerWeight: number;
-    if (unit === "viewport") {
-      const v =
-        axis === "x"
-          ? viewport.width
-          : axis === "y"
-            ? viewport.height
-            : viewport.height;
-      distPerWeight = v * viewportDistancePerWeight;
-    } else {
-      distPerWeight = worldDistancePerWeight;
+    // Determine which pose we "should" be at for this scroll offset:
+    // - If inside a window: interpolate from->to for that window
+    // - Else: hold previous window's to (or first window's from before it starts)
+    let foundActive = false;
+
+    // Default: before first window => first.from
+    desiredPos.current.copy(firstFromPos);
+    desiredLook.current.copy(firstFromLook);
+
+    for (let i = 0; i < sorted.length; i++) {
+      const w = sorted[i];
+
+      const p = 1 / pages;
+      const windowStart = (w.startPage - 1) * p;
+      const windowEnd = (w.endPage - 1) * p;
+
+      // If we're before this window starts:
+      if (offset < windowStart) {
+        if (i === 0) {
+          // already set to first.from
+        } else {
+          // between windows => hold previous.to
+          const prev = sorted[i - 1];
+          desiredPos.current.copy(toV3(prev.to.position));
+          desiredLook.current.copy(toV3(prev.to.lookAt));
+        }
+        foundActive = true;
+        break;
+      }
+
+      // If we're inside this window:
+      if (offset >= windowStart && offset <= windowEnd) {
+        const rawT = progressInWindow(offset, pages, w); // 0..1
+        const t = w.ease ? w.ease(rawT) : rawT;
+
+        const fromPos = toV3(w.from.position);
+        const toPos = toV3(w.to.position);
+        const fromLook = toV3(w.from.lookAt);
+        const toLook = toV3(w.to.lookAt);
+
+        desiredPos.current.copy(fromPos).lerp(toPos, t);
+        desiredLook.current.copy(fromLook).lerp(toLook, t);
+
+        foundActive = true;
+        break;
+      }
+
+      // Else: we're after this window; keep looping to find later windows,
+      // and if none match we'll fall back to last.to below.
     }
 
-    const desired = direction * prog * distPerWeight;
-
-    // Apply on chosen axis
-    const pos = target.position;
-
-    if (axis === "x") {
-      pos.x = smoothing > 0 ? damp(pos.x, desired, smoothing, dt) : desired;
-    } else if (axis === "y") {
-      pos.y = smoothing > 0 ? damp(pos.y, desired, smoothing, dt) : desired;
-    } else {
-      pos.z = smoothing > 0 ? damp(pos.z, desired, smoothing, dt) : desired;
+    // After last window ends => hold last.to
+    if (!foundActive) {
+      const last = sorted[sorted.length - 1];
+      desiredPos.current.copy(toV3(last.to.position));
+      desiredLook.current.copy(toV3(last.to.lookAt));
     }
 
-    // If you ever need: you can use weightsSum for debugging/normalizing
-    void weightsSum;
+    // Smooth position + look target (optional)
+    if (smoothing > 0) {
+      currentPos.current.x = damp(
+        currentPos.current.x,
+        desiredPos.current.x,
+        smoothing,
+        dt,
+      );
+      currentPos.current.y = damp(
+        currentPos.current.y,
+        desiredPos.current.y,
+        smoothing,
+        dt,
+      );
+      currentPos.current.z = damp(
+        currentPos.current.z,
+        desiredPos.current.z,
+        smoothing,
+        dt,
+      );
+
+      currentLook.current.x = damp(
+        currentLook.current.x,
+        desiredLook.current.x,
+        smoothing,
+        dt,
+      );
+      currentLook.current.y = damp(
+        currentLook.current.y,
+        desiredLook.current.y,
+        smoothing,
+        dt,
+      );
+      currentLook.current.z = damp(
+        currentLook.current.z,
+        desiredLook.current.z,
+        smoothing,
+        dt,
+      );
+    } else {
+      currentPos.current.copy(desiredPos.current);
+      currentLook.current.copy(desiredLook.current);
+    }
+
+    if (basePoseRef?.current) {
+      basePoseRef.current.position.copy(currentPos.current);
+      basePoseRef.current.target.copy(currentLook.current);
+    }
+
+    const shouldApply = applyToCamera ?? !basePoseRef?.current; // default: if no basePoseRef, apply
+
+    if (shouldApply) {
+      cam.position.copy(currentPos.current);
+      cam.lookAt(currentLook.current);
+    }
   });
 
   return null;

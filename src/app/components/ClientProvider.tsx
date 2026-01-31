@@ -20,7 +20,7 @@ export default function ClientProvider({
     <ReactLenis
       root
       options={{
-        lerp: 0.12,
+        lerp: 0.07,
         smoothWheel: true,
         autoRaf: false,
       }}

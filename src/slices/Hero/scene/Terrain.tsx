@@ -34,6 +34,7 @@ export default function Terrain({ params, tiles = 3 }: Props) {
       side: THREE.DoubleSide,
       uniforms: {
         uTime: { value: 0 },
+        uClipZ: { value: 2200 },
 
         uDiff: { value: params.diff },
         uXYScale: { value: params.xyScale },

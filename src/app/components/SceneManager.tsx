@@ -17,31 +17,30 @@ import { BREAKPOINTS, useBreakpoints } from "../hooks/breakpoints";
 
 const PAGES_COUNT = 8;
 
+export type CameraPose = {
+  position: THREE.Vector3;
+  target: THREE.Vector3;
+};
+
 export default function SceneHost() {
   const { entries } = useSceneRegistry();
   // ✅ single stable params object that GUI mutates
   const paramsRef = useRef<SceneParams>({ ...defaultParams });
   const { up } = useBreakpoints(BREAKPOINTS);
   const { outlined } = useStore();
-  const basePos = useMemo(
-    () =>
-      new THREE.Vector3(
-        paramsRef.current.cameraX,
-        paramsRef.current.cameraY,
-        paramsRef.current.cameraZ,
-      ),
-    [],
-  );
 
-  const baseTarget = useMemo(
-    () =>
-      new THREE.Vector3(
-        paramsRef.current.targetX,
-        paramsRef.current.targetY,
-        paramsRef.current.targetZ,
-      ),
-    [],
-  );
+  const poseRef = useRef<CameraPose>({
+    position: new THREE.Vector3(
+      paramsRef.current.cameraX,
+      paramsRef.current.cameraY,
+      paramsRef.current.cameraZ,
+    ),
+    target: new THREE.Vector3(
+      paramsRef.current.targetX,
+      paramsRef.current.targetY,
+      paramsRef.current.targetZ,
+    ),
+  });
 
   const ordered = Object.values(entries)
     .filter((e) => e.active)
@@ -55,20 +54,31 @@ export default function SceneHost() {
 
       <ScrollRig
         pages={PAGES_COUNT + 1}
-        windows={[{ startPage: 7, endPage: 10 }]}
-        unit="world"
-        // viewportDistancePerWeight={0.065}
-        worldDistancePerWeight={260}
-        smoothing={0}
-        direction={1}
+        windows={[
+          {
+            startPage: 7,
+            endPage: 10, // interpolate during page 2
+            from: {
+              position: [0, 200, 3380], // pose A
+              lookAt: [0, 820, 0],
+            },
+            to: {
+              position: [0, -1200, 3380], // pose B
+              lookAt: [0, -1200, 0],
+            },
+          },
+        ]}
+        basePoseRef={poseRef}
+        smoothing={-25}
+        applyToCamera={!up.md}
+        priority={0}
       />
 
       <Postprocessing selected={outlined} />
 
       {up.md && (
         <ParallaxRig
-          basePosition={basePos}
-          baseTarget={baseTarget}
+          poseRef={poseRef}
           strength={170}
           damp={6}
           targetStrength={0.2}
