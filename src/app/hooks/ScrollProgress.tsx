@@ -39,7 +39,7 @@ type Props = {
 
 export function ScrollProgressProvider({
   children,
-  damping = 20,
+  damping = 100,
   elementRef,
   elementTop,
   elementHeight,

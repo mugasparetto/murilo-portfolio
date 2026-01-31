@@ -115,14 +115,14 @@ export default function Scene() {
   const { up } = useBreakpoints(BREAKPOINTS);
 
   const lines = [
-    { x: -680, y: -28 },
+    { x: -690, y: -28 },
     { x: -495, y: -36 },
     { x: -300, y: -42 },
     { x: -100, y: -45 },
     { x: 100, y: -45 },
     { x: 300, y: -42 },
     { x: 495, y: -36 },
-    { x: 680, y: -28 },
+    { x: 690, y: -28 },
   ];
 
   const planeGeo = useUCurvePlaneGeometry(

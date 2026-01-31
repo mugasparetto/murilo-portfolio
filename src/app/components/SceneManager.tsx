@@ -56,8 +56,8 @@ export default function SceneHost() {
         pages={PAGES_COUNT + 1}
         windows={[
           {
-            startPage: 7,
-            endPage: 10, // interpolate during page 2
+            startPage: 7.5,
+            endPage: 10.5,
             from: {
               position: [0, 200, 3380], // pose A
               lookAt: [0, 820, 0],
