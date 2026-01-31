@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import React, { useLayoutEffect, useMemo, useRef } from "react";
 import { ThreeElements } from "@react-three/fiber";
+import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 
 type VerticalLinesProps = {
   xs: number[]; // X positions in local space of the parent mesh
@@ -49,17 +50,18 @@ function VerticalLines({
   );
 }
 export default function Scene() {
+  const { up } = useBreakpoints(BREAKPOINTS);
   const lineXs = [-700, -500, -300, -100, 100, 300, 500, 700]; // you control these
 
   return (
     <group>
-      <mesh position={[0, -1050, 2200]}>
+      <mesh position={[0, !up.md ? -1250 : -1050, 2200]}>
         <planeGeometry args={[2000, 2000]} />
         <meshBasicMaterial color="black" side={THREE.DoubleSide} />
       </mesh>
 
       {/* Put lines in the same transform space as the plane */}
-      <group position={[0, -1050, 2200]}>
+      <group position={[0, !up.md ? -1250 : -1050, 2200]}>
         <VerticalLines xs={lineXs} height={2000} thickness={1.5} z={0.1} />
       </group>
     </group>
