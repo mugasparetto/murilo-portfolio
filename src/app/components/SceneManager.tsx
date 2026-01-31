@@ -57,7 +57,7 @@ export default function SceneHost() {
         windows={[
           {
             startPage: 7.5,
-            endPage: 10.5,
+            endPage: 11.5,
             from: {
               position: [0, 200, 3380], // pose A
               lookAt: [0, 820, 0],
