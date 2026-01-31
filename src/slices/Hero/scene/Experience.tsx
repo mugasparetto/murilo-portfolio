@@ -15,7 +15,6 @@ import {
 import { defaultParams, type SceneParams } from "../scene-core/params";
 import { useLilGui } from "../scene-core/useLilGui";
 
-import Postprocessing from "@/app/components/PostProcessing";
 import Terrain from "./Terrain";
 import Steps from "./Steps";
 import Door from "./Door";
@@ -23,8 +22,7 @@ import HumanModel from "./HumanModel";
 import Sky from "./Sky";
 import { useFluidMaterials } from "@/app/components/FluidMaterial";
 import { useHeroPrimary } from "../hero-context";
-import ParallaxRig from "./ParallaxRig";
-import ScrollRig from "./ScrollRig";
+
 import Name from "./Name";
 import Headline from "./Headline";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
@@ -52,6 +50,7 @@ export default function Experience() {
   );
 
   useEffect(() => {
+    camera.layers.enable(2);
     camera.layers.enable(1);
     camera.layers.enable(0);
   }, [camera]);
@@ -181,10 +180,10 @@ export default function Experience() {
             scrollWindow={{ startPage: 6, endPage: 7 }}
           />
 
-          <mesh position={[0, -1000, 3100]}>
+          {/* <mesh position={[0, -1000, 3100]}>
             <planeGeometry args={[2000, 2000]} />
             <meshBasicMaterial color="black" side={THREE.DoubleSide} />
-          </mesh>
+          </mesh> */}
         </group>
 
         <Sky />
@@ -205,30 +204,6 @@ export default function Experience() {
           scrollWindow={{ startPage: 1, endPage: 3 }}
         />
       </group>
-      <ScrollRig
-        pages={PAGES_COUNT + 1}
-        targetRef={sceneRef}
-        windows={[{ startPage: 7, endPage: 10 }]}
-        unit="world"
-        // viewportDistancePerWeight={0.065}
-        worldDistancePerWeight={260}
-        smoothing={0}
-        direction={1}
-      />
-
-      <Postprocessing selected={outlined} />
-
-      {up.md && (
-        <ParallaxRig
-          basePosition={basePos}
-          baseTarget={baseTarget}
-          strength={170}
-          damp={6}
-          targetStrength={0.2}
-        />
-      )}
-
-      <Stats />
     </>
   );
 }

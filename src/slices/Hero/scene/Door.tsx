@@ -10,7 +10,7 @@ import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 
 import { useFrame, useThree } from "@react-three/fiber";
 
-import { progressInWindow, ScrollWindow } from "./ScrollRig";
+import { progressInWindow, ScrollWindow } from "@/app/components/ScrollRig";
 import { makeRanges, segmentProgress } from "../../../app/helpers/scroll";
 import { useScrollProgress } from "@/app/hooks/ScrollProgress";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";

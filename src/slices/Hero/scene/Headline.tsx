@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
-import { progressInWindow, ScrollWindow } from "./ScrollRig";
+import { progressInWindow, ScrollWindow } from "@/app/components/ScrollRig";
 import { KeyTextField } from "@prismicio/client";
 import { useScrollProgress } from "@/app/hooks/ScrollProgress";
 import { useBreakpoints, BREAKPOINTS } from "@/app/hooks/breakpoints";

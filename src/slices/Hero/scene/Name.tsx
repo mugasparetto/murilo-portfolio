@@ -4,7 +4,10 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { Text, useHelper, Html } from "@react-three/drei";
 import { KeyTextField } from "@prismicio/client";
 
-import { progressInWindow, ScrollWindow } from "./ScrollRig";
+import {
+  progressInWindow,
+  ScrollWindow,
+} from "../../../app/components/ScrollRig";
 import { segmentProgress, makeRanges } from "@/app/helpers/scroll";
 import { useScrollProgress } from "@/app/hooks/ScrollProgress";
 import { useBreakpoints, BREAKPOINTS } from "@/app/hooks/breakpoints";
