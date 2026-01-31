@@ -105,7 +105,7 @@ export default function Door({
 
   const scale = useMemo(() => {
     return !up.md
-      ? { x: 1.15, y: 1.1 }
+      ? { x: 1.16, y: 1.1 }
       : { x: params.doorScaleX, y: params.doorScaleY };
   }, [up.md, params.doorScaleX, params.doorScaleY]);
 

@@ -158,12 +158,12 @@ export default function Steps({
 
     stepsRoot.current.position.set(
       !up.md ? -240 : params.stepX,
-      !up.md ? 240 : params.stepY,
+      !up.md ? 230 : params.stepY,
       params.stepZ,
     );
     stepsPivot.current.rotation.y = params.rotY;
-    stepsPivot.current.rotation.x = params.rotZ;
-    stepsPivot.current.scale.setScalar(!up.md ? 1.1 : 1.6);
+    stepsPivot.current.rotation.x = !up.md ? 0.11 : params.rotZ;
+    stepsPivot.current.scale.setScalar(!up.md ? 1.12 : 1.6);
   }, [
     params.stepX,
     params.stepY,
