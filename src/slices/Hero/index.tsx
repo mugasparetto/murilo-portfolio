@@ -53,18 +53,12 @@ const Hero: FC<HeroProps> = ({ slice }) => {
   }, [id, setActive]);
 
   return (
-    <HeroPrimaryProvider primary={slice.primary}>
-      <section
-        ref={heroRef}
-        data-slice-type={slice.slice_type}
-        data-slice-variation={slice.variation}
-        style={{ width: "100%", height: "400vh" }}
-      >
-        <div className="sticky top-0" style={{ height: "100vh" }}>
-          {/* <Scene scrollRef={heroRef} /> */}
-        </div>
-      </section>
-    </HeroPrimaryProvider>
+    <section
+      ref={heroRef}
+      data-slice-type={slice.slice_type}
+      data-slice-variation={slice.variation}
+      style={{ width: "100%", height: "400vh" }}
+    ></section>
   );
 };
 
