@@ -22,7 +22,7 @@ export function useScrollProgress(): ScrollProgressValue {
   const ctx = useContext(ScrollProgressContext);
   if (!ctx)
     throw new Error(
-      "useScrollProgress must be used within ScrollProgressProvider"
+      "useScrollProgress must be used within ScrollProgressProvider",
     );
   return ctx;
 }
@@ -39,7 +39,7 @@ type Props = {
 
 export function ScrollProgressProvider({
   children,
-  damping = 6,
+  damping = 20,
   elementRef,
   elementTop,
   elementHeight,
@@ -76,7 +76,7 @@ export function ScrollProgressProvider({
       scrollProgress.current,
       raw,
       damping,
-      delta
+      delta,
     );
   });
 
