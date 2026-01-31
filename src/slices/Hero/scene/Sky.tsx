@@ -7,7 +7,7 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { Stars } from "@react-three/drei";
 
 import OutlinedSolid from "../../../app/components/OutlinedSolid"; // adjust path if needed
-import Star from "./Star";
+import InstancedStars from "./Star";
 import ShootingStars from "./ShootingStars";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 
@@ -152,19 +152,16 @@ export default function Sky() {
         speed={1}
       />
 
-      <group>
-        {starsPositions.map((p, i) => (
-          <Star
-            key={i}
-            position={p}
-            minSize={10}
-            maxSize={18}
-            blinkSpeed={0.8}
-            minOpacity={0.2}
-            maxOpacity={1}
-          />
-        ))}
-      </group>
+      {/* 👇 replaces the per-star <Star /> map */}
+      <InstancedStars
+        positions={starsPositions}
+        minSize={10}
+        maxSize={18}
+        blinkSpeed={0.8}
+        minOpacity={0.2}
+        maxOpacity={1}
+        seed={0}
+      />
 
       <ShootingStars
         domeRadius={DOME_RADIUS}
