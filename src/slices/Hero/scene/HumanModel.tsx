@@ -3,16 +3,16 @@
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useGLTF, useAnimations } from "@react-three/drei";
+import { useStore } from "@/app/hooks/store";
 
-type Props = {
-  onMeshesReady?: (meshes: THREE.Object3D[]) => void;
-};
-
-export default function HumanModel({ onMeshesReady }: Props) {
+export default function HumanModel() {
   const group = useRef<THREE.Group>(null);
 
   const gltf = useGLTF("/models/human.glb");
   const { actions, names } = useAnimations(gltf.animations, group);
+
+  const setOutlined = useStore((s) => s.setOutlined);
+  const clearOutlined = useStore((s) => s.clearOutlined);
 
   useEffect(() => {
     // similar to your: animations[1]
@@ -26,14 +26,18 @@ export default function HumanModel({ onMeshesReady }: Props) {
   }, [actions, names]);
 
   useEffect(() => {
-    if (!group.current || !onMeshesReady) return;
+    if (!group.current) return;
     const meshes: THREE.Object3D[] = [];
     group.current.traverse((obj) => {
       // @ts-expect-error runtime flag
       if (obj.isMesh) meshes.push(obj);
     });
-    onMeshesReady(meshes);
-  }, [onMeshesReady]);
+    setOutlined(meshes);
+
+    return () => {
+      clearOutlined();
+    };
+  }, [clearOutlined, setOutlined]);
 
   const transform = useMemo(
     () => ({
@@ -41,7 +45,7 @@ export default function HumanModel({ onMeshesReady }: Props) {
       rotationY: Math.PI - Math.PI * 0.05,
       position: new THREE.Vector3(-200, 50, -50),
     }),
-    []
+    [],
   );
 
   return (

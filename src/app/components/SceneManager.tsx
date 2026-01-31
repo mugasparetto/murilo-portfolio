@@ -5,6 +5,7 @@ import { useRef, useMemo } from "react";
 import * as THREE from "three";
 
 import { useSceneRegistry } from "@/app/hooks/SceneRegistry";
+import { useStore } from "@/app/hooks/store";
 import {
   defaultParams,
   type SceneParams,
@@ -21,7 +22,7 @@ export default function SceneHost() {
   // ✅ single stable params object that GUI mutates
   const paramsRef = useRef<SceneParams>({ ...defaultParams });
   const { up } = useBreakpoints(BREAKPOINTS);
-
+  const { outlined } = useStore();
   const basePos = useMemo(
     () =>
       new THREE.Vector3(
@@ -62,7 +63,7 @@ export default function SceneHost() {
         direction={1}
       />
 
-      <Postprocessing selected={[]} />
+      <Postprocessing selected={outlined} />
 
       {up.md && (
         <ParallaxRig

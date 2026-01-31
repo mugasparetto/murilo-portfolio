@@ -42,13 +42,6 @@ export default function Experience() {
   const [, bump] = useState(0);
   const forceRender = useCallback(() => bump((n) => n + 1), []);
 
-  // outline selection
-  const [outlined, setOutlined] = useState<THREE.Object3D[]>([]);
-  const handleMeshesReady = useCallback(
-    (meshes: THREE.Object3D[]) => setOutlined(meshes),
-    [],
-  );
-
   useEffect(() => {
     camera.layers.enable(2);
     camera.layers.enable(1);
@@ -169,7 +162,7 @@ export default function Experience() {
             totalPagesCount={PAGES_COUNT}
             scrollWindow={{ startPage: 3, endPage: 6 }}
           >
-            <HumanModel onMeshesReady={handleMeshesReady} />
+            <HumanModel />
           </Steps>
           <Door
             params={p}

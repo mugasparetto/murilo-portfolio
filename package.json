@@ -30,7 +30,8 @@
     "react-dom": "19.2.3",
     "stats.js": "^0.17.0",
     "tailwindcss": "^4.1.18",
-    "three": "^0.182.0"
+    "three": "^0.182.0",
+    "zustand": "^5.0.10"
   },
   "devDependencies": {
     "@slicemachine/adapter-next": "^0.3.93",
