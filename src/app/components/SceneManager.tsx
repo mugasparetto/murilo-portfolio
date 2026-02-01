@@ -1,7 +1,7 @@
 "use client";
 
 import { Stats } from "@react-three/drei";
-import { useRef, useMemo } from "react";
+import { useRef, RefObject } from "react";
 import * as THREE from "three";
 
 import { useSceneRegistry } from "@/app/hooks/SceneRegistry";
@@ -14,6 +14,7 @@ import ParallaxRig from "./ParallaxRig";
 import ScrollRig from "./ScrollRig";
 import Postprocessing from "./PostProcessing";
 import { BREAKPOINTS, useBreakpoints } from "../hooks/breakpoints";
+import { useSectionScrollProgress } from "../hooks/sectionScrollProgress";
 
 const PAGES_COUNT = 8;
 
@@ -22,12 +23,17 @@ export type CameraPose = {
   target: THREE.Vector3;
 };
 
-export default function SceneHost() {
+export default function SceneManager({
+  documentRef,
+}: {
+  documentRef: RefObject<HTMLElement | null>;
+}) {
   const { entries } = useSceneRegistry();
   // ✅ single stable params object that GUI mutates
   const paramsRef = useRef<SceneParams>({ ...defaultParams });
   const { up } = useBreakpoints(BREAKPOINTS);
   const { outlined } = useStore();
+  const { progress } = useSectionScrollProgress(documentRef);
 
   const poseRef = useRef<CameraPose>({
     position: new THREE.Vector3(
@@ -53,11 +59,14 @@ export default function SceneHost() {
       ))}
 
       <ScrollRig
+        scrollProgress={progress}
         pages={PAGES_COUNT + 1}
         windows={[
           {
-            startPage: 7.5,
-            endPage: 11.5,
+            window: {
+              startPage: 6,
+              endPage: 11,
+            },
             from: {
               position: [0, 200, 3380], // pose A
               lookAt: [0, 820, 0],

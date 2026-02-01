@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { RefObject, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { SceneParams } from "../scene-core/params";
 import { useThree, useFrame } from "@react-three/fiber";
@@ -14,7 +14,6 @@ import { progressInWindow, ScrollWindow } from "@/app/components/ScrollRig";
 
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
-import { useScrollProgress } from "@/app/hooks/ScrollProgress";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 
 type Props = {
@@ -23,6 +22,7 @@ type Props = {
   children?: React.ReactNode;
   totalPagesCount: number;
   scrollWindow: ScrollWindow;
+  scrollProgress: RefObject<number>;
 };
 
 export default function Steps({
@@ -31,6 +31,7 @@ export default function Steps({
   children,
   totalPagesCount,
   scrollWindow,
+  scrollProgress,
 }: Props) {
   const { size, gl, camera } = useThree();
   const dpr = gl.getPixelRatio();
@@ -261,8 +262,6 @@ export default function Steps({
   useEffect(() => {
     gl.localClippingEnabled = true;
   }, [gl]);
-
-  const { scrollProgress } = useScrollProgress();
 
   // OLD ANIMATION: one step at a time
   // useFrame(() => {

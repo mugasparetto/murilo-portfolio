@@ -1,11 +1,10 @@
 "use client";
 
-import { useMemo, useRef, useEffect } from "react";
+import { useMemo, useRef, useEffect, RefObject } from "react";
 import * as THREE from "three";
 import { useFrame, useThree, RootState } from "@react-three/fiber";
 
 import SkyBoundsDebug from "./SkyBoundsDebug";
-import { useScrollProgress } from "@/app/hooks/ScrollProgress";
 
 type Star = {
   active: boolean;
@@ -33,7 +32,7 @@ function rand(min: number, max: number) {
 
 function pointOnDomeWithinYZBounds(
   radius: number,
-  bounds: { minY: number; maxY: number; minZ: number; maxZ: number }
+  bounds: { minY: number; maxY: number; minZ: number; maxZ: number },
 ) {
   // Clamp bounds to what a sphere of this radius can represent
   const minY = THREE.MathUtils.clamp(bounds.minY, -radius, radius);
@@ -69,7 +68,7 @@ function fitTravelInsideBoundsWithMin(
   dir: THREE.Vector3,
   desiredTravel: number,
   minTravel: number,
-  bounds: { minY: number; maxY: number; minZ: number; maxZ: number }
+  bounds: { minY: number; maxY: number; minZ: number; maxZ: number },
 ) {
   // Clamp direction so that traveling `minTravel` stays inside Y/Z bounds.
   // This guarantees movement (no “fade in place”).
@@ -265,6 +264,7 @@ export default function ShootingStars({
 
   trailThickness = 22,
   globalMinGap = 4,
+  scrollElement,
 }: {
   domeRadius?: number;
   poolSize?: number;
@@ -272,6 +272,7 @@ export default function ShootingStars({
   maxInterval?: number;
   trailThickness?: number;
   globalMinGap?: number;
+  scrollElement: RefObject<HTMLElement | null>;
 }) {
   const starsRef = useRef<Star[]>([]);
   const readyRef = useRef(false);
@@ -325,7 +326,7 @@ export default function ShootingStars({
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(
       new THREE.Vector2(pointer.x, pointer.y),
-      state.camera
+      state.camera,
     );
 
     const target = new THREE.Vector3();
@@ -336,12 +337,12 @@ export default function ShootingStars({
     target.y = THREE.MathUtils.clamp(
       target.y,
       SKY_BOUNDS.minY,
-      SKY_BOUNDS.maxY
+      SKY_BOUNDS.maxY,
     );
     target.z = THREE.MathUtils.clamp(
       target.z,
       SKY_BOUNDS.minZ,
-      SKY_BOUNDS.maxZ
+      SKY_BOUNDS.maxZ,
     );
 
     // ---------- 2) choose side + guarantee "comes from distance" ----------
@@ -361,14 +362,14 @@ export default function ShootingStars({
     const startY = THREE.MathUtils.clamp(
       target.y + rand(700, 1400), // ↑ higher start => more down drift
       SKY_BOUNDS.minY,
-      SKY_BOUNDS.maxY
+      SKY_BOUNDS.maxY,
     );
 
     // Keep start Z near target Z so it doesn't get “stuck” by Z bounds
     let startZ = THREE.MathUtils.clamp(
       target.z + rand(-250, 250),
       SKY_BOUNDS.minZ,
-      SKY_BOUNDS.maxZ
+      SKY_BOUNDS.maxZ,
     );
 
     // Solve X on dome for (startY, startZ)
@@ -378,7 +379,7 @@ export default function ShootingStars({
     const minAbsX = 2200; // <-- makes it spawn from “distance”
     {
       const allowedZAbsForMinX = Math.sqrt(
-        Math.max(0, rr - startY * startY - minAbsX * minAbsX)
+        Math.max(0, rr - startY * startY - minAbsX * minAbsX),
       );
 
       // If we can achieve minAbsX at this Y, constrain Z so xAbs won't collapse
@@ -405,7 +406,7 @@ export default function ShootingStars({
     target.y = THREE.MathUtils.clamp(
       target.y - targetDownBias,
       SKY_BOUNDS.minY,
-      SKY_BOUNDS.maxY
+      SKY_BOUNDS.maxY,
     );
 
     const dir = target.clone().sub(start);
@@ -425,7 +426,7 @@ export default function ShootingStars({
       start.y = THREE.MathUtils.clamp(
         start.y + 350,
         SKY_BOUNDS.minY,
-        SKY_BOUNDS.maxY
+        SKY_BOUNDS.maxY,
       );
       // recompute x to stay on dome
       const rest2 = rr - (start.y * start.y + start.z * start.z);
@@ -437,7 +438,7 @@ export default function ShootingStars({
       start.y = THREE.MathUtils.clamp(
         start.y - 350,
         SKY_BOUNDS.minY,
-        SKY_BOUNDS.maxY
+        SKY_BOUNDS.maxY,
       );
       const rest2 = rr - (start.y * start.y + start.z * start.z);
       const xAbs2 = Math.sqrt(Math.max(0, rest2));
@@ -523,7 +524,7 @@ export default function ShootingStars({
           rawDir,
           desiredTravel,
           minTravel,
-          SKY_BOUNDS
+          SKY_BOUNDS,
         );
 
         s.dir.copy(fitted.dir);
@@ -570,11 +571,11 @@ export default function ShootingStars({
         // tail is a bit dimmer; head is hotter
         trail.setColorAt?.(
           i,
-          tmpColor.setRGB(base * 0.75, base * 0.75, base * 0.8)
+          tmpColor.setRGB(base * 0.75, base * 0.75, base * 0.8),
         );
         head.setColorAt?.(
           i,
-          tmpColor.setRGB(base * 1.2, base * 1.2, base * 1.35)
+          tmpColor.setRGB(base * 1.2, base * 1.2, base * 1.35),
         );
 
         if (t >= 1) {
@@ -611,11 +612,9 @@ export default function ShootingStars({
     if (head.instanceColor) head.instanceColor.needsUpdate = true;
   });
 
-  const { scrollElement } = useScrollProgress();
-
   const { gl } = useThree();
   useEffect(() => {
-    const el = scrollElement; // this is the scroll container that receives events
+    const el = scrollElement.current; // this is the scroll container that receives events
     const onPointerDown = (e: PointerEvent) => {
       const rect = (gl.domElement as HTMLCanvasElement).getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;

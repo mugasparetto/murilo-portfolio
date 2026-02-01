@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
   Suspense,
+  RefObject,
 } from "react";
 
 import { defaultParams, type SceneParams } from "../scene-core/params";
@@ -26,10 +27,15 @@ import { useHeroPrimary } from "../hero-context";
 import Name from "./Name";
 import Headline from "./Headline";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
+import { useSectionScrollProgress } from "@/app/hooks/sectionScrollProgress";
 
 const PAGES_COUNT = 8;
 
-export default function Experience() {
+type Props = {
+  scrollRef: RefObject<HTMLDivElement | null>;
+};
+
+export default function Experience({ scrollRef }: Props) {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
   const { first_name, last_name, tag_line, description } = useHeroPrimary();
@@ -148,6 +154,8 @@ export default function Experience() {
 
   const sceneRef = useRef<THREE.Object3D | null>(null);
 
+  const { progress, sectionRef } = useSectionScrollProgress(scrollRef);
+
   return (
     <>
       <color attach="background" args={[0x000000]} />
@@ -161,6 +169,7 @@ export default function Experience() {
             doorFluidTextureRef={fluidTextureRef}
             totalPagesCount={PAGES_COUNT}
             scrollWindow={{ startPage: 3, endPage: 6 }}
+            scrollProgress={progress}
           >
             <HumanModel />
           </Steps>
@@ -171,10 +180,11 @@ export default function Experience() {
             pointerActiveRef={pointerActiveRef}
             totalPagesCount={PAGES_COUNT}
             scrollWindow={{ startPage: 6, endPage: 7 }}
+            scrollProgress={progress}
           />
         </group>
 
-        <Sky />
+        <Sky scrollElement={sectionRef} />
 
         <Suspense fallback={null}>
           <Name
@@ -182,6 +192,7 @@ export default function Experience() {
             lastName={last_name}
             totalPagesCount={PAGES_COUNT}
             scrollWindow={{ startPage: 1, endPage: 3 }}
+            scrollProgress={progress}
           />
         </Suspense>
 
@@ -190,6 +201,7 @@ export default function Experience() {
           description={description}
           totalPagesCount={PAGES_COUNT}
           scrollWindow={{ startPage: 1, endPage: 3 }}
+          scrollProgress={progress}
         />
       </group>
     </>

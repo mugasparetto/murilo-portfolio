@@ -1,10 +1,9 @@
-import { useRef } from "react";
+import { RefObject, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { progressInWindow, ScrollWindow } from "@/app/components/ScrollRig";
 import { KeyTextField } from "@prismicio/client";
-import { useScrollProgress } from "@/app/hooks/ScrollProgress";
 import { useBreakpoints, BREAKPOINTS } from "@/app/hooks/breakpoints";
 
 type Props = {
@@ -12,6 +11,7 @@ type Props = {
   description: KeyTextField;
   totalPagesCount: number;
   scrollWindow: ScrollWindow;
+  scrollProgress: RefObject<number>;
 };
 
 type Tier = keyof typeof BREAKPOINTS;
@@ -41,10 +41,10 @@ export default function Headline({
   description = "",
   totalPagesCount = 0,
   scrollWindow = { startPage: 1, endPage: 2 },
+  scrollProgress,
 }: Props) {
   const firstLineRef = useRef<HTMLSpanElement | null>(null);
   const secondLineRef = useRef<HTMLSpanElement | null>(null);
-  const { scrollProgress } = useScrollProgress();
   const { up, tier } = useBreakpoints(BREAKPOINTS);
 
   useFrame(() => {

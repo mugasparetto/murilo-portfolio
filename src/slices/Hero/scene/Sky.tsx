@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { RefObject, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useThree, useFrame } from "@react-three/fiber";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
@@ -14,7 +14,11 @@ import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 const STARS_COUNT = 200;
 const DOME_RADIUS = 6000;
 
-export default function Sky() {
+export default function Sky({
+  scrollElement,
+}: {
+  scrollElement: RefObject<HTMLElement | null>;
+}) {
   const { size, gl } = useThree();
   const dpr = gl.getPixelRatio();
   const { up } = useBreakpoints(BREAKPOINTS);
@@ -169,6 +173,7 @@ export default function Sky() {
         minInterval={5}
         maxInterval={7}
         globalMinGap={8}
+        scrollElement={scrollElement}
       />
     </group>
   );

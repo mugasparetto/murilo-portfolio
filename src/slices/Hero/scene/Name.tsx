@@ -1,4 +1,4 @@
-import { useRef, useMemo, useEffect } from "react";
+import { useRef, useMemo, RefObject } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Text, useHelper, Html } from "@react-three/drei";
@@ -9,7 +9,6 @@ import {
   ScrollWindow,
 } from "../../../app/components/ScrollRig";
 import { segmentProgress, makeRanges } from "@/app/helpers/scroll";
-import { useScrollProgress } from "@/app/hooks/ScrollProgress";
 import { useBreakpoints, BREAKPOINTS } from "@/app/hooks/breakpoints";
 
 type Props = {
@@ -17,6 +16,7 @@ type Props = {
   lastName: KeyTextField;
   totalPagesCount: number;
   scrollWindow: ScrollWindow;
+  scrollProgress: RefObject<number>;
 };
 
 type Tier = keyof typeof BREAKPOINTS;
@@ -107,6 +107,7 @@ export default function Name({
   lastName = "",
   totalPagesCount = 0,
   scrollWindow = { startPage: 1, endPage: 2 },
+  scrollProgress,
 }: Props) {
   const { camera } = useThree();
   const textRef = useRef<THREE.Mesh | null>(null);
@@ -125,7 +126,6 @@ export default function Name({
     if (textRef.current) textRef.current.quaternion.copy(q);
   });
 
-  const { scrollProgress } = useScrollProgress();
   const { up, tier } = useBreakpoints(
     Object.assign(BREAKPOINTS, { ["xs"]: "23.5rem" }),
     { defaultTier: "xl" },

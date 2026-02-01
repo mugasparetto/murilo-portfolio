@@ -1,9 +1,8 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { RefObject, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useScrollProgress } from "@/app/hooks/ScrollProgress";
 import { CameraPose } from "./SceneManager";
 
 export type RigPose = {
@@ -18,7 +17,7 @@ export type RigPose = {
   lookAt: THREE.Vector3 | [number, number, number];
 };
 
-export type PoseWindow = {
+export type ScrollWindow = {
   /**
    * 1-based, inclusive start page.
    * Example: startPage=3 means "begin transitioning at the start of page 3"
@@ -33,6 +32,10 @@ export type PoseWindow = {
    * use endPage = N + 1
    */
   endPage: number;
+};
+
+export type PoseWindow = {
+  window: ScrollWindow;
 
   /**
    * Pose at the start of this window (t=0).
@@ -70,6 +73,8 @@ export type ScrollRigProps = {
    * Higher runs later.
    */
   priority?: number;
+
+  scrollProgress: RefObject<number>;
 };
 
 function toV3(v: THREE.Vector3 | [number, number, number]) {
@@ -108,14 +113,14 @@ export default function ScrollRig({
   smoothing = 0,
   basePoseRef,
   applyToCamera,
+  scrollProgress,
 }: ScrollRigProps) {
   const { camera } = useThree();
-  const { scrollProgress } = useScrollProgress();
 
   // Sort once for deterministic behavior if user passes out-of-order windows
   const sorted = useMemo(() => {
     const w = [...windows];
-    w.sort((a, b) => a.startPage - b.startPage);
+    w.sort((a, b) => a.window.startPage - b.window.startPage);
     return w;
   }, [windows]);
 
@@ -156,8 +161,8 @@ export default function ScrollRig({
       const w = sorted[i];
 
       const p = 1 / pages;
-      const windowStart = (w.startPage - 1) * p;
-      const windowEnd = (w.endPage - 1) * p;
+      const windowStart = (w.window.startPage - 1) * p;
+      const windowEnd = (w.window.endPage - 1) * p;
 
       // If we're before this window starts:
       if (offset < windowStart) {
@@ -175,7 +180,7 @@ export default function ScrollRig({
 
       // If we're inside this window:
       if (offset >= windowStart && offset <= windowEnd) {
-        const rawT = progressInWindow(offset, pages, w); // 0..1
+        const rawT = progressInWindow(offset, pages, w.window); // 0..1
         const t = w.ease ? w.ease(rawT) : rawT;
 
         const fromPos = toV3(w.from.position);

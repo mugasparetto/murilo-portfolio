@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { RefObject, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { SceneParams } from "../scene-core/params";
 
@@ -12,7 +12,6 @@ import { useFrame, useThree } from "@react-three/fiber";
 
 import { progressInWindow, ScrollWindow } from "@/app/components/ScrollRig";
 import { makeRanges, segmentProgress } from "../../../app/helpers/scroll";
-import { useScrollProgress } from "@/app/hooks/ScrollProgress";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 
 type Props = {
@@ -22,6 +21,7 @@ type Props = {
   pointerActiveRef: React.MutableRefObject<boolean>;
   totalPagesCount: number;
   scrollWindow: ScrollWindow;
+  scrollProgress: RefObject<number>;
 };
 
 const BLOOM_LAYER = 1;
@@ -33,6 +33,7 @@ export default function Door({
   pointerActiveRef,
   totalPagesCount = 0,
   scrollWindow = { startPage: 1, endPage: 2 },
+  scrollProgress,
 }: Props) {
   const { size, camera, gl } = useThree();
   const dpr = gl.getPixelRatio();
@@ -139,8 +140,6 @@ export default function Door({
     wire.quaternion.copy(q);
   });
 
-  const { scrollProgress } = useScrollProgress();
-
   // scroll allocation per phase (you can tweak these)
   const PHASE_WEIGHTS = [0.4, 0.6]; // portalsIn, text, portalsOut
   const PHASES = makeRanges(PHASE_WEIGHTS);
@@ -151,14 +150,11 @@ export default function Door({
       totalPagesCount,
       scrollWindow,
     );
-
     const progressDoor = segmentProgress(t, PHASES, 1); // 0..1 in phase 1
-
     if (doorRef.current) {
       doorRef.current.scale.y = scale.y * (1 - progressDoor);
       doorRef.current.visible = t < 0.999;
     }
-
     wire.scale.y = scale.y * (1 - progressDoor);
     wire.visible = t < 0.999;
   });

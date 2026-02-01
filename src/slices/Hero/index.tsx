@@ -28,29 +28,29 @@ const Hero: FC<HeroProps> = ({ slice }) => {
       priority: 10,
       node: (
         <HeroPrimaryProvider primary={slice.primary}>
-          <Experience />
+          <Experience scrollRef={heroRef} />
         </HeroPrimaryProvider>
       ),
-      active: false,
+      active: true,
     });
 
     return () => remove(id);
   }, [id, slice.primary, register, remove]);
 
   // Toggle active when slice is in view
-  useEffect(() => {
-    const el = heroRef.current;
-    if (!el) return;
+  // useEffect(() => {
+  //   const el = heroRef.current;
+  //   if (!el) return;
 
-    const io = new IntersectionObserver(
-      ([entry]) => setActive(id, entry.isIntersecting),
-      // tweak: becomes active when the section is near viewport
-      { root: null, threshold: 0.01, rootMargin: "20% 0px 20% 0px" },
-    );
+  //   const io = new IntersectionObserver(
+  //     ([entry]) => setActive(id, entry.isIntersecting),
+  //     // tweak: becomes active when the section is near viewport
+  //     { root: null, threshold: 0.01, rootMargin: "20% 0px 20% 0px" },
+  //   );
 
-    io.observe(el);
-    return () => io.disconnect();
-  }, [id, setActive]);
+  //   io.observe(el);
+  //   return () => io.disconnect();
+  // }, [id, setActive]);
 
   return (
     <section

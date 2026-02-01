@@ -6,7 +6,7 @@ import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import SceneManager from "./SceneManager";
 
-import { ScrollProgressProvider } from "@/app/hooks/ScrollProgress";
+import { ScrollYProvider } from "@/app/hooks/ScrollY";
 import { SceneRegistryProvider } from "@/app/hooks/SceneRegistry";
 
 export default function ClientProvider({
@@ -49,14 +49,9 @@ export default function ClientProvider({
             inset: 0,
           }}
         >
-          <ScrollProgressProvider
-            elementTop={useRef(0)}
-            elementHeight={useRef(0)}
-            elementRef={eventSourceRef}
-          >
-            <></>
-            <SceneManager />
-          </ScrollProgressProvider>
+          <ScrollYProvider>
+            <SceneManager documentRef={eventSourceRef} />
+          </ScrollYProvider>
         </Canvas>
 
         {/* Normal DOM scroller on top */}
