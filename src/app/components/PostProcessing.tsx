@@ -12,6 +12,8 @@ import {
 } from "@react-three/postprocessing";
 import { BlendFunction } from "postprocessing";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
+import { useAdaptiveGate } from "@/app/hooks/adaptiveGate";
+import { useFrame } from "@react-three/fiber";
 
 type Props = {
   selected: THREE.Object3D[];
@@ -20,19 +22,30 @@ type Props = {
 export default function PostProcessing({ selected }: Props) {
   const { up } = useBreakpoints(BREAKPOINTS);
 
+  const hiRes = useAdaptiveGate({ disableBelow: 30, enableAboveOrEqual: 31 });
+
+  useFrame((state) => {
+    const fps = 1 / state.clock.getDelta();
+    if (fps < 30) {
+      // lower resolution, disable effects, etc
+    }
+  });
+
   return (
     <EffectComposer multisampling={0} autoClear={false}>
-      <Outline
-        selection={selected}
-        blendFunction={BlendFunction.ALPHA} // set this to BlendFunction.ALPHA for dark outlines
-        edgeStrength={!up.md ? 25 : 10} // the edge strength
-        pulseSpeed={0.0} // a pulse speed. A value of zero disables the pulse effect
-        visibleEdgeColor={0xffffff} // the color of visible edges
-        hiddenEdgeColor={0xffffff} // the color of hidden edges
-        width={!up.md ? 8000 : 4000} // render width
-        blur={false} // whether the outline should be blurred
-        xRay={false} // indicates whether X-Ray outlines are enabled
-      />
+      <></>
+      <>
+        {up.md && hiRes && (
+          <Outline
+            selection={selected}
+            edgeStrength={2} // the edge strength
+            pulseSpeed={0.0} // a pulse speed. A value of zero disables the pulse effect
+            visibleEdgeColor={0xffffff} // the color of visible edges
+            hiddenEdgeColor={0xffffff} // the color of hidden edges
+            width={1500} // render width
+          />
+        )}
+      </>
 
       <SMAA />
 

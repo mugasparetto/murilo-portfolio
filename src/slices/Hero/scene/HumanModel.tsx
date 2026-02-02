@@ -1,21 +1,38 @@
-"use client";
-
-import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { useGLTF, useAnimations } from "@react-three/drei";
+import { useRef, JSX, useEffect, useMemo } from "react";
+import { useGLTF, useAnimations, Outlines, Edges } from "@react-three/drei";
+import { GLTF } from "three-stdlib";
+
+import { EffectComposer, Outline, SMAA } from "@react-three/postprocessing";
+import { Selection, Select } from "@react-three/postprocessing";
 import { useStore } from "@/app/hooks/store";
+import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
+import { useAdaptiveGate } from "@/app/hooks/adaptiveGate";
 
-export default function HumanModel() {
+type GLTFResult = GLTF & {
+  nodes: {
+    Cube: THREE.SkinnedMesh;
+    mixamorigHips: THREE.Bone;
+  };
+  materials: {
+    ["Material.003"]: THREE.MeshPhysicalMaterial;
+  };
+};
+
+export default function HumanModel(props: JSX.IntrinsicElements["group"]) {
   const group = useRef<THREE.Group>(null);
-
-  const gltf = useGLTF("/models/human.glb");
-  const { actions, names } = useAnimations(gltf.animations, group);
+  const { nodes, materials, animations } = useGLTF(
+    "/models/human.glb",
+  ) as unknown as GLTFResult;
+  const { actions, names } = useAnimations(animations, group);
 
   const setOutlined = useStore((s) => s.setOutlined);
   const clearOutlined = useStore((s) => s.clearOutlined);
 
+  const { up } = useBreakpoints(BREAKPOINTS);
+  const hiRes = useAdaptiveGate({ disableBelow: 30, enableAboveOrEqual: 31 });
+
   useEffect(() => {
-    // similar to your: animations[1]
     const name = names?.[0];
     const action = name ? actions?.[name] : undefined;
     action?.reset().play();
@@ -51,11 +68,32 @@ export default function HumanModel() {
   return (
     <group
       ref={group}
+      {...props}
+      dispose={null}
       position={transform.position}
       scale={transform.scale}
       rotation={[0, transform.rotationY, 0]}
     >
-      <primitive object={gltf.scene} />
+      <group name="Scene">
+        <group name="Armature" rotation={[Math.PI / 2, 0, 0]} scale={0.01}>
+          <skinnedMesh
+            name="Cube"
+            geometry={nodes.Cube.geometry}
+            material={materials["Material.003"]}
+            skeleton={nodes.Cube.skeleton}
+          >
+            {(!up.md || !hiRes) && (
+              <Outlines
+                thickness={1.75}
+                color="white"
+                renderOrder={10}
+                angle={22}
+              />
+            )}
+          </skinnedMesh>
+          <primitive object={nodes.mixamorigHips} />
+        </group>
+      </group>
     </group>
   );
 }
