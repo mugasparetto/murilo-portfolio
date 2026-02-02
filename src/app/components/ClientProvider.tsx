@@ -26,13 +26,17 @@ export default function ClientProvider({
       }}
     >
       <SceneRegistryProvider>
-        {/* Fixed global canvas */}
         <Canvas
           dpr={[1, 1.5]}
           gl={{ antialias: true }}
           eventSource={eventSourceRef}
           eventPrefix="client"
-          camera={{ fov: 40, near: 50, far: 100000, position: [0, 200, 3380] }}
+          camera={{
+            fov: 40,
+            near: 50,
+            far: 100000,
+            position: [0, 200, 3380],
+          }}
           onCreated={({ gl }) => {
             // Make colors match the classic "raw" look more closely
             gl.toneMapping = THREE.NoToneMapping; // ✅ prevents whites/yellows being compressed
@@ -44,7 +48,7 @@ export default function ClientProvider({
           }}
           style={{
             width: "100%",
-            height: "100%",
+            height: "100vh",
             position: "fixed",
             inset: 0,
           }}
