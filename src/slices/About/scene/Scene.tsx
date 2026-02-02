@@ -132,7 +132,7 @@ export default function Scene() {
     96, // 👈 smoothness
   );
 
-  const planePos: [number, number, number] = [0, !up.md ? -1250 : -1005, 2200];
+  const planePos: [number, number, number] = [0, !up.md ? -1205 : -1005, 2200];
 
   return (
     <group>
