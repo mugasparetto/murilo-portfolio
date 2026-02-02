@@ -1,10 +1,8 @@
 import * as THREE from "three";
 import { useRef, JSX, useEffect, useMemo } from "react";
-import { useGLTF, useAnimations, Outlines, Edges } from "@react-three/drei";
+import { useGLTF, useAnimations, Outlines } from "@react-three/drei";
 import { GLTF } from "three-stdlib";
 
-import { EffectComposer, Outline, SMAA } from "@react-three/postprocessing";
-import { Selection, Select } from "@react-three/postprocessing";
 import { useStore } from "@/app/hooks/store";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import { useAdaptiveGate } from "@/app/hooks/adaptiveGate";
@@ -30,7 +28,7 @@ export default function HumanModel(props: JSX.IntrinsicElements["group"]) {
   const clearOutlined = useStore((s) => s.clearOutlined);
 
   const { up } = useBreakpoints(BREAKPOINTS);
-  const hiRes = useAdaptiveGate({ disableBelow: 30, enableAboveOrEqual: 31 });
+  const hiRes = useAdaptiveGate({ disableBelow: 30, enableAbove: 31 });
 
   useEffect(() => {
     const name = names?.[0];

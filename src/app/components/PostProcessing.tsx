@@ -10,7 +10,6 @@ import {
   Noise,
   SMAA,
 } from "@react-three/postprocessing";
-import { BlendFunction } from "postprocessing";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import { useAdaptiveGate } from "@/app/hooks/adaptiveGate";
 import { useFrame } from "@react-three/fiber";
@@ -22,7 +21,7 @@ type Props = {
 export default function PostProcessing({ selected }: Props) {
   const { up } = useBreakpoints(BREAKPOINTS);
 
-  const hiRes = useAdaptiveGate({ disableBelow: 30, enableAboveOrEqual: 31 });
+  const hiRes = useAdaptiveGate({ disableBelow: 30, enableAbove: 31 });
 
   useFrame((state) => {
     const fps = 1 / state.clock.getDelta();
