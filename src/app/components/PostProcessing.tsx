@@ -12,7 +12,6 @@ import {
 } from "@react-three/postprocessing";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import { useAdaptiveGate } from "@/app/hooks/adaptiveGate";
-import { useFrame } from "@react-three/fiber";
 
 type Props = {
   selected: THREE.Object3D[];
@@ -22,13 +21,6 @@ export default function PostProcessing({ selected }: Props) {
   const { up } = useBreakpoints(BREAKPOINTS);
 
   const hiRes = useAdaptiveGate({ disableBelow: 30, enableAbove: 31 });
-
-  useFrame((state) => {
-    const fps = 1 / state.clock.getDelta();
-    if (fps < 30) {
-      // lower resolution, disable effects, etc
-    }
-  });
 
   return (
     <EffectComposer multisampling={0} autoClear={false}>
