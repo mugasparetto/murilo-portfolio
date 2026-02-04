@@ -4,19 +4,21 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { Text, useHelper, Html } from "@react-three/drei";
 import { KeyTextField } from "@prismicio/client";
 
-import {
-  progressInWindow,
-  ScrollWindow,
-} from "../../../app/components/ScrollRig";
 import { segmentProgress, makeRanges } from "@/app/helpers/scroll";
 import { useBreakpoints, BREAKPOINTS } from "@/app/hooks/breakpoints";
+
+import {
+  VhWindow,
+  useScrollVhAbsolute,
+  progressInVhWindow,
+} from "@/app/helpers/scroll"; // <- adjust path
 
 type Props = {
   firstName: KeyTextField;
   lastName: KeyTextField;
-  totalPagesCount: number;
-  scrollWindow: ScrollWindow;
-  scrollProgress: RefObject<number>;
+
+  scrollWindow: VhWindow;
+  scrollContainerRef?: RefObject<HTMLElement | null>;
 };
 
 type Tier = keyof typeof BREAKPOINTS;
@@ -105,11 +107,13 @@ const RESPONSIVE: Record<
 export default function Name({
   firstName = "",
   lastName = "",
-  totalPagesCount = 0,
-  scrollWindow = { startPage: 1, endPage: 2 },
-  scrollProgress,
+  scrollWindow,
+  scrollContainerRef,
 }: Props) {
   const { camera } = useThree();
+
+  const scrollVh = useScrollVhAbsolute(scrollContainerRef);
+
   const textRef = useRef<THREE.Mesh | null>(null);
   const firstNameRef = useRef<THREE.Mesh | null>(null);
   const lastNameRef = useRef<THREE.Mesh | null>(null);
@@ -120,10 +124,9 @@ export default function Name({
   const portalFirstNameHtml = useRef<HTMLDivElement | null>(null);
   const portalLastNameHtml = useRef<HTMLDivElement | null>(null);
 
-  // --- billboard both to camera every frame
   useFrame(() => {
     const q = camera.quaternion;
-    if (textRef.current) textRef.current.quaternion.copy(q);
+    textRef.current?.quaternion.copy(q);
   });
 
   const { up, tier } = useBreakpoints(
@@ -131,22 +134,16 @@ export default function Name({
     { defaultTier: "xl" },
   );
 
-  // scroll allocation per phase (you can tweak these)
-  const PHASE_WEIGHTS = [0.2, 0.6, 0.2]; // portalsIn, text, portalsOut
+  const PHASE_WEIGHTS = [0.2, 0.6, 0.2];
   const PHASES = makeRanges(PHASE_WEIGHTS);
 
   useFrame(() => {
-    const t = progressInWindow(
-      scrollProgress.current,
-      totalPagesCount,
-      scrollWindow,
-    ); // 0..1
+    const t = progressInVhWindow(scrollVh.current, scrollWindow);
 
-    const pIn = segmentProgress(t, PHASES, 0); // 0..1 in phase 0
-    const pText = segmentProgress(t, PHASES, 1); // 0..1 in phase 1
-    const pOut = segmentProgress(t, PHASES, 2); // 0..1 in phase 2
+    const pIn = segmentProgress(t, PHASES, 0);
+    const pText = segmentProgress(t, PHASES, 1);
+    const pOut = segmentProgress(t, PHASES, 2);
 
-    // PORTALS: 0..1 then 1..0
     const portalY =
       t < PHASES[1].start ? pIn : t < PHASES[2].start ? 1 : 1 - pOut;
 
@@ -164,17 +161,13 @@ export default function Name({
         RESPONSIVE[tier]?.lastName.position.x +
         pText * RESPONSIVE[tier]?.lastName.offset;
 
-    const open = 1 - THREE.MathUtils.clamp(pText, 0, 1); // 1..0
+    const open = 1 - THREE.MathUtils.clamp(pText, 0, 1);
 
     const fN = firstNameHtml.current;
-    if (!fN) return;
-
-    fN.style.setProperty("--shift", `${(1 - open) * 100}%`);
+    if (fN) fN.style.setProperty("--shift", `${(1 - open) * 100}%`);
 
     const lN = lastNameHtml.current;
-    if (!lN) return;
-
-    lN.style.setProperty("--shift", `${(1 - open) * 100}%`);
+    if (lN) lN.style.setProperty("--shift", `${(1 - open) * 100}%`);
 
     if (portalFirstNameHtml.current)
       portalFirstNameHtml.current.style.scale = `100% ${portalY * 100}%`;
@@ -185,7 +178,7 @@ export default function Name({
 
   const firstNameClipPlane = useMemo(() => {
     return new THREE.Plane(
-      new THREE.Vector3(-1, 0, 0), // normal points LEFT
+      new THREE.Vector3(-1, 0, 0),
       RESPONSIVE[tier]?.firstName.planeConstant,
     );
   }, [tier]);
@@ -193,7 +186,7 @@ export default function Name({
   const lastNameClipPlane = useMemo(
     () =>
       new THREE.Plane(
-        new THREE.Vector3(1, 0, 0), // normal points LEFT
+        new THREE.Vector3(1, 0, 0),
         RESPONSIVE[tier]?.lastName.planeConstant,
       ),
     [tier],
@@ -201,9 +194,7 @@ export default function Name({
 
   function ClippingPlaneDebug({ plane }) {
     const planeRef = useRef(plane);
-
     useHelper(planeRef, THREE.PlaneHelper, 5000, "hotpink");
-
     return null;
   }
 
@@ -219,11 +210,11 @@ export default function Name({
           <div
             className="bg-white absolute w-1 h-19 left-39.25 -top-3 z-50"
             ref={portalFirstNameHtml}
-          ></div>
+          />
           <div
             className="bg-white absolute w-1 h-19 left-64 top-16 z-50"
             ref={portalLastNameHtml}
-          ></div>
+          />
           <div className="reveal absolute -top-4 left-5">
             <h1 className="reveal__text" ref={firstNameHtml}>
               {firstName}
@@ -249,6 +240,7 @@ export default function Name({
             <planeGeometry args={[30, 1850]} />
             <meshBasicMaterial color={"white"} />
           </mesh>
+
           <mesh
             ref={portalLastNameRef}
             position={[
@@ -262,9 +254,10 @@ export default function Name({
             />
             <meshBasicMaterial color={"white"} />
           </mesh>
+
           <group ref={textRef}>
             {/* <ClippingPlaneDebug plane={firstNameClipPlane} />
-        <ClippingPlaneDebug plane={lastNameClipPlane} /> */}
+            <ClippingPlaneDebug plane={lastNameClipPlane} /> */}
 
             <Text
               ref={firstNameRef}

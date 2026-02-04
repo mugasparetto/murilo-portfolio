@@ -54,7 +54,7 @@ export default function ClientProvider({
           }}
         >
           <ScrollYProvider>
-            <SceneManager documentRef={eventSourceRef} />
+            <SceneManager />
           </ScrollYProvider>
         </Canvas>
 

@@ -23,17 +23,12 @@ export type CameraPose = {
   target: THREE.Vector3;
 };
 
-export default function SceneManager({
-  documentRef,
-}: {
-  documentRef: RefObject<HTMLElement | null>;
-}) {
+export default function SceneManager() {
   const { entries } = useSceneRegistry();
   // ✅ single stable params object that GUI mutates
   const paramsRef = useRef<SceneParams>({ ...defaultParams });
   const { up } = useBreakpoints(BREAKPOINTS);
   const { outlined } = useStore();
-  const { progress } = useSectionScrollProgress(documentRef);
 
   const poseRef = useRef<CameraPose>({
     position: new THREE.Vector3(
@@ -59,21 +54,19 @@ export default function SceneManager({
       ))}
 
       <ScrollRig
-        scrollProgress={progress}
-        pages={PAGES_COUNT + 1}
         windows={[
           {
             window: {
-              startPage: 6,
-              endPage: 11,
+              startVh: 300,
+              endVh: 450,
             },
             from: {
               position: [0, 200, 3380], // pose A
               lookAt: [0, 820, 0],
             },
             to: {
-              position: [0, -1200, 3380], // pose B
-              lookAt: [0, -1200, 0],
+              position: [0, -1000, 3380], // pose B
+              lookAt: [0, -1000, 0],
             },
           },
         ]}

@@ -27,9 +27,6 @@ import { useHeroPrimary } from "../hero-context";
 import Name from "./Name";
 import Headline from "./Headline";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
-import { useSectionScrollProgress } from "@/app/hooks/sectionScrollProgress";
-
-const PAGES_COUNT = 8;
 
 type Props = {
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -154,8 +151,6 @@ export default function Experience({ scrollRef }: Props) {
 
   const sceneRef = useRef<THREE.Object3D | null>(null);
 
-  const { progress, sectionRef } = useSectionScrollProgress(scrollRef);
-
   return (
     <>
       <color attach="background" args={[0x000000]} />
@@ -167,9 +162,7 @@ export default function Experience({ scrollRef }: Props) {
           <Steps
             params={p}
             doorFluidTextureRef={fluidTextureRef}
-            totalPagesCount={PAGES_COUNT}
-            scrollWindow={{ startPage: 3, endPage: 6 }}
-            scrollProgress={progress}
+            scrollWindow={{ startVh: 120, endVh: 230 }}
           >
             <HumanModel />
           </Steps>
@@ -178,30 +171,24 @@ export default function Experience({ scrollRef }: Props) {
             displayMat={displayMat}
             pointerUvRef={pointerUvRef}
             pointerActiveRef={pointerActiveRef}
-            totalPagesCount={PAGES_COUNT}
-            scrollWindow={{ startPage: 6, endPage: 7 }}
-            scrollProgress={progress}
+            scrollWindow={{ startVh: 250, endVh: 300 }}
           />
         </group>
 
-        <Sky scrollElement={sectionRef} />
+        <Sky />
 
         <Suspense fallback={null}>
           <Name
             firstName={first_name}
             lastName={last_name}
-            totalPagesCount={PAGES_COUNT}
-            scrollWindow={{ startPage: 1, endPage: 3 }}
-            scrollProgress={progress}
+            scrollWindow={{ startVh: 10, endVh: 110 }}
           />
         </Suspense>
 
         <Headline
           tagline={tag_line}
           description={description}
-          totalPagesCount={PAGES_COUNT}
-          scrollWindow={{ startPage: 1, endPage: 3 }}
-          scrollProgress={progress}
+          scrollWindow={{ startVh: 10, endVh: 110 }}
         />
       </group>
     </>

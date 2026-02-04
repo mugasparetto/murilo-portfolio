@@ -10,18 +10,25 @@ import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 
 import { useFrame, useThree } from "@react-three/fiber";
 
-import { progressInWindow, ScrollWindow } from "@/app/components/ScrollRig";
 import { makeRanges, segmentProgress } from "../../../app/helpers/scroll";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
+
+import {
+  VhWindow,
+  useScrollVhAbsolute,
+  progressInVhWindow,
+} from "@/app/helpers/scroll"; // <- adjust path
 
 type Props = {
   params: SceneParams;
   displayMat: THREE.ShaderMaterial;
   pointerUvRef: React.MutableRefObject<THREE.Vector2 | null>;
   pointerActiveRef: React.MutableRefObject<boolean>;
-  totalPagesCount: number;
-  scrollWindow: ScrollWindow;
-  scrollProgress: RefObject<number>;
+
+  scrollWindow: VhWindow;
+
+  /** optional: if you scroll inside an element */
+  scrollContainerRef?: RefObject<HTMLElement | null>;
 };
 
 const BLOOM_LAYER = 1;
@@ -31,24 +38,23 @@ export default function Door({
   displayMat,
   pointerUvRef,
   pointerActiveRef,
-  totalPagesCount = 0,
-  scrollWindow = { startPage: 1, endPage: 2 },
-  scrollProgress,
+  scrollWindow,
+  scrollContainerRef,
 }: Props) {
   const { size, camera, gl } = useThree();
   const dpr = gl.getPixelRatio();
   const { up } = useBreakpoints(BREAKPOINTS);
   const doorRef = useRef<THREE.Mesh>(null);
 
+  const scrollVh = useScrollVhAbsolute(scrollContainerRef);
+
   const stepWidth = 800;
 
-  // --- geometry/material (stable)
   const doorGeometry = useMemo(
     () => new THREE.BoxGeometry(stepWidth, 2 * stepWidth, 1),
     [],
   );
 
-  // --- fat line material
   const lineMat = useMemo(() => {
     const m = new LineMaterial({
       color: 0xffffff,
@@ -62,7 +68,6 @@ export default function Door({
     return m;
   }, [size.width, size.height]);
 
-  // keep resolution current (important for LineMaterial)
   useEffect(() => {
     lineMat.resolution.set(size.width * dpr, size.height * dpr);
   }, [lineMat, size.width, size.height, dpr]);
@@ -72,7 +77,6 @@ export default function Door({
     doorRef.current.layers.enable(BLOOM_LAYER);
   }, []);
 
-  // --- line geometry from edges
   const lineGeo = useMemo(() => {
     const edges = new THREE.EdgesGeometry(doorGeometry);
     const pos = (edges.attributes.position as THREE.BufferAttribute)
@@ -85,22 +89,19 @@ export default function Door({
     return g;
   }, [doorGeometry]);
 
-  // --- create the wire ONCE (stable object identity)
   const wire = useMemo(() => {
     const w = new LineSegments2(lineGeo, lineMat);
     w.computeLineDistances();
-    w.frustumCulled = false; // optional, avoids clipping surprises
+    w.frustumCulled = false;
     return w;
   }, [lineGeo, lineMat]);
 
-  // --- cleanup
   useEffect(() => {
     return () => {
       doorGeometry.dispose();
       displayMat.dispose();
       lineGeo.dispose();
       lineMat.dispose();
-      // wire will be GC'd; it uses disposed geo/mat above
     };
   }, [doorGeometry, displayMat, lineGeo, lineMat]);
 
@@ -110,7 +111,6 @@ export default function Door({
       : { x: params.doorScaleX, y: params.doorScaleY };
   }, [up.md, params.doorScaleX, params.doorScaleY]);
 
-  // --- keep mesh + wire perfectly in sync
   useEffect(() => {
     const px = params.doorX;
     const py = params.doorY;
@@ -121,36 +121,21 @@ export default function Door({
 
     doorRef.current?.scale.set(scale.x, scale.y, 1);
     wire.scale.set(scale.x, scale.y, 1);
-  }, [
-    params.doorX,
-    params.doorY,
-    params.doorZ,
-    params.doorScaleX,
-    params.doorScaleY,
-    wire,
-    scale.x,
-    scale.y,
-    up.md,
-  ]);
+  }, [params.doorX, params.doorY, params.doorZ, wire, scale.x, scale.y, up.md]);
 
-  // --- billboard both to camera every frame
   useFrame(() => {
     const q = camera.quaternion;
-    if (doorRef.current) doorRef.current.quaternion.copy(q);
+    doorRef.current?.quaternion.copy(q);
     wire.quaternion.copy(q);
   });
 
-  // scroll allocation per phase (you can tweak these)
-  const PHASE_WEIGHTS = [0.4, 0.6]; // portalsIn, text, portalsOut
+  const PHASE_WEIGHTS = [0.4, 0.6];
   const PHASES = makeRanges(PHASE_WEIGHTS);
 
   useFrame(() => {
-    const t = progressInWindow(
-      scrollProgress.current,
-      totalPagesCount,
-      scrollWindow,
-    );
-    const progressDoor = segmentProgress(t, PHASES, 1); // 0..1 in phase 1
+    const t = progressInVhWindow(scrollVh.current, scrollWindow); // 0..1 in this vh window
+    const progressDoor = segmentProgress(t, PHASES, 1);
+
     if (doorRef.current) {
       doorRef.current.scale.y = scale.y * (1 - progressDoor);
       doorRef.current.visible = t < 0.999;
@@ -178,7 +163,6 @@ export default function Door({
           pointerUvRef.current = null;
         }}
       />
-
       <primitive object={wire} />
     </group>
   );

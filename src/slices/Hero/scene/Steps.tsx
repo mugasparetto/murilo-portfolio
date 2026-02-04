@@ -10,7 +10,12 @@ import {
   stepReflectFragment,
   stepReflectVertex,
 } from "../scene-core/reflectionShader";
-import { progressInWindow, ScrollWindow } from "@/app/components/ScrollRig";
+
+import {
+  VhWindow,
+  useScrollVhAbsolute,
+  progressInVhWindow,
+} from "@/app/helpers/scroll"; // <- adjust path
 
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
@@ -20,18 +25,18 @@ type Props = {
   params: SceneParams;
   doorFluidTextureRef: React.MutableRefObject<THREE.Texture | null>;
   children?: React.ReactNode;
-  totalPagesCount: number;
-  scrollWindow: ScrollWindow;
-  scrollProgress: RefObject<number>;
+  scrollWindow: VhWindow;
+
+  /** optional: if you scroll inside an element */
+  scrollContainerRef?: RefObject<HTMLElement | null>;
 };
 
 export default function Steps({
   params,
   doorFluidTextureRef,
   children,
-  totalPagesCount,
   scrollWindow,
-  scrollProgress,
+  scrollContainerRef,
 }: Props) {
   const { size, gl, camera } = useThree();
   const dpr = gl.getPixelRatio();
@@ -40,6 +45,8 @@ export default function Steps({
   const stepsPivot = useRef<THREE.Group>(null);
   const steps = useRef<THREE.Group>(null);
   const humanRef = useRef<THREE.Group>(null);
+
+  const scrollVh = useScrollVhAbsolute(scrollContainerRef);
 
   const { up } = useBreakpoints(BREAKPOINTS);
 
@@ -321,11 +328,7 @@ export default function Steps({
   // });
 
   useFrame(() => {
-    const t = progressInWindow(
-      scrollProgress.current,
-      totalPagesCount,
-      scrollWindow,
-    );
+    const t = progressInVhWindow(scrollVh.current, scrollWindow);
 
     if (humanRef.current) humanRef.current.visible = t < 0.999;
     if (stepsRoot.current) stepsRoot.current.visible = t < 0.999;

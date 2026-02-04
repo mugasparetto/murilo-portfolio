@@ -14,11 +14,7 @@ import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 const STARS_COUNT = 200;
 const DOME_RADIUS = 6000;
 
-export default function Sky({
-  scrollElement,
-}: {
-  scrollElement: RefObject<HTMLElement | null>;
-}) {
+export default function Sky() {
   const { size, gl } = useThree();
   const dpr = gl.getPixelRatio();
   const { up } = useBreakpoints(BREAKPOINTS);
@@ -173,7 +169,6 @@ export default function Sky({
         minInterval={5}
         maxInterval={7}
         globalMinGap={8}
-        scrollElement={scrollElement}
       />
     </group>
   );

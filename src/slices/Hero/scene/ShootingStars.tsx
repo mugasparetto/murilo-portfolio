@@ -264,7 +264,6 @@ export default function ShootingStars({
 
   trailThickness = 22,
   globalMinGap = 4,
-  scrollElement,
 }: {
   domeRadius?: number;
   poolSize?: number;
@@ -272,7 +271,6 @@ export default function ShootingStars({
   maxInterval?: number;
   trailThickness?: number;
   globalMinGap?: number;
-  scrollElement: RefObject<HTMLElement | null>;
 }) {
   const starsRef = useRef<Star[]>([]);
   const readyRef = useRef(false);
@@ -614,7 +612,7 @@ export default function ShootingStars({
 
   const { gl } = useThree();
   useEffect(() => {
-    const el = scrollElement.current; // this is the scroll container that receives events
+    const el = document.documentElement; // this is the scroll container that receives events
     const onPointerDown = (e: PointerEvent) => {
       const rect = (gl.domElement as HTMLCanvasElement).getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -624,7 +622,7 @@ export default function ShootingStars({
 
     el?.addEventListener("pointerdown", onPointerDown);
     return () => el?.removeEventListener("pointerdown", onPointerDown);
-  }, [gl, scrollElement]);
+  }, [gl]);
 
   return (
     <group>

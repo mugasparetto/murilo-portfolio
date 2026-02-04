@@ -2,16 +2,21 @@ import { RefObject, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
-import { progressInWindow, ScrollWindow } from "@/app/components/ScrollRig";
 import { KeyTextField } from "@prismicio/client";
 import { useBreakpoints, BREAKPOINTS } from "@/app/hooks/breakpoints";
+
+import {
+  VhWindow,
+  useScrollVhAbsolute,
+  progressInVhWindow,
+} from "@/app/helpers/scroll"; // <- adjust path
 
 type Props = {
   tagline: KeyTextField;
   description: KeyTextField;
-  totalPagesCount: number;
-  scrollWindow: ScrollWindow;
-  scrollProgress: RefObject<number>;
+
+  scrollWindow: VhWindow;
+  scrollContainerRef?: RefObject<HTMLElement | null>;
 };
 
 type Tier = keyof typeof BREAKPOINTS;
@@ -39,32 +44,24 @@ const RESPONSIVE: Record<
 export default function Headline({
   tagline = "",
   description = "",
-  totalPagesCount = 0,
-  scrollWindow = { startPage: 1, endPage: 2 },
-  scrollProgress,
+  scrollWindow,
+  scrollContainerRef,
 }: Props) {
   const firstLineRef = useRef<HTMLSpanElement | null>(null);
   const secondLineRef = useRef<HTMLSpanElement | null>(null);
   const { up, tier } = useBreakpoints(BREAKPOINTS);
 
+  const scrollVh = useScrollVhAbsolute(scrollContainerRef);
+
   useFrame(() => {
-    const t = progressInWindow(
-      scrollProgress.current,
-      totalPagesCount,
-      scrollWindow,
-    );
-    const open = 1 - THREE.MathUtils.clamp(t, 0, 1); // 1..0
+    const t = progressInVhWindow(scrollVh.current, scrollWindow);
+    const open = 1 - THREE.MathUtils.clamp(t, 0, 1);
 
     const fL = firstLineRef.current;
-    if (!fL) return;
+    if (fL) fL.style.setProperty("--open", String(open));
 
-    fL.style.setProperty("--open", String(open));
-
-    const el = secondLineRef.current;
-
-    if (!el) return;
-
-    el.style.setProperty("--open", String(open));
+    const sL = secondLineRef.current;
+    if (sL) sL.style.setProperty("--open", String(open));
   });
 
   return (
