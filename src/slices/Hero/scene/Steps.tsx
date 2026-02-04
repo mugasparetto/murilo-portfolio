@@ -330,7 +330,7 @@ export default function Steps({
   useFrame(() => {
     const t = progressInVhWindow(scrollVh.current, scrollWindow);
 
-    if (humanRef.current) humanRef.current.visible = t < 0.999;
+    if (humanRef.current) humanRef.current.visible = t < 0.925;
     if (stepsRoot.current) stepsRoot.current.visible = t < 0.999;
 
     // ---- GLOBAL MOTION ----

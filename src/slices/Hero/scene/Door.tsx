@@ -10,7 +10,6 @@ import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 
 import { useFrame, useThree } from "@react-three/fiber";
 
-import { makeRanges, segmentProgress } from "../../../app/helpers/scroll";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 
 import {
@@ -129,18 +128,14 @@ export default function Door({
     wire.quaternion.copy(q);
   });
 
-  const PHASE_WEIGHTS = [0.4, 0.6];
-  const PHASES = makeRanges(PHASE_WEIGHTS);
-
   useFrame(() => {
     const t = progressInVhWindow(scrollVh.current, scrollWindow); // 0..1 in this vh window
-    const progressDoor = segmentProgress(t, PHASES, 1);
 
     if (doorRef.current) {
-      doorRef.current.scale.y = scale.y * (1 - progressDoor);
+      doorRef.current.scale.y = scale.y * (1 - t);
       doorRef.current.visible = t < 0.999;
     }
-    wire.scale.y = scale.y * (1 - progressDoor);
+    wire.scale.y = scale.y * (1 - t);
     wire.visible = t < 0.999;
   });
 

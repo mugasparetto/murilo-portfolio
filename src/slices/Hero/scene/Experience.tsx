@@ -162,7 +162,7 @@ export default function Experience({ scrollRef }: Props) {
           <Steps
             params={p}
             doorFluidTextureRef={fluidTextureRef}
-            scrollWindow={{ startVh: 120, endVh: 230 }}
+            scrollWindow={{ startVh: 75, endVh: 150 }}
           >
             <HumanModel />
           </Steps>
@@ -171,7 +171,7 @@ export default function Experience({ scrollRef }: Props) {
             displayMat={displayMat}
             pointerUvRef={pointerUvRef}
             pointerActiveRef={pointerActiveRef}
-            scrollWindow={{ startVh: 250, endVh: 300 }}
+            scrollWindow={{ startVh: 150, endVh: 200 }}
           />
         </group>
 
@@ -181,14 +181,14 @@ export default function Experience({ scrollRef }: Props) {
           <Name
             firstName={first_name}
             lastName={last_name}
-            scrollWindow={{ startVh: 10, endVh: 110 }}
+            scrollWindow={{ startVh: 5, endVh: 75 }}
           />
         </Suspense>
 
         <Headline
           tagline={tag_line}
           description={description}
-          scrollWindow={{ startVh: 10, endVh: 110 }}
+          scrollWindow={{ startVh: 5, endVh: 75 }}
         />
       </group>
     </>
