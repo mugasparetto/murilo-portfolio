@@ -1,7 +1,15 @@
 import * as THREE from "three";
 import React, { useLayoutEffect, useMemo, useRef } from "react";
-import { ThreeElements } from "@react-three/fiber";
+import { ThreeElements, useFrame } from "@react-three/fiber";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
+import {
+  makeRanges,
+  segmentProgress,
+  progressInVhWindow,
+  useScrollVhAbsolute,
+  VhWindow,
+  rangeProgress,
+} from "@/app/helpers/scroll";
 
 type LinePosition = {
   x: number;
@@ -111,8 +119,14 @@ function useUCurvePlaneGeometry(
   }, [width, height, curveDepth, segments]);
 }
 
-export default function Scene() {
+type Props = {
+  scrollWindow: VhWindow;
+};
+
+export default function Scene({ scrollWindow }: Props) {
   const { up } = useBreakpoints(BREAKPOINTS);
+  const portal1 = useRef<THREE.Mesh | null>(null);
+  const portal2 = useRef<THREE.Mesh | null>(null);
 
   const lines = [
     { x: -690, y: -28 },
@@ -134,6 +148,44 @@ export default function Scene() {
 
   const planePos: [number, number, number] = [0, !up.md ? -1205 : -1005, 2200];
 
+  const PHASE_WEIGHTS = [0.2, 0.6, 0.2];
+  const PHASES = makeRanges(PHASE_WEIGHTS);
+  const scrollVh = useScrollVhAbsolute();
+
+  useFrame(() => {
+    const t = progressInVhWindow(scrollVh.current, scrollWindow);
+
+    const pIn = segmentProgress(t, PHASES, 0);
+    const pSlide = segmentProgress(t, PHASES, 1);
+
+    // --- overlap config ---
+    const overlap = 0.3; // 0..1 of the SLIDE segment to overlap (0.35 = starts closing ~65% into slide)
+
+    const slideStart = PHASES[1].start;
+    const slideEnd = PHASES[1].end;
+    const outEnd = PHASES[2].end;
+
+    // Start "out" before slide finishes:
+    const outStart = THREE.MathUtils.lerp(slideEnd, slideStart, overlap);
+    // equivalently: slideEnd - overlap*(slideEnd - slideStart)
+
+    const pOut = rangeProgress(t, outStart, outEnd);
+
+    // Open normally, then while in/after slide, start applying pOut
+    const base = t < slideStart ? pIn : 1;
+    const portalScale = base * (1 - pOut);
+
+    if (portal1.current) {
+      portal1.current.scale.setScalar(portalScale);
+      portal1.current.position.y = -800 + pSlide * 200;
+    }
+
+    if (portal2.current) {
+      portal2.current.scale.setScalar(portalScale);
+      portal2.current.position.y = -800 + pSlide * -200;
+    }
+  });
+
   return (
     <group>
       <mesh position={planePos}>
@@ -144,6 +196,23 @@ export default function Scene() {
       <group position={planePos}>
         <VerticalLines lines={lines} height={2000} thickness={1.5} z={0.1} />
       </group>
+
+      <mesh
+        ref={portal1}
+        position={[-360, -800, 2420]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <torusGeometry args={[200, 3, 8, 48]} />
+        <meshBasicMaterial color="white" />
+      </mesh>
+      <mesh
+        ref={portal2}
+        position={[-360, -800, 2420]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <torusGeometry args={[200, 3, 8, 48]} />
+        <meshBasicMaterial color="white" />
+      </mesh>
     </group>
   );
 }

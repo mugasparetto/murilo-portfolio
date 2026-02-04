@@ -116,3 +116,8 @@ export function useVhWindowPhases(
     // so t/phase(...) are computed at call time (via getter / function).
   }, [scrollVhRef, window.startVh, window.endVh, phases]);
 }
+
+export const rangeProgress = (t: number, start: number, end: number) => {
+  const local = (t - start) / (end - start);
+  return easeCos(THREE.MathUtils.clamp(local, 0, 1));
+};

@@ -36,7 +36,7 @@ const About: FC<AboutProps> = ({ slice }) => {
     register({
       id,
       priority: 20,
-      node: <Scene />,
+      node: <Scene scrollWindow={{ startVh: 345, endVh: 480 }} />,
       active: true,
     });
 
