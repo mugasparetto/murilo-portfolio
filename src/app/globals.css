@@ -16,11 +16,6 @@
   --font-display: "Morganite", sans-serif;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-}
-
 *,
 *::after,
 *::before {

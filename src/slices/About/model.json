@@ -12,21 +12,19 @@
       "description": "Default",
       "imageUrl": "",
       "primary": {
-        "about": {
-          "type": "StructuredText",
-          "config": {
-            "label": "about",
-            "placeholder": "",
-            "allowTargetBlank": true,
-            "multi": "paragraph,preformatted,heading1,heading2,heading3,heading4,heading5,heading6,strong,em,hyperlink,list-item,o-list-item,rtl"
-          }
-        },
         "portrait": {
           "type": "Image",
           "config": {
             "label": "portrait",
             "constraint": {},
             "thumbnails": []
+          }
+        },
+        "about": {
+          "type": "Text",
+          "config": {
+            "label": "about",
+            "placeholder": ""
           }
         }
       },

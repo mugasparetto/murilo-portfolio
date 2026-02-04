@@ -27,15 +27,9 @@
 				"thumbnails": {}
 			},
 			"about": {
-				"__TYPE__": "StructuredTextContent",
-				"value": [
-					{
-						"type": "paragraph",
-						"content": {
-							"text": "Aliquip veniam id et. Velit excepteur do do aute aliqua cupidatat incididunt. Eu culpa laborum enim in id occaecat Lorem mollit fugiat eiusmod."
-						}
-					}
-				]
+				"__TYPE__": "FieldContent",
+				"value": "pot",
+				"type": "Text"
 			}
 		},
 		"items": []

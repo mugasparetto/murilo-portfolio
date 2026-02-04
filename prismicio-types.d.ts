@@ -213,16 +213,6 @@ export type AllDocumentTypes = HomepageDocument | PageDocument;
  */
 export interface AboutSliceDefaultPrimary {
   /**
-   * about field in *About → Default → Primary*
-   *
-   * - **Field Type**: Rich Text
-   * - **Placeholder**: *None*
-   * - **API ID Path**: about.default.primary.about
-   * - **Documentation**: https://prismic.io/docs/fields/rich-text
-   */
-  about: prismic.RichTextField;
-
-  /**
    * portrait field in *About → Default → Primary*
    *
    * - **Field Type**: Image
@@ -231,6 +221,16 @@ export interface AboutSliceDefaultPrimary {
    * - **Documentation**: https://prismic.io/docs/fields/image
    */
   portrait: prismic.ImageField<never>;
+
+  /**
+   * about field in *About → Default → Primary*
+   *
+   * - **Field Type**: Text
+   * - **Placeholder**: *None*
+   * - **API ID Path**: about.default.primary.about
+   * - **Documentation**: https://prismic.io/docs/fields/text
+   */
+  about: prismic.KeyTextField;
 }
 
 /**
