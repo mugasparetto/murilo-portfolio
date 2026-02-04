@@ -57,7 +57,7 @@ const Hero: FC<HeroProps> = ({ slice }) => {
       ref={heroRef}
       data-slice-type={slice.slice_type}
       data-slice-variation={slice.variation}
-      style={{ width: "100%", height: "400vh" }}
+      style={{ width: "100%", height: "320vh" }}
     ></section>
   );
 };

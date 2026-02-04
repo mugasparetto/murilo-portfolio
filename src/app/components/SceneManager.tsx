@@ -1,7 +1,7 @@
 "use client";
 
 import { Stats } from "@react-three/drei";
-import { useRef, RefObject } from "react";
+import { useRef } from "react";
 import * as THREE from "three";
 
 import { useSceneRegistry } from "@/app/hooks/SceneRegistry";
@@ -14,9 +14,6 @@ import ParallaxRig from "./ParallaxRig";
 import ScrollRig from "./ScrollRig";
 import Postprocessing from "./PostProcessing";
 import { BREAKPOINTS, useBreakpoints } from "../hooks/breakpoints";
-import { useSectionScrollProgress } from "../hooks/sectionScrollProgress";
-
-const PAGES_COUNT = 8;
 
 export type CameraPose = {
   position: THREE.Vector3;
@@ -57,16 +54,16 @@ export default function SceneManager() {
         windows={[
           {
             window: {
-              startVh: 300,
-              endVh: 450,
+              startVh: 190,
+              endVh: 320,
             },
             from: {
               position: [0, 200, 3380], // pose A
               lookAt: [0, 820, 0],
             },
             to: {
-              position: [0, -1000, 3380], // pose B
-              lookAt: [0, -1000, 0],
+              position: [0, -800, 3380], // pose B
+              lookAt: [0, -800, 0],
             },
           },
         ]}
