@@ -1,6 +1,7 @@
 import * as THREE from "three";
-import React, { useLayoutEffect, useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import { ThreeElements, useFrame } from "@react-three/fiber";
+import { useTexture } from "@react-three/drei";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import {
   makeRanges,
@@ -127,6 +128,16 @@ export default function Scene({ scrollWindow }: Props) {
   const { up } = useBreakpoints(BREAKPOINTS);
   const portal1 = useRef<THREE.Mesh | null>(null);
   const portal2 = useRef<THREE.Mesh | null>(null);
+  const bottom = useTexture("/textures/head/bottom.webp");
+  const middle = useTexture("/textures/head/middle.webp");
+  const top = useTexture("/textures/head/top.webp");
+
+  const scale = useMemo<Vec3>(() => {
+    const size = 550;
+    const img = bottom.image as HTMLImageElement;
+    const aspect = img.naturalWidth / img.naturalHeight;
+    return [size * aspect, size, 1];
+  }, [bottom]);
 
   const lines = [
     { x: -690, y: -28 },
@@ -177,12 +188,12 @@ export default function Scene({ scrollWindow }: Props) {
 
     if (portal1.current) {
       portal1.current.scale.setScalar(portalScale);
-      portal1.current.position.y = -800 + pSlide * 200;
+      portal1.current.position.y = -800 + pSlide * 275;
     }
 
     if (portal2.current) {
       portal2.current.scale.setScalar(portalScale);
-      portal2.current.position.y = -800 + pSlide * -200;
+      portal2.current.position.y = -800 + pSlide * -275;
     }
   });
 
@@ -213,6 +224,16 @@ export default function Scene({ scrollWindow }: Props) {
         <torusGeometry args={[200, 3, 8, 48]} />
         <meshBasicMaterial color="white" />
       </mesh>
+
+      <sprite position={[-380, -800, 2400]} scale={scale}>
+        <spriteMaterial map={bottom} transparent />
+      </sprite>
+      <sprite position={[-380, -800, 2400]} scale={scale}>
+        <spriteMaterial map={middle} transparent />
+      </sprite>
+      <sprite position={[-380, -800, 2400]} scale={scale}>
+        <spriteMaterial map={top} transparent />
+      </sprite>
     </group>
   );
 }
