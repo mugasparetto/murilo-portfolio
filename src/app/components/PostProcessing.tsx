@@ -12,6 +12,7 @@ import {
 } from "@react-three/postprocessing";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import { useAdaptiveGate } from "@/app/hooks/adaptiveGate";
+import ClearStencilPass from "./ClearStencilPass";
 
 type Props = {
   selected: THREE.Object3D[];
@@ -23,8 +24,13 @@ export default function PostProcessing({ selected }: Props) {
   const hiRes = useAdaptiveGate({ disableBelow: 30, enableAbove: 31 });
 
   return (
-    <EffectComposer multisampling={0} autoClear={false}>
-      <></>
+    <EffectComposer
+      multisampling={0}
+      autoClear={false}
+      stencilBuffer
+      depthBuffer
+    >
+      <ClearStencilPass />
       <>
         {up.md && hiRes && (
           <Outline

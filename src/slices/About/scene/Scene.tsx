@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { useLayoutEffect, useMemo, useRef, Suspense } from "react";
 import { ThreeElements, useFrame } from "@react-three/fiber";
+import { Mask } from "@react-three/drei";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import {
   makeRanges,
@@ -128,6 +129,8 @@ export default function Scene({ scrollWindow }: Props) {
   const { up } = useBreakpoints(BREAKPOINTS);
   const portal1 = useRef<THREE.Mesh | null>(null);
   const portal2 = useRef<THREE.Mesh | null>(null);
+  const mask = useRef<THREE.Mesh | null>(null);
+  const head = useRef<THREE.Group | null>(null);
 
   const lines = [
     { x: -690, y: -28 },
@@ -185,6 +188,17 @@ export default function Scene({ scrollWindow }: Props) {
       portal2.current.scale.setScalar(portalScale);
       portal2.current.position.y = -800 + pSlide * -275;
     }
+
+    const maskScale = t < slideStart ? pIn : 1;
+
+    if (mask.current) {
+      mask.current.scale.setScalar(maskScale);
+      mask.current.scale.y = THREE.MathUtils.clamp(pSlide * 550, 0.001, 550);
+    }
+
+    if (head.current) {
+      head.current.visible = t > 0.245;
+    }
   });
 
   return (
@@ -215,8 +229,28 @@ export default function Scene({ scrollWindow }: Props) {
         <meshBasicMaterial color="white" />
       </mesh>
 
+      <group ref={mask} position={[-360, -800, 2420]} rotation={[0, 0, 0]}>
+        {/* stencil writer */}
+        <Mask id={1} colorWrite={false}>
+          <cylinderGeometry args={[185, 185, 1, 48]} />
+        </Mask>
+
+        {/* debug visual (does NOT affect stencil) */}
+        {/* <mesh>
+          <cylinderGeometry args={[185, 185, 1, 48]} />
+          <meshBasicMaterial
+            color="cyan"
+            transparent
+            opacity={0.25}
+            wireframe
+            depthTest={false}
+          />
+        </mesh> */}
+      </group>
+
       <Suspense fallback={null}>
-        <Head />
+        {/* Render one head per portal, each clipped by its own mask */}
+        <Head maskId={1} ref={head} />
       </Suspense>
     </group>
   );
