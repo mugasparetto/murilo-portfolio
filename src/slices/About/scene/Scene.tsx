@@ -1,7 +1,6 @@
 import * as THREE from "three";
 import { useLayoutEffect, useMemo, useRef, Suspense } from "react";
 import { ThreeElements, useFrame } from "@react-three/fiber";
-import { Mask } from "@react-three/drei";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import {
   makeRanges,
@@ -12,6 +11,7 @@ import {
   rangeProgress,
 } from "@/app/helpers/scroll";
 import Head from "./Head";
+import Emitter from "./ParticleEmitter";
 
 type LinePosition = {
   x: number;
@@ -129,8 +129,8 @@ export default function Scene({ scrollWindow }: Props) {
   const { up } = useBreakpoints(BREAKPOINTS);
   const portal1 = useRef<THREE.Mesh | null>(null);
   const portal2 = useRef<THREE.Mesh | null>(null);
-  const mask = useRef<THREE.Mesh | null>(null);
   const head = useRef<THREE.Group | null>(null);
+  const headProgress = useRef<number>(0);
 
   const lines = [
     { x: -690, y: -28 },
@@ -155,6 +155,7 @@ export default function Scene({ scrollWindow }: Props) {
   const PHASE_WEIGHTS = [0.2, 0.6, 0.2];
   const PHASES = makeRanges(PHASE_WEIGHTS);
   const scrollVh = useScrollVhAbsolute();
+  let delayedPSlide = 0;
 
   useFrame(() => {
     const t = progressInVhWindow(scrollVh.current, scrollWindow);
@@ -189,11 +190,14 @@ export default function Scene({ scrollWindow }: Props) {
       portal2.current.position.y = -800 + pSlide * -275;
     }
 
-    const maskScale = t < slideStart ? pIn : 1;
-
-    if (mask.current) {
-      mask.current.scale.setScalar(maskScale);
-      mask.current.scale.y = THREE.MathUtils.clamp(pSlide * 550, 0.001, 550);
+    if (headProgress.current != null) {
+      const delay = 0.11;
+      const pSlideDelayed = THREE.MathUtils.clamp(
+        (pSlide - delay) / (1 - delay),
+        0,
+        1,
+      );
+      headProgress.current = pSlideDelayed;
     }
 
     if (head.current) {
@@ -229,29 +233,23 @@ export default function Scene({ scrollWindow }: Props) {
         <meshBasicMaterial color="white" />
       </mesh>
 
-      <group ref={mask} position={[-360, -800, 2420]} rotation={[0, 0, 0]}>
-        {/* stencil writer */}
-        <Mask id={1} colorWrite={false}>
-          <cylinderGeometry args={[185, 185, 1, 48]} />
-        </Mask>
-
-        {/* debug visual (does NOT affect stencil) */}
-        {/* <mesh>
-          <cylinderGeometry args={[185, 185, 1, 48]} />
-          <meshBasicMaterial
-            color="cyan"
-            transparent
-            opacity={0.25}
-            wireframe
-            depthTest={false}
-          />
-        </mesh> */}
-      </group>
-
       <Suspense fallback={null}>
-        {/* Render one head per portal, each clipped by its own mask */}
-        <Head maskId={1} ref={head} />
+        <Head ref={head} overallProgress={headProgress} />
       </Suspense>
+
+      <group position={[-380, -800, 2400]} scale={[100, 100, 100]}>
+        <Emitter
+          count={800}
+          coneAngle={0.5} // wider cone
+          speed={3}
+          lifetime={2.5}
+          color1={new THREE.Color("#00FFFF")}
+          color2={new THREE.Color("#ffffff")}
+          startSize={10}
+          endSize={0.1}
+          reversed
+        />
+      </group>
     </group>
   );
 }
