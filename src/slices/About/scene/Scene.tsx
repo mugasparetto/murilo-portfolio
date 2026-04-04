@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { useLayoutEffect, useMemo, useRef, Suspense } from "react";
 import { ThreeElements } from "@react-three/fiber";
+import { Text } from "@react-three/drei";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import { useScrollVhAbsolute, VhWindow } from "@/app/helpers/scroll";
 import Head from "./Head";
@@ -10,26 +11,30 @@ type LinePosition = {
   y: number;
 };
 
-type VerticalLinesProps = {
-  lines: LinePosition[]; // ✅ one array
-  height: number;
+type LinesProps = {
+  lines: LinePosition[];
+  span: number; // height if vertical, width if horizontal
+  orientation?: "vertical" | "horizontal";
   thickness?: number;
   z?: number;
   color?: THREE.ColorRepresentation;
 } & Omit<ThreeElements["instancedMesh"], "args">;
 
-function VerticalLines({
+function Lines({
   lines,
-  height,
+  span,
+  orientation = "vertical",
   thickness = 0.02,
   z = 0.001,
   color = "white",
   ...props
-}: VerticalLinesProps) {
+}: LinesProps) {
   const ref = useRef<THREE.InstancedMesh>(null!);
-
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const mat = useMemo(() => new THREE.MeshBasicMaterial({ color }), [color]);
+
+  const geoArgs: [number, number] =
+    orientation === "vertical" ? [thickness, span] : [span, thickness];
 
   useLayoutEffect(() => {
     if (!ref.current) return;
@@ -50,12 +55,11 @@ function VerticalLines({
       args={[undefined, undefined, lines.length]}
       {...props}
     >
-      <planeGeometry args={[thickness, height]} />
+      <planeGeometry args={geoArgs} />
       <primitive object={mat} attach="material" />
     </instancedMesh>
   );
 }
-
 // --- NEW: curved plane geometry (U-curve along TOP edge) ---
 function useUCurvePlaneGeometry(
   width: number,
@@ -132,6 +136,16 @@ export default function Scene({ scrollWindow }: Props) {
     { x: 690, y: -28 },
   ];
 
+  const hLines = [
+    { x: 0, y: 800 },
+    { x: 0, y: 620 },
+    { x: 0, y: 440 },
+    { x: 0, y: 260 },
+    { x: 0, y: 80 },
+    { x: 0, y: -100 },
+    { x: 0, y: -280 },
+  ];
+
   const planeGeo = useUCurvePlaneGeometry(
     2000,
     2000,
@@ -151,8 +165,26 @@ export default function Scene({ scrollWindow }: Props) {
       </mesh>
 
       <group position={planePos}>
-        <VerticalLines lines={lines} height={2000} thickness={1.5} z={0.1} />
+        <Lines lines={lines} span={2000} thickness={1.5} z={0.1} />
+        <Lines
+          lines={hLines}
+          span={2000}
+          orientation="horizontal"
+          thickness={1.5}
+          z={0.1}
+        />
       </group>
+
+      <Suspense fallback={null}>
+        <Text
+          position={[0, -800, 2210]}
+          font="/fonts/Morganite-Black.ttf"
+          fontSize={600}
+          color="white"
+        >
+          ABOUT ME
+        </Text>
+      </Suspense>
 
       <Suspense fallback={null}>
         <Head ref={head} />
