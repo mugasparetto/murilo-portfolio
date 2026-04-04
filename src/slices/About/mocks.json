@@ -3,32 +3,34 @@
 		"__TYPE__": "SharedSliceContent",
 		"variation": "default",
 		"primary": {
-			"portrait": {
-				"origin": {
-					"id": "main",
-					"url": "https://images.unsplash.com/photo-1547082299-de196ea013d6",
-					"width": 4272,
-					"height": 2848
-				},
-				"url": "https://images.unsplash.com/photo-1547082299-de196ea013d6",
-				"width": 4272,
-				"height": 2848,
-				"edit": {
-					"zoom": 1,
-					"crop": {
-						"x": 0,
-						"y": 0
-					},
-					"background": "transparent"
-				},
-				"alt": "wrapped",
-				"credits": null,
-				"__TYPE__": "ImageContent",
-				"thumbnails": {}
-			},
-			"about": {
+			"head_title": {
 				"__TYPE__": "FieldContent",
-				"value": "pot",
+				"value": "husband",
+				"type": "Text"
+			},
+			"head_description": {
+				"__TYPE__": "FieldContent",
+				"value": "why",
+				"type": "Text"
+			},
+			"eyes_title": {
+				"__TYPE__": "FieldContent",
+				"value": "beauty",
+				"type": "Text"
+			},
+			"eyes_description": {
+				"__TYPE__": "FieldContent",
+				"value": "fully",
+				"type": "Text"
+			},
+			"mouth_title": {
+				"__TYPE__": "FieldContent",
+				"value": "west",
+				"type": "Text"
+			},
+			"mouth_description": {
+				"__TYPE__": "FieldContent",
+				"value": "friendly",
 				"type": "Text"
 			}
 		},

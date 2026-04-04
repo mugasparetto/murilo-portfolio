@@ -12,18 +12,45 @@
       "description": "Default",
       "imageUrl": "",
       "primary": {
-        "portrait": {
-          "type": "Image",
-          "config": {
-            "label": "portrait",
-            "constraint": {},
-            "thumbnails": []
-          }
-        },
-        "about": {
+        "head_title": {
           "type": "Text",
           "config": {
-            "label": "about",
+            "label": "Head title",
+            "placeholder": ""
+          }
+        },
+        "head_description": {
+          "type": "Text",
+          "config": {
+            "label": "Head description",
+            "placeholder": ""
+          }
+        },
+        "eyes_title": {
+          "type": "Text",
+          "config": {
+            "label": "Eyes title",
+            "placeholder": ""
+          }
+        },
+        "eyes_description": {
+          "type": "Text",
+          "config": {
+            "label": "Eyes description",
+            "placeholder": ""
+          }
+        },
+        "mouth_title": {
+          "type": "Text",
+          "config": {
+            "label": "Mouth title",
+            "placeholder": ""
+          }
+        },
+        "mouth_description": {
+          "type": "Text",
+          "config": {
+            "label": "Mouth description",
             "placeholder": ""
           }
         }

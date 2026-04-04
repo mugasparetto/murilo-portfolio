@@ -122,14 +122,7 @@ const About: FC<AboutProps> = ({ slice }) => {
       data-slice-variation={slice.variation}
       className="h-[400vh] relative"
     >
-      <div className="sticky top-0 grid grid-cols-12 h-screen">
-        <p
-          ref={textRef}
-          className="col-start-7 col-end-13 pr-20 absolute top-[50%] translate-y-[-50%] text-4xl"
-        >
-          {slice.primary.about}
-        </p>
-      </div>
+      <div className="sticky top-0 grid grid-cols-12 h-screen"></div>
     </section>
   );
 };

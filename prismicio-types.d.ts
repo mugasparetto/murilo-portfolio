@@ -213,24 +213,64 @@ export type AllDocumentTypes = HomepageDocument | PageDocument;
  */
 export interface AboutSliceDefaultPrimary {
   /**
-   * portrait field in *About → Default → Primary*
-   *
-   * - **Field Type**: Image
-   * - **Placeholder**: *None*
-   * - **API ID Path**: about.default.primary.portrait
-   * - **Documentation**: https://prismic.io/docs/fields/image
-   */
-  portrait: prismic.ImageField<never>;
-
-  /**
-   * about field in *About → Default → Primary*
+   * Head title field in *About → Default → Primary*
    *
    * - **Field Type**: Text
    * - **Placeholder**: *None*
-   * - **API ID Path**: about.default.primary.about
+   * - **API ID Path**: about.default.primary.head_title
    * - **Documentation**: https://prismic.io/docs/fields/text
    */
-  about: prismic.KeyTextField;
+  head_title: prismic.KeyTextField;
+
+  /**
+   * Head description field in *About → Default → Primary*
+   *
+   * - **Field Type**: Text
+   * - **Placeholder**: *None*
+   * - **API ID Path**: about.default.primary.head_description
+   * - **Documentation**: https://prismic.io/docs/fields/text
+   */
+  head_description: prismic.KeyTextField;
+
+  /**
+   * Eyes title field in *About → Default → Primary*
+   *
+   * - **Field Type**: Text
+   * - **Placeholder**: *None*
+   * - **API ID Path**: about.default.primary.eyes_title
+   * - **Documentation**: https://prismic.io/docs/fields/text
+   */
+  eyes_title: prismic.KeyTextField;
+
+  /**
+   * Eyes description field in *About → Default → Primary*
+   *
+   * - **Field Type**: Text
+   * - **Placeholder**: *None*
+   * - **API ID Path**: about.default.primary.eyes_description
+   * - **Documentation**: https://prismic.io/docs/fields/text
+   */
+  eyes_description: prismic.KeyTextField;
+
+  /**
+   * Mouth title field in *About → Default → Primary*
+   *
+   * - **Field Type**: Text
+   * - **Placeholder**: *None*
+   * - **API ID Path**: about.default.primary.mouth_title
+   * - **Documentation**: https://prismic.io/docs/fields/text
+   */
+  mouth_title: prismic.KeyTextField;
+
+  /**
+   * Mouth description field in *About → Default → Primary*
+   *
+   * - **Field Type**: Text
+   * - **Placeholder**: *None*
+   * - **API ID Path**: about.default.primary.mouth_description
+   * - **Documentation**: https://prismic.io/docs/fields/text
+   */
+  mouth_description: prismic.KeyTextField;
 }
 
 /**
