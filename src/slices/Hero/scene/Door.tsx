@@ -21,8 +21,8 @@ import {
 type Props = {
   params: SceneParams;
   displayMat: THREE.ShaderMaterial;
-  pointerUvRef: React.MutableRefObject<THREE.Vector2 | null>;
-  pointerActiveRef: React.MutableRefObject<boolean>;
+  pointerUvRef: React.RefObject<THREE.Vector2 | null>;
+  pointerActiveRef: React.RefObject<boolean>;
 
   scrollWindow: VhWindow;
 

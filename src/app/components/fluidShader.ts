@@ -17,6 +17,7 @@ uniform float uBrushStrength;
 uniform float uFluidDecay;
 uniform float uTrailLength;
 uniform float uStopDecay;
+uniform float uSeed;
 varying vec2 vUv;
 
 vec2 ur, U;
@@ -43,7 +44,7 @@ void main() {
   ur = iResolution.xy;
 
   if (iFrame < 1) {
-    float w = 0.5+sin(0.2*U.x)*0.5;
+    float w = 0.5 + sin(0.2 * U.x + uSeed) * 0.5;
     float q = length(U-0.5*ur);
     gl_FragColor = vec4(0.1*exp(-0.001*q*q),0,0,w);
   } else {
@@ -119,6 +120,7 @@ uniform vec3 uColor3;
 uniform vec3 uColor4;
 uniform float uColorIntensity;
 uniform float uSoftness;
+uniform float uSeed;
 varying vec2 vUv;
 
 void main() {
@@ -132,8 +134,8 @@ void main() {
 
   uv += fluidVel * (0.5 * uDistortionAmount);
 
-  float d = -iTime * 0.5;
-  float a = 0.0;
+  float d = -iTime * 0.5 + uSeed * 3.7;
+  float a = uSeed * 1.3;
   for (float i = 0.0; i < 8.0; ++i) {
     a += cos(i - d - a * uv.x);
     d += sin(uv.y * i + a);

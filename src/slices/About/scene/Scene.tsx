@@ -5,6 +5,8 @@ import { Text } from "@react-three/drei";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import { useScrollVhAbsolute, VhWindow } from "@/app/helpers/scroll";
 import Head from "./Head";
+import { useFluidMaterials } from "@/app/components/FluidMaterial";
+import { defaultParams } from "../../Hero/scene-core/params";
 
 type LinePosition = {
   x: number;
@@ -157,6 +159,56 @@ export default function Scene({ scrollWindow }: Props) {
 
   const scrollVh = useScrollVhAbsolute();
 
+  const pointerUvRefA = useRef<THREE.Vector2 | null>(null);
+  const pointerActiveRefA = useRef(false);
+  const pointerUvRefB = useRef<THREE.Vector2 | null>(null);
+  const pointerActiveRefB = useRef(false);
+
+  // Two fully independent simulations
+  const { displayMat: displayMatA } = useFluidMaterials({
+    config: {
+      brushSize: defaultParams.brushSize,
+      brushStrength: defaultParams.brushStrength,
+      distortionAmount: defaultParams.distortionAmount,
+      fluidDecay: defaultParams.fluidDecay,
+      trailLength: defaultParams.trailLength,
+      stopDecay: defaultParams.stopDecay,
+      color1: defaultParams.color1,
+      color2: defaultParams.color2,
+      color3: defaultParams.color3,
+      color4: defaultParams.color4,
+      colorIntensity: defaultParams.colorIntensity,
+      softness: defaultParams.softness,
+    },
+    simWidth: 256,
+    simHeight: 512,
+    pointerUvRef: pointerUvRefA,
+    pointerActiveRef: pointerActiveRefA,
+    seed: 0,
+  });
+
+  const { displayMat: displayMatB } = useFluidMaterials({
+    config: {
+      brushSize: defaultParams.brushSize,
+      brushStrength: defaultParams.brushStrength,
+      distortionAmount: defaultParams.distortionAmount,
+      fluidDecay: defaultParams.fluidDecay,
+      trailLength: defaultParams.trailLength,
+      stopDecay: defaultParams.stopDecay,
+      color1: defaultParams.color1,
+      color2: defaultParams.color2,
+      color3: defaultParams.color3,
+      color4: defaultParams.color4,
+      colorIntensity: defaultParams.colorIntensity,
+      softness: defaultParams.softness,
+    },
+    simWidth: 256,
+    simHeight: 512,
+    pointerUvRef: pointerUvRefB,
+    pointerActiveRef: pointerActiveRefB,
+    seed: 0.5,
+  });
+
   return (
     <group>
       <mesh position={planePos}>
@@ -187,7 +239,15 @@ export default function Scene({ scrollWindow }: Props) {
       </Suspense>
 
       <Suspense fallback={null}>
-        <Head ref={head} />
+        <Head
+          ref={head}
+          pointerActiveRefA={pointerActiveRefA}
+          pointerUvRefA={pointerUvRefA}
+          pointerActiveRefB={pointerActiveRefB}
+          pointerUvRefB={pointerUvRefB}
+          displayMatA={displayMatA}
+          displayMatB={displayMatB}
+        />
       </Suspense>
     </group>
   );

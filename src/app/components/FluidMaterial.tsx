@@ -42,8 +42,9 @@ type Props = {
    * Provide door pointer UVs in 0..1
    * (we keep prev internally)
    */
-  pointerUvRef: React.MutableRefObject<THREE.Vector2 | null>;
-  pointerActiveRef: React.MutableRefObject<boolean>;
+  pointerUvRef: React.RefObject<THREE.Vector2 | null>;
+  pointerActiveRef: React.RefObject<boolean>;
+  seed?: number; // optional random seed for initialization
 };
 
 export function useFluidMaterials({
@@ -52,6 +53,7 @@ export function useFluidMaterials({
   simHeight = 1024,
   pointerUvRef,
   pointerActiveRef,
+  seed = 0,
 }: Props) {
   const { gl } = useThree();
 
@@ -108,6 +110,7 @@ export function useFluidMaterials({
         iMouse: { value: new THREE.Vector4(0, 0, 0, 0) },
         iFrame: { value: 0 },
         iPreviousFrame: { value: null as THREE.Texture | null },
+        uSeed: { value: seed },
 
         uBrushSize: { value: config.brushSize },
         uBrushStrength: { value: config.brushStrength },
@@ -137,6 +140,7 @@ export function useFluidMaterials({
         iTime: { value: 0 },
         iResolution: { value: new THREE.Vector2(simWidth, simHeight) },
         iFluid: { value: null as THREE.Texture | null },
+        uSeed: { value: seed },
 
         uDistortionAmount: { value: config.distortionAmount },
         uColor1: { value: hexToLinearVec3(config.color1) },
