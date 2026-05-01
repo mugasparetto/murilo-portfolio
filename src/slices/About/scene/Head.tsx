@@ -1,26 +1,13 @@
 import { RefObject, useMemo } from "react";
 import * as THREE from "three";
 import { useTexture } from "@react-three/drei";
+import MetaBalls from "./MetaBalls";
 
 type Props = {
   ref: RefObject<THREE.Group | null>;
-  pointerUvRefA: React.RefObject<THREE.Vector2 | null>;
-  pointerActiveRefA: React.RefObject<boolean>;
-  displayMatA: THREE.ShaderMaterial;
-  pointerUvRefB: React.RefObject<THREE.Vector2 | null>;
-  pointerActiveRefB: React.RefObject<boolean>;
-  displayMatB: THREE.ShaderMaterial;
 };
 
-export default function Head({
-  ref,
-  pointerUvRefA,
-  pointerActiveRefA,
-  displayMatA,
-  pointerUvRefB,
-  pointerActiveRefB,
-  displayMatB,
-}: Props) {
+export default function Head({ ref }: Props) {
   const bottom = useTexture("/textures/head/bottom.webp");
   const middle = useTexture("/textures/head/middle.webp");
   const top = useTexture("/textures/head/top.webp");
@@ -34,58 +21,129 @@ export default function Head({
 
   return (
     <group ref={ref}>
-      <sprite position={[0, -800, 2600]} scale={scale}>
-        <spriteMaterial map={top} transparent depthWrite={false} />
+      <sprite position={[0, -800, 2600]} scale={scale} renderOrder={10}>
+        <spriteMaterial
+          map={top}
+          transparent
+          depthWrite={false}
+          // opacity={0.5}
+        />
       </sprite>
 
-      <mesh
-        position={[8, -734, 2600]}
-        scale={[1, 0.11, 1]}
-        renderOrder={999}
-        material={displayMatA}
-        onPointerMove={(e) => {
-          pointerActiveRefA.current = true;
-          if (e.uv) pointerUvRefA.current = e.uv.clone();
-        }}
-        onPointerOut={() => {
-          pointerActiveRefA.current = false;
-          pointerUvRefA.current = null;
-        }}
-        onPointerLeave={() => {
-          pointerActiveRefA.current = false;
-          pointerUvRefA.current = null;
-        }}
-      >
-        <circleGeometry args={[128, 48]} />
-      </mesh>
+      <MetaBalls
+        position={[12, -630, 2605]}
+        scale={[280, 280, 1]}
+        enableTransparency
+        animationSize={40}
+        renderOrder={5}
+        ballCount={12}
+        clumpFactor={0.6}
+        seed={5}
+        anchors={[
+          {
+            x: -1.5,
+            y: -7.25,
+            radius: 16,
+            roundness: 0.6,
+            yScale: 0.1,
+          },
+          {
+            x: -1,
+            y: -17,
+            radius: 16,
+            roundness: 0.6,
+            yScale: 0.1,
+          },
+        ]}
+      />
 
-      <sprite position={[0, -800, 2600]} scale={scale}>
-        <spriteMaterial map={middle} transparent depthWrite={false} />
+      <MetaBalls
+        position={[12, -630, 2605]}
+        scale={[280, 280, 1]}
+        enableTransparency
+        animationSize={40}
+        seed={10}
+        ballCount={16}
+        clumpFactor={0.85}
+        anchors={[
+          {
+            x: -1.5,
+            y: -7.25,
+            radius: 15,
+            roundness: 0.6,
+            yScale: 0.1,
+          },
+          {
+            x: -1,
+            y: -17,
+            radius: 15,
+            roundness: 0.6,
+            yScale: 0.1,
+          },
+        ]}
+      />
+
+      <sprite position={[0, -800, 2600]} scale={scale} renderOrder={10}>
+        <spriteMaterial
+          map={middle}
+          transparent
+          depthWrite={false}
+          // opacity={0.5}
+        />
       </sprite>
 
-      <mesh
-        position={[9, -860, 2600]}
-        scale={[1, 0.11, 1]}
-        renderOrder={999}
-        material={displayMatB}
-        onPointerMove={(e) => {
-          pointerActiveRefB.current = true;
-          if (e.uv) pointerUvRefB.current = e.uv.clone();
-        }}
-        onPointerOut={() => {
-          pointerActiveRefB.current = false;
-          pointerUvRefB.current = null;
-        }}
-        onPointerLeave={() => {
-          pointerActiveRefB.current = false;
-          pointerUvRefB.current = null;
-        }}
-      >
-        <circleGeometry args={[122, 48]} />
-      </mesh>
+      <MetaBalls
+        position={[10, -830, 2605]}
+        scale={[280, 280, 1]}
+        enableTransparency
+        seed={7}
+        animationSize={40}
+        ballCount={18}
+        anchors={[
+          { x: -1.5, y: 1.5, radius: 15, roundness: 0.6, yScale: 0.1 },
+          {
+            x: -0.95,
+            y: -6,
+            radius: 15,
+            roundness: 0.6,
+            yScale: 0.05,
+          },
+        ]}
+      />
 
-      <sprite position={[0, -800, 2600]} scale={scale} renderOrder={0}>
-        <spriteMaterial map={bottom} transparent depthWrite={false} />
+      <MetaBalls
+        position={[10, -830, 2605]}
+        scale={[280, 280, 1]}
+        enableTransparency
+        seed={12}
+        animationSize={40}
+        renderOrder={5}
+        ballCount={18}
+        anchors={[
+          {
+            x: -1.5,
+            y: 1.5,
+            radius: 15,
+            roundness: 0.6,
+            yScale: 0.1,
+          },
+          {
+            x: -0.95,
+            y: -5.85,
+            radius: 15,
+            roundness: 0.6,
+            yScale: 0.05,
+          },
+        ]}
+      />
+
+      <sprite position={[0, -800, 2600]} scale={scale} renderOrder={999}>
+        <spriteMaterial
+          map={bottom}
+          transparent
+          depthWrite={false}
+          // opacity={0.5}
+        />
       </sprite>
     </group>
   );
