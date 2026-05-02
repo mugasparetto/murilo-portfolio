@@ -1,7 +1,41 @@
 import { RefObject, useMemo } from "react";
 import * as THREE from "three";
-import { useTexture } from "@react-three/drei";
+import { useTexture, Line } from "@react-three/drei";
 import MetaBalls from "./MetaBalls";
+
+type DiskProps = {
+  radius: number;
+  position: [number, number, number];
+  scale: [number, number, number];
+  thickness: number;
+};
+
+function HalfCircleWithDisk({ radius, position, scale, thickness }: DiskProps) {
+  const segments = 100;
+
+  const points = useMemo(() => {
+    const curve = new THREE.ArcCurve(0, 0, radius, Math.PI, 0, false);
+    return curve.getPoints(segments);
+  }, [radius]);
+
+  return (
+    <group position={position} scale={scale}>
+      {/* Black disk */}
+      <mesh position={[0, 0, -1.8]}>
+        <circleGeometry args={[radius, 64]} />
+        <meshBasicMaterial color="black" />
+      </mesh>
+
+      {/* Thick white arc */}
+      <Line
+        points={points}
+        color="white"
+        lineWidth={thickness} // thickness (in pixels)
+        rotation={[0, 0, Math.PI]}
+      />
+    </group>
+  );
+}
 
 type Props = {
   ref: RefObject<THREE.Group | null>;
@@ -92,6 +126,13 @@ export default function Head({ ref }: Props) {
         />
       </sprite>
 
+      <HalfCircleWithDisk
+        radius={122}
+        position={[5, -718, 2595]}
+        scale={[1, 0.1, 1]}
+        thickness={4}
+      />
+
       <MetaBalls
         position={[10, -830, 2605]}
         scale={[280, 280, 1]}
@@ -145,6 +186,13 @@ export default function Head({ ref }: Props) {
           // opacity={0.5}
         />
       </sprite>
+
+      <HalfCircleWithDisk
+        radius={122}
+        position={[1, -858, 2595]}
+        scale={[1, 0.1, 1]}
+        thickness={4}
+      />
     </group>
   );
 }
