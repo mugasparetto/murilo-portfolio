@@ -184,7 +184,7 @@ export default function Scene({ scrollWindow, content }: Props) {
   const planePos: [number, number, number] = [0, !up.md ? -1205 : -1005, 2200];
 
   const scrollVh = useScrollVhAbsolute();
-  const PHASE_WEIGHTS = [0.2, 0.1, 0.3, 0.3];
+  const PHASE_WEIGHTS = [0.2, 0.1333, 0.2, 0.1333, 0.2, 0.1333]; // head content, head connector, eyes content, eyes connector, mouth content, mouth connector
   const PHASES = makeRanges(PHASE_WEIGHTS);
 
   useFrame(() => {
@@ -201,10 +201,12 @@ export default function Scene({ scrollWindow, content }: Props) {
     }
 
     if (headBillboardRef.current) {
-      headBillboardRef.current.visible = pHeadConnector >= 0.99;
+      headBillboardRef.current.visible = pHeadConnector >= 0.999;
     }
 
-    setProgresHeadConnector(pHeadConnector * 700);
+    setProgresHeadConnector(
+      pHeadConnector * 301 > 300 ? 700 : pHeadConnector * 300,
+    ); // tweak: extend the connector animation a bit after the billboard appears
   });
 
   return (
