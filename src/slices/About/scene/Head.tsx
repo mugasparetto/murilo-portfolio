@@ -2,7 +2,6 @@ import { RefObject, useMemo } from "react";
 import * as THREE from "three";
 import { useTexture, Line } from "@react-three/drei";
 import MetaBalls from "./MetaBalls";
-import TeleportingBillboard, { type Quad } from "./TeleportingBillboard";
 
 type DiskProps = {
   radius: number;
@@ -42,14 +41,6 @@ type Props = {
   ref: RefObject<THREE.Group | null>;
 };
 
-// Define any four 3-D points — they don't need to be coplanar.
-const AREA: Quad = {
-  p0: [-50, -580, 2620],
-  p1: [60, -580, 2620],
-  p2: [120, -680, 2620],
-  p3: [-100, -680, 2620],
-};
-
 export default function Head({ ref }: Props) {
   const bottom = useTexture("/textures/head/bottom.webp");
   const middle = useTexture("/textures/head/middle.webp");
@@ -64,19 +55,6 @@ export default function Head({ ref }: Props) {
 
   return (
     <group ref={ref}>
-      <TeleportingBillboard
-        quad={AREA}
-        svgUrl="/star.svg"
-        svgScale={0.45}
-        width={15}
-        height={15}
-        intervalMs={140}
-        // debug={true}
-        debugColor="#00ffcc"
-        strokeWidth={1}
-        renderOrder={999}
-      />
-
       <sprite position={[0, -800, 2600]} scale={scale} renderOrder={10}>
         <spriteMaterial
           map={top}
@@ -152,7 +130,7 @@ export default function Head({ ref }: Props) {
         radius={122}
         position={[5, -718, 2595]}
         scale={[1, 0.1, 1]}
-        thickness={4}
+        thickness={2}
       />
 
       <MetaBalls
@@ -213,7 +191,7 @@ export default function Head({ ref }: Props) {
         radius={122}
         position={[1, -858, 2595]}
         scale={[1, 0.1, 1]}
-        thickness={4}
+        thickness={2}
       />
     </group>
   );

@@ -1,10 +1,18 @@
 import * as THREE from "three";
-import { useLayoutEffect, useMemo, useRef, Suspense } from "react";
-import { ThreeElements } from "@react-three/fiber";
-import { Text } from "@react-three/drei";
+import { useLayoutEffect, useMemo, useRef, Suspense, useState } from "react";
+import { ThreeElements, useFrame } from "@react-three/fiber";
+import { Text, Html } from "@react-three/drei";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
-import { useScrollVhAbsolute, VhWindow } from "@/app/helpers/scroll";
 import Head from "./Head";
+import { KeyTextField } from "@prismicio/client";
+import {
+  makeRanges,
+  segmentProgress,
+  progressInVhWindow,
+  useScrollVhAbsolute,
+  VhWindow,
+} from "@/app/helpers/scroll";
+import TeleportingBillboard, { type Quad } from "./TeleportingBillboard";
 
 type LinePosition = {
   x: number;
@@ -56,7 +64,7 @@ function Lines({
       {...props}
     >
       <planeGeometry args={geoArgs} />
-      <primitive object={mat} attach="material" />
+      <primitive object={mat} attach="material" transparent opacity={0.2} />
     </instancedMesh>
   );
 }
@@ -117,13 +125,33 @@ function useUCurvePlaneGeometry(
   }, [width, height, curveDepth, segments]);
 }
 
-type Props = {
-  scrollWindow: VhWindow;
+type BulletContent = {
+  title: KeyTextField;
+  description: KeyTextField;
 };
 
-export default function Scene({ scrollWindow }: Props) {
+type Props = {
+  scrollWindow: VhWindow;
+  content: {
+    head: BulletContent;
+    eyes: BulletContent;
+    mouth: BulletContent;
+  };
+};
+
+const HEAD_AREA: Quad = {
+  p0: [-50, -580, 2600],
+  p1: [60, -580, 2600],
+  p2: [120, -680, 2600],
+  p3: [-100, -680, 2600],
+};
+
+export default function Scene({ scrollWindow, content }: Props) {
   const { up } = useBreakpoints(BREAKPOINTS);
   const head = useRef<THREE.Group | null>(null);
+  const headContentRef = useRef<HTMLDivElement>(null);
+  const [progressHeadConnector, setProgresHeadConnector] = useState(0);
+  const headBillboardRef = useRef<THREE.Group | null>(null);
 
   const lines = [
     { x: -690, y: -28 },
@@ -156,6 +184,28 @@ export default function Scene({ scrollWindow }: Props) {
   const planePos: [number, number, number] = [0, !up.md ? -1205 : -1005, 2200];
 
   const scrollVh = useScrollVhAbsolute();
+  const PHASE_WEIGHTS = [0.2, 0.1, 0.3, 0.3];
+  const PHASES = makeRanges(PHASE_WEIGHTS);
+
+  useFrame(() => {
+    const t = progressInVhWindow(scrollVh.current, scrollWindow);
+
+    const pHeadContent = segmentProgress(t, PHASES, 0);
+    const pHeadConnector = segmentProgress(t, PHASES, 1);
+
+    if (headContentRef.current) {
+      headContentRef.current.style.setProperty(
+        "--tw-translate-y",
+        `${(1 - pHeadContent) * 100}%`,
+      );
+    }
+
+    if (headBillboardRef.current) {
+      headBillboardRef.current.visible = pHeadConnector >= 0.99;
+    }
+
+    setProgresHeadConnector(pHeadConnector * 700);
+  });
 
   return (
     <group>
@@ -179,8 +229,9 @@ export default function Scene({ scrollWindow }: Props) {
         <Text
           position={[0, -800, 2210]}
           font="/fonts/Morganite-Black.ttf"
-          fontSize={600}
+          fontSize={680}
           color="white"
+          fillOpacity={0.2}
         >
           ABOUT ME
         </Text>
@@ -188,7 +239,44 @@ export default function Scene({ scrollWindow }: Props) {
 
       <Suspense fallback={null}>
         <Head ref={head} />
+
+        <TeleportingBillboard
+          quad={HEAD_AREA}
+          svgScale={0.45}
+          width={15}
+          height={15}
+          intervalMs={140}
+          // debug={true}
+          strokeWidth={1.25}
+          lineAnchor={[-470, -852.5, 2600]}
+          lineAttachment="left"
+          lineColor="#ffffff"
+          lineWidth={2}
+          progress={progressHeadConnector}
+          progressMode="distance"
+          billboardRef={headBillboardRef}
+        />
       </Suspense>
+
+      <Html
+        transform
+        position={[-320, -800, 2600]}
+        wrapperClass="fixed!"
+        className="overflow-hidden"
+        distanceFactor={240}
+      >
+        <div
+          ref={headContentRef}
+          className="bg-black/60 p-8 w-[31.5rem] flex flex-col gap-2 transform translate-y-[101%]"
+        >
+          <span className="lowercase text-3xl font-bold">
+            {content.head.title}
+          </span>
+          <span className="lowercase text-lg leading-5.5">
+            {content.head.description}
+          </span>
+        </div>
+      </Html>
     </group>
   );
 }

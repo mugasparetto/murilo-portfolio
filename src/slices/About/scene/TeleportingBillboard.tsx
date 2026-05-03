@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo } from "react";
-import { useLoader } from "@react-three/fiber";
 import { Billboard, Line } from "@react-three/drei";
 import * as THREE from "three";
 
@@ -12,10 +11,10 @@ export interface Quad {
   p3: [number, number, number];
 }
 
+export type BillboardSide = "left" | "right" | "top" | "bottom";
+
 export interface TeleportingBillboardProps {
   quad: Quad;
-  /** Path or URL to the SVG file rendered at the centre. */
-  svgUrl: string;
   /** Billboard width in world units. Default: 1 */
   width?: number;
   /** Billboard height in world units. Default: 1 */
@@ -30,12 +29,31 @@ export interface TeleportingBillboardProps {
   debug?: boolean;
   /** Debug overlay colour. Default: "#00ffcc" */
   debugColor?: string;
-  /**
-   * Three.js renderOrder for the billboard group — higher draws on top.
-   * Increase if the billboard still appears behind other transparent objects.
-   * Default: 999
-   */
+  /** Three.js renderOrder — higher draws on top. Default: 999 */
   renderOrder?: number;
+  /**
+   * Static world-space anchor point the connector line starts from.
+   * When omitted, no line is drawn.
+   */
+  lineAnchor?: [number, number, number];
+  /**
+   * Which edge of the billboard the connector line attaches to.
+   * Default: "left"
+   */
+  lineAttachment?: BillboardSide;
+  /** Colour of the connector line. Default: "#ffffff" */
+  lineColor?: string;
+  /** Width of the connector line in px. Default: 1.5 */
+  lineWidth?: number;
+  // In TeleportingBillboardProps
+  /** 0 = hidden, 1 = fully drawn. Default: 1 */
+  progress?: number;
+  /** How `progress` is interpreted:
+   *  - "normalized": 0–1 fraction of current line length (default, existing behaviour)
+   *  - "distance":   world-unit distance from the anchor along the line
+   */
+  progressMode?: "normalized" | "distance";
+  billboardRef?: React.Ref<THREE.Group> | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -56,6 +74,73 @@ function randomPointInQuad(q: Quad): THREE.Vector3 {
 
 function quadLoop(q: Quad): [number, number, number][] {
   return [q.p0, q.p1, q.p2, q.p3, q.p0];
+}
+
+/**
+ * Given the billboard's world-space centre, its size, and the chosen side,
+ * return the world-space point on that edge.
+ */
+function getAttachPoint(
+  billboardPos: THREE.Vector3,
+  width: number,
+  height: number,
+  side: BillboardSide,
+): THREE.Vector3 {
+  const offset = new THREE.Vector3(
+    side === "left" ? -width / 2 - 2 : side === "right" ? width / 2 : 0,
+    side === "bottom" ? -height / 2 : side === "top" ? height / 2 : 0,
+    0,
+  );
+  return billboardPos.clone().add(offset);
+}
+
+/**
+ * Build the 3-point elbow path:
+ *   anchor → elbow → attachPoint
+ *
+ * The elbow sits on the same horizontal plane (Y) as the attach point,
+ * directly above/below the anchor — mirroring the shape in the reference image.
+ */
+function buildDiagonalPath(
+  anchor: THREE.Vector3,
+  attachPoint: THREE.Vector3,
+  side: BillboardSide,
+): THREE.Vector3[] {
+  const anchorOffset = -301.5; // length of horizontal segment near anchor
+  const attachOffset =
+    Math.pow(
+      attachPoint.distanceTo(
+        new THREE.Vector3(anchor.x + anchorOffset, anchor.y, anchor.z),
+      ),
+      5,
+    ) * 0.0000000000002; // length of horizontal segment near billboard
+
+  let anchorElbow: THREE.Vector3;
+  let attachElbow: THREE.Vector3;
+
+  if (side === "left") {
+    anchorElbow = anchor.clone().add(new THREE.Vector3(-anchorOffset, 0, 0));
+    attachElbow = attachPoint
+      .clone()
+      .add(new THREE.Vector3(-attachOffset, 0, 0));
+  } else if (side === "right") {
+    anchorElbow = anchor.clone().add(new THREE.Vector3(anchorOffset, 0, 0));
+    attachElbow = attachPoint
+      .clone()
+      .add(new THREE.Vector3(attachOffset, 0, 0));
+  } else if (side === "top") {
+    anchorElbow = anchor.clone().add(new THREE.Vector3(0, anchorOffset, 0));
+    attachElbow = attachPoint
+      .clone()
+      .add(new THREE.Vector3(0, attachOffset, 0));
+  } else {
+    anchorElbow = anchor.clone().add(new THREE.Vector3(0, -anchorOffset, 0));
+    attachElbow = attachPoint
+      .clone()
+      .add(new THREE.Vector3(0, -attachOffset, 0));
+  }
+
+  return [anchor, anchorElbow, attachElbow, attachPoint];
 }
 
 // ─── Debug overlay ────────────────────────────────────────────────────────────
@@ -83,13 +168,12 @@ function DebugQuad({ quad, color }: { quad: Quad; color: string }) {
 }
 
 // ─── Stroke border ────────────────────────────────────────────────────────────
-// Built from 4 thin planes that form a frame, each nudged slightly forward
-// so they always render on top of the white background plane.
 
 interface StrokeBorderProps {
   width: number;
   height: number;
-  thickness: number; // world-unit thickness
+  thickness: number;
+  renderOrder: number;
 }
 
 function StrokeBorder({
@@ -97,16 +181,14 @@ function StrokeBorder({
   height,
   thickness: t,
   renderOrder,
-}: StrokeBorderProps & { renderOrder: number }) {
-  const Z = 1.001;
-
+}: StrokeBorderProps) {
+  const Z = 0.001;
   const segments: [number, number, number, number][] = [
     [0, (height + t) / 2, width + t * 2, t],
     [0, -(height + t) / 2, width + t * 2, t],
     [-(width + t) / 2, 0, t, height],
     [(width + t) / 2, 0, t, height],
   ];
-
   return (
     <group>
       {segments.map(([x, y, w, h], i) => (
@@ -125,38 +207,121 @@ function StrokeBorder({
   );
 }
 
-// ─── SVG layer ────────────────────────────────────────────────────────────────
+// Replace the SvgLayer component with this:
 
-function SvgLayer({
-  url,
+function CrossLayer({
   size,
   renderOrder,
 }: {
-  url: string;
   size: number;
   renderOrder: number;
 }) {
-  const texture = useLoader(THREE.TextureLoader, url);
-
-  // Preserve the SVG's aspect ratio
-  const [planeW, planeH] = useMemo(() => {
-    const img = texture.image as HTMLImageElement | undefined;
-    if (!img?.naturalWidth || !img?.naturalHeight) return [size, size];
-    const aspect = img.naturalWidth / img.naturalHeight;
-    return aspect >= 1 ? [size, size / aspect] : [size * aspect, size];
-  }, [texture, size]);
+  const thickness = size * 0.1; // arm thickness = 25% of the cross size
 
   return (
-    <mesh position={[0, 0, 0.002]} renderOrder={renderOrder + 2}>
-      <planeGeometry args={[planeW, planeH]} />
-      <meshBasicMaterial
-        map={texture}
-        transparent
-        depthWrite={false}
-        depthTest={false}
-        alphaTest={0.01}
-      />
-    </mesh>
+    <group position={[0, 0, 0.002]}>
+      {/* Horizontal bar */}
+      <mesh renderOrder={renderOrder + 2}>
+        <planeGeometry args={[size, thickness]} />
+        <meshBasicMaterial
+          color="#ffffff"
+          transparent
+          depthWrite={false}
+          depthTest={false}
+        />
+      </mesh>
+
+      {/* Vertical bar */}
+      <mesh renderOrder={renderOrder + 2}>
+        <planeGeometry args={[thickness, size]} />
+        <meshBasicMaterial
+          color="#ffffff"
+          transparent
+          depthWrite={false}
+          depthTest={false}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+// ─── Connector line ───────────────────────────────────────────────────────────
+
+interface ConnectorLineProps {
+  anchor: [number, number, number];
+  billboardPos: THREE.Vector3;
+  width: number;
+  height: number;
+  side: BillboardSide;
+  color: string;
+  lineWidth: number;
+  renderOrder: number;
+  progress: number;
+  progressMode?: "normalized" | "distance";
+}
+
+function ConnectorLine({
+  anchor,
+  billboardPos,
+  width,
+  height,
+  side,
+  color,
+  lineWidth,
+  renderOrder,
+  progress,
+  progressMode = "normalized",
+}: ConnectorLineProps) {
+  const points = useMemo(() => {
+    if (progress <= 0) return null;
+
+    const anchorVec = new THREE.Vector3(...anchor);
+    const attachPoint = getAttachPoint(billboardPos, width, height, side);
+    const controlPoints = buildDiagonalPath(anchorVec, attachPoint, side);
+
+    let totalLength = 0;
+    for (let i = 0; i < controlPoints.length - 1; i++) {
+      totalLength += controlPoints[i].distanceTo(controlPoints[i + 1]);
+    }
+
+    const target =
+      progressMode === "distance"
+        ? Math.min(progress, totalLength)
+        : totalLength * Math.min(progress, 1);
+
+    const result: THREE.Vector3[] = [controlPoints[0]];
+    let walked = 0;
+
+    for (let i = 0; i < controlPoints.length - 1; i++) {
+      const a = controlPoints[i];
+      const b = controlPoints[i + 1];
+      const segLen = a.distanceTo(b);
+
+      if (walked + segLen >= target) {
+        const t = (target - walked) / segLen;
+        result.push(a.clone().lerp(b, t));
+        break;
+      }
+
+      result.push(b);
+      walked += segLen;
+    }
+
+    return result;
+  }, [anchor, billboardPos, width, height, side, progress, progressMode]);
+
+  if (!points) return null;
+
+  return (
+    <Line
+      points={points}
+      color={color}
+      lineWidth={lineWidth}
+      renderOrder={renderOrder}
+      transparent
+      depthWrite={false}
+      depthTest={false}
+    />
   );
 }
 
@@ -164,7 +329,6 @@ function SvgLayer({
 
 export default function TeleportingBillboard({
   quad,
-  svgUrl,
   width = 1,
   height = 1,
   svgScale = 0.55,
@@ -173,6 +337,13 @@ export default function TeleportingBillboard({
   debug = false,
   debugColor = "#00ffcc",
   renderOrder = 999,
+  lineAnchor,
+  lineAttachment = "left",
+  lineColor = "#ffffff",
+  lineWidth = 1.5,
+  progress = 1, // ← add with default
+  progressMode = "normalized", // ← add with default
+  billboardRef = null,
 }: TeleportingBillboardProps) {
   const [position, setPosition] = useState<THREE.Vector3>(() =>
     randomPointInQuad(quad),
@@ -196,6 +367,22 @@ export default function TeleportingBillboard({
     <group>
       {debug && <DebugQuad quad={quad} color={debugColor} />}
 
+      {/* Connector line — drawn outside Billboard so it lives in world space */}
+      {lineAnchor && (
+        <ConnectorLine
+          anchor={lineAnchor}
+          billboardPos={position}
+          width={width}
+          height={height}
+          side={lineAttachment}
+          color={lineColor}
+          lineWidth={lineWidth}
+          renderOrder={renderOrder + 3}
+          progress={progress} // ← pass through
+          progressMode={progressMode} // ← pass through
+        />
+      )}
+
       <Billboard
         position={position}
         follow
@@ -203,13 +390,14 @@ export default function TeleportingBillboard({
         lockY={false}
         lockZ={false}
         renderOrder={renderOrder}
+        ref={billboardRef}
       >
         {/* 1 — White semi-transparent background */}
         <mesh renderOrder={renderOrder}>
           <planeGeometry args={[width, height]} />
           <meshBasicMaterial
             color="#000000"
-            opacity={0.8}
+            opacity={0.7}
             transparent
             depthWrite={false}
             depthTest={false}
@@ -225,7 +413,7 @@ export default function TeleportingBillboard({
         />
 
         {/* 3 — SVG centred on top */}
-        <SvgLayer url={svgUrl} size={svgSize} renderOrder={renderOrder} />
+        <CrossLayer size={svgSize} renderOrder={renderOrder} />
       </Billboard>
     </group>
   );
