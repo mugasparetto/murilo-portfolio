@@ -210,7 +210,7 @@ export default function Scene({ scrollWindow, content }: Props) {
   const PHASE_WEIGHTS = [0.2, 0.1333, 0.2, 0.1333, 0.2, 0.1333]; // head content, head connector, eyes content, eyes connector, mouth content, mouth connector
   const PHASES = makeRanges(PHASE_WEIGHTS);
 
-  useFrame(() => {
+  useFrame((state) => {
     const t = progressInVhWindow(scrollVh.current, scrollWindow);
 
     const pHeadContent = segmentProgress(t, PHASES, 0);
@@ -255,6 +255,10 @@ export default function Scene({ scrollWindow, content }: Props) {
     setProgressMouthConnector(
       pMouthConnector * 301 > 300 ? 700 : pMouthConnector * 300,
     );
+
+    if (head.current) {
+      head.current.position.y = Math.sin(state.clock.elapsedTime * 0.35) * 10;
+    }
   });
 
   return (
@@ -295,7 +299,7 @@ export default function Scene({ scrollWindow, content }: Props) {
           svgScale={0.45}
           width={15}
           height={15}
-          intervalMs={190}
+          intervalMs={200}
           // debug={true}
           strokeWidth={1.25}
           lineAnchor={[-470, -852.5, 2600]}
@@ -313,7 +317,7 @@ export default function Scene({ scrollWindow, content }: Props) {
           svgScale={0.45}
           width={15}
           height={15}
-          intervalMs={190}
+          intervalMs={200}
           // debug={true}
           strokeWidth={1.25}
           lineAnchor={[471, -673, 2600]}
@@ -331,7 +335,7 @@ export default function Scene({ scrollWindow, content }: Props) {
           svgScale={0.45}
           width={15}
           height={15}
-          intervalMs={190}
+          intervalMs={200}
           // debug={true}
           strokeWidth={1.25}
           lineAnchor={[511, -903, 2600]}
