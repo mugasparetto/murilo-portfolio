@@ -34,7 +34,7 @@ const About: FC<AboutProps> = ({ slice }) => {
       priority: 20,
       node: (
         <Scene
-          scrollWindow={{ startVh: 345, endVh: 460 }}
+          scrollWindow={{ startVh: 345, endVh: 500 }}
           content={{
             head: {
               title: slice.primary.head_title,
@@ -77,7 +77,7 @@ const About: FC<AboutProps> = ({ slice }) => {
       ref={aboutRef}
       data-slice-type={slice.slice_type}
       data-slice-variation={slice.variation}
-      className="h-[400vh] relative"
+      className="h-[310vh] relative"
     ></section>
   );
 };

@@ -153,6 +153,13 @@ const EYES_AREA: Quad = {
   p3: [-100, -730, 2600],
 };
 
+const MOUTH_AREA: Quad = {
+  p0: [-58, -1020, 2600],
+  p1: [68, -1020, 2600],
+  p2: [120, -870, 2600],
+  p3: [-100, -870, 2600],
+};
+
 export default function Scene({ scrollWindow, content }: Props) {
   const { up } = useBreakpoints(BREAKPOINTS);
   const head = useRef<THREE.Group | null>(null);
@@ -164,6 +171,10 @@ export default function Scene({ scrollWindow, content }: Props) {
   const eyesContentRef = useRef<HTMLDivElement>(null);
   const [progressEyesConnector, setProgressEyesConnector] = useState(0);
   const eyesBillboardRef = useRef<THREE.Group | null>(null);
+
+  const mouthContentRef = useRef<HTMLDivElement>(null);
+  const [progressMouthConnector, setProgressMouthConnector] = useState(0);
+  const mouthBillboardRef = useRef<THREE.Group | null>(null);
 
   const lines = [
     { x: -690, y: -28 },
@@ -206,6 +217,8 @@ export default function Scene({ scrollWindow, content }: Props) {
     const pHeadConnector = segmentProgress(t, PHASES, 1);
     const pEyesContent = segmentProgress(t, PHASES, 2);
     const pEyesConnector = segmentProgress(t, PHASES, 3);
+    const pMouthContent = segmentProgress(t, PHASES, 4);
+    const pMouthConnector = segmentProgress(t, PHASES, 5);
 
     if (headContentRef.current) {
       headContentRef.current.style.transform = `translateY(${(1 - pHeadContent) * 100}%)`;
@@ -229,6 +242,18 @@ export default function Scene({ scrollWindow, content }: Props) {
 
     setProgressEyesConnector(
       pEyesConnector * 301 > 300 ? 700 : pEyesConnector * 300,
+    );
+
+    if (mouthContentRef.current) {
+      mouthContentRef.current.style.transform = `translateY(${(1 - pMouthContent) * 100}%)`;
+    }
+
+    if (mouthBillboardRef.current) {
+      mouthBillboardRef.current.visible = pMouthConnector >= 0.999;
+    }
+
+    setProgressMouthConnector(
+      pMouthConnector * 301 > 300 ? 700 : pMouthConnector * 300,
     );
   });
 
@@ -270,7 +295,7 @@ export default function Scene({ scrollWindow, content }: Props) {
           svgScale={0.45}
           width={15}
           height={15}
-          intervalMs={140}
+          intervalMs={190}
           // debug={true}
           strokeWidth={1.25}
           lineAnchor={[-470, -852.5, 2600]}
@@ -288,16 +313,34 @@ export default function Scene({ scrollWindow, content }: Props) {
           svgScale={0.45}
           width={15}
           height={15}
-          intervalMs={140}
+          intervalMs={190}
           // debug={true}
           strokeWidth={1.25}
-          lineAnchor={[491, -673, 2600]}
+          lineAnchor={[471, -673, 2600]}
           lineAttachment="right"
           lineColor="#ffffff"
           lineWidth={2}
           progress={progressEyesConnector}
           progressMode="distance"
           billboardRef={eyesBillboardRef}
+          divider={0.00000000006}
+        />
+
+        <TeleportingBillboard
+          quad={MOUTH_AREA}
+          svgScale={0.45}
+          width={15}
+          height={15}
+          intervalMs={190}
+          // debug={true}
+          strokeWidth={1.25}
+          lineAnchor={[511, -903, 2600]}
+          lineAttachment="right"
+          lineColor="#ffffff"
+          lineWidth={2}
+          progress={progressMouthConnector}
+          progressMode="distance"
+          billboardRef={mouthBillboardRef}
           divider={0.00000000006}
         />
       </Suspense>
@@ -324,7 +367,7 @@ export default function Scene({ scrollWindow, content }: Props) {
 
       <Html
         transform
-        position={[340, -620, 2600]}
+        position={[320, -620, 2600]}
         wrapperClass="fixed!"
         className="overflow-hidden"
         distanceFactor={240}
@@ -338,6 +381,26 @@ export default function Scene({ scrollWindow, content }: Props) {
           </span>
           <span className="lowercase text-lg leading-5.5">
             {content.eyes.description}
+          </span>
+        </div>
+      </Html>
+
+      <Html
+        transform
+        position={[360, -850, 2600]}
+        wrapperClass="fixed!"
+        className="overflow-hidden"
+        distanceFactor={240}
+      >
+        <div
+          ref={mouthContentRef}
+          className="bg-black/60 p-8 w-[31.5rem] flex flex-col gap-2"
+        >
+          <span className="lowercase text-3xl font-bold">
+            {content.mouth.title}
+          </span>
+          <span className="lowercase text-lg leading-5.5">
+            {content.mouth.description}
           </span>
         </div>
       </Html>
