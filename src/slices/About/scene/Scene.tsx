@@ -254,24 +254,34 @@ export default function Scene({ scrollWindow, content }: Props) {
     }
 
     if (eyesBillboardRef.current) {
-      eyesBillboardRef.current.visible = pEyesConnector >= 0.999;
+      eyesBillboardRef.current.visible =
+        grabbing !== "eyes" && pEyesConnector >= 0.999;
     }
 
-    setProgressEyesConnector(
-      pEyesConnector * 301 > 300 ? 700 : pEyesConnector * 300,
-    );
+    if (grabbing === "eyes") {
+      setProgressEyesConnector(300);
+    } else {
+      setProgressEyesConnector(
+        pEyesConnector * 301 > 300 ? 700 : pEyesConnector * 300,
+      );
+    }
 
     if (mouthContentRef.current) {
       mouthContentRef.current.style.transform = `translateY(${(1 - pMouthContent) * 100}%)`;
     }
 
     if (mouthBillboardRef.current) {
-      mouthBillboardRef.current.visible = pMouthConnector >= 0.999;
+      mouthBillboardRef.current.visible =
+        grabbing !== "mouth" && pMouthConnector >= 0.999;
     }
 
-    setProgressMouthConnector(
-      pMouthConnector * 301 > 300 ? 700 : pMouthConnector * 300,
-    );
+    if (grabbing === "mouth") {
+      setProgressMouthConnector(300);
+    } else {
+      setProgressMouthConnector(
+        pMouthConnector * 301 > 300 ? 700 : pMouthConnector * 300,
+      );
+    }
 
     if (head.current && grabbing == null) {
       timeRef.current += delta;

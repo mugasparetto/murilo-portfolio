@@ -2,6 +2,7 @@ import { RefObject, useMemo } from "react";
 import * as THREE from "three";
 import { useTexture, Line } from "@react-three/drei";
 import MetaBalls from "./MetaBalls";
+import PolygonSprite, { UV } from "./PolygonSprite";
 
 type DiskProps = {
   radius: number;
@@ -37,6 +38,34 @@ function HalfCircleWithDisk({ radius, position, scale, thickness }: DiskProps) {
   );
 }
 
+const HEAD_POLYGON: UV[] = [
+  [0.03, 0.73],
+  [0.45, 0.71],
+  [1, 0.72],
+  [0.95, 0.84],
+  [0.75, 0.96],
+  [0.55, 1],
+  [0.35, 0.98],
+  [0.12, 0.9],
+];
+
+const EYES_POLYGON: UV[] = [
+  [0.01, 0.45],
+  [0.5, 0.425],
+  [0.98, 0.45],
+  [1, 0.67],
+  [0.04, 0.67],
+];
+
+const MOUTH_POLYGON: UV[] = [
+  [0.4, 0.01],
+  [0.8, 0.02], // top-right
+  [0.97, 0.2], // bottom-right
+  [0.99, 0.38], // top-right
+  [0.02, 0.38], // top-left
+  [0.1, 0.15],
+];
+
 type Props = {
   ref: RefObject<THREE.Group | null>;
   onGrabbing: (payload: null | "head" | "eyes" | "mouth") => void;
@@ -56,20 +85,15 @@ export default function Head({ ref, onGrabbing }: Props) {
 
   return (
     <group ref={ref}>
-      <sprite
+      <PolygonSprite
+        texture={top}
+        polygon={HEAD_POLYGON}
         position={[0, -800, 2600]}
         scale={scale}
-        renderOrder={10}
+        // debug
         onPointerDown={() => onGrabbing("head")}
         onPointerUp={() => onGrabbing(null)}
-      >
-        <spriteMaterial
-          map={top}
-          transparent
-          depthWrite={false}
-          // opacity={0.5}
-        />
-      </sprite>
+      />
 
       <MetaBalls
         position={[12, -630, 2605]}
@@ -124,20 +148,15 @@ export default function Head({ ref, onGrabbing }: Props) {
         ]}
       />
 
-      <sprite
+      <PolygonSprite
+        texture={middle}
+        polygon={EYES_POLYGON}
         position={[0, -800, 2600]}
         scale={scale}
-        renderOrder={10}
+        // debug
         onPointerDown={() => onGrabbing("eyes")}
         onPointerUp={() => onGrabbing(null)}
-      >
-        <spriteMaterial
-          map={middle}
-          transparent
-          depthWrite={false}
-          // opacity={0.5}
-        />
-      </sprite>
+      />
 
       <HalfCircleWithDisk
         radius={122}
@@ -191,20 +210,15 @@ export default function Head({ ref, onGrabbing }: Props) {
         ]}
       />
 
-      <sprite
+      <PolygonSprite
+        texture={bottom}
+        polygon={MOUTH_POLYGON}
         position={[0, -800, 2600]}
         scale={scale}
-        renderOrder={999}
+        // debug
         onPointerDown={() => onGrabbing("mouth")}
         onPointerUp={() => onGrabbing(null)}
-      >
-        <spriteMaterial
-          map={bottom}
-          transparent
-          depthWrite={false}
-          // opacity={0.5}
-        />
-      </sprite>
+      />
 
       <HalfCircleWithDisk
         radius={122}
