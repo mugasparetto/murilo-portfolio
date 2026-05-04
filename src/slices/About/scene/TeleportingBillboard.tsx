@@ -54,6 +54,7 @@ export interface TeleportingBillboardProps {
    */
   progressMode?: "normalized" | "distance";
   billboardRef?: React.Ref<THREE.Group> | null;
+  divider: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -105,6 +106,7 @@ function buildDiagonalPath(
   anchor: THREE.Vector3,
   attachPoint: THREE.Vector3,
   side: BillboardSide,
+  divider: number,
 ): THREE.Vector3[] {
   const anchorOffset = -301.5; // length of horizontal segment near anchor
   const attachOffset =
@@ -113,7 +115,7 @@ function buildDiagonalPath(
         new THREE.Vector3(anchor.x + anchorOffset, anchor.y, anchor.z),
       ),
       5,
-    ) * 0.0000000000002; // length of horizontal segment near billboard
+    ) * divider; // length of horizontal segment near billboard
 
   let anchorElbow: THREE.Vector3;
   let attachElbow: THREE.Vector3;
@@ -258,6 +260,7 @@ interface ConnectorLineProps {
   renderOrder: number;
   progress: number;
   progressMode?: "normalized" | "distance";
+  divider: number;
 }
 
 function ConnectorLine({
@@ -271,13 +274,19 @@ function ConnectorLine({
   renderOrder,
   progress,
   progressMode = "normalized",
+  divider = 0.0000000000002,
 }: ConnectorLineProps) {
   const points = useMemo(() => {
     if (progress <= 0) return null;
 
     const anchorVec = new THREE.Vector3(...anchor);
     const attachPoint = getAttachPoint(billboardPos, width, height, side);
-    const controlPoints = buildDiagonalPath(anchorVec, attachPoint, side);
+    const controlPoints = buildDiagonalPath(
+      anchorVec,
+      attachPoint,
+      side,
+      divider,
+    );
 
     let totalLength = 0;
     for (let i = 0; i < controlPoints.length - 1; i++) {
@@ -308,7 +317,16 @@ function ConnectorLine({
     }
 
     return result;
-  }, [anchor, billboardPos, width, height, side, progress, progressMode]);
+  }, [
+    anchor,
+    billboardPos,
+    width,
+    height,
+    side,
+    progress,
+    progressMode,
+    divider,
+  ]);
 
   if (!points) return null;
 
@@ -343,6 +361,7 @@ export default function TeleportingBillboard({
   lineWidth = 1.5,
   progress = 1, // ← add with default
   progressMode = "normalized", // ← add with default
+  divider = 0.0000000000002, // ← add with default
   billboardRef = null,
 }: TeleportingBillboardProps) {
   const [position, setPosition] = useState<THREE.Vector3>(() =>
@@ -380,6 +399,7 @@ export default function TeleportingBillboard({
           renderOrder={renderOrder + 3}
           progress={progress} // ← pass through
           progressMode={progressMode} // ← pass through
+          divider={divider} // ← pass through
         />
       )}
 

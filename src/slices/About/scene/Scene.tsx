@@ -146,12 +146,24 @@ const HEAD_AREA: Quad = {
   p3: [-100, -680, 2600],
 };
 
+const EYES_AREA: Quad = {
+  p0: [-120, -820, 2600],
+  p1: [120, -820, 2600],
+  p2: [120, -730, 2600],
+  p3: [-100, -730, 2600],
+};
+
 export default function Scene({ scrollWindow, content }: Props) {
   const { up } = useBreakpoints(BREAKPOINTS);
   const head = useRef<THREE.Group | null>(null);
+
   const headContentRef = useRef<HTMLDivElement>(null);
   const [progressHeadConnector, setProgresHeadConnector] = useState(0);
   const headBillboardRef = useRef<THREE.Group | null>(null);
+
+  const eyesContentRef = useRef<HTMLDivElement>(null);
+  const [progressEyesConnector, setProgressEyesConnector] = useState(0);
+  const eyesBillboardRef = useRef<THREE.Group | null>(null);
 
   const lines = [
     { x: -690, y: -28 },
@@ -192,12 +204,11 @@ export default function Scene({ scrollWindow, content }: Props) {
 
     const pHeadContent = segmentProgress(t, PHASES, 0);
     const pHeadConnector = segmentProgress(t, PHASES, 1);
+    const pEyesContent = segmentProgress(t, PHASES, 2);
+    const pEyesConnector = segmentProgress(t, PHASES, 3);
 
     if (headContentRef.current) {
-      headContentRef.current.style.setProperty(
-        "--tw-translate-y",
-        `${(1 - pHeadContent) * 100}%`,
-      );
+      headContentRef.current.style.transform = `translateY(${(1 - pHeadContent) * 100}%)`;
     }
 
     if (headBillboardRef.current) {
@@ -206,7 +217,19 @@ export default function Scene({ scrollWindow, content }: Props) {
 
     setProgresHeadConnector(
       pHeadConnector * 301 > 300 ? 700 : pHeadConnector * 300,
-    ); // tweak: extend the connector animation a bit after the billboard appears
+    );
+
+    if (eyesContentRef.current) {
+      eyesContentRef.current.style.transform = `translateY(${(1 - pEyesContent) * 100}%)`;
+    }
+
+    if (eyesBillboardRef.current) {
+      eyesBillboardRef.current.visible = pEyesConnector >= 0.999;
+    }
+
+    setProgressEyesConnector(
+      pEyesConnector * 301 > 300 ? 700 : pEyesConnector * 300,
+    );
   });
 
   return (
@@ -257,6 +280,25 @@ export default function Scene({ scrollWindow, content }: Props) {
           progress={progressHeadConnector}
           progressMode="distance"
           billboardRef={headBillboardRef}
+          divider={0.0000000000002}
+        />
+
+        <TeleportingBillboard
+          quad={EYES_AREA}
+          svgScale={0.45}
+          width={15}
+          height={15}
+          intervalMs={140}
+          // debug={true}
+          strokeWidth={1.25}
+          lineAnchor={[491, -673, 2600]}
+          lineAttachment="right"
+          lineColor="#ffffff"
+          lineWidth={2}
+          progress={progressEyesConnector}
+          progressMode="distance"
+          billboardRef={eyesBillboardRef}
+          divider={0.00000000006}
         />
       </Suspense>
 
@@ -269,13 +311,33 @@ export default function Scene({ scrollWindow, content }: Props) {
       >
         <div
           ref={headContentRef}
-          className="bg-black/60 p-8 w-[31.5rem] flex flex-col gap-2 transform translate-y-[101%]"
+          className="bg-black/60 p-8 w-[31.5rem] flex flex-col gap-2"
         >
           <span className="lowercase text-3xl font-bold">
             {content.head.title}
           </span>
           <span className="lowercase text-lg leading-5.5">
             {content.head.description}
+          </span>
+        </div>
+      </Html>
+
+      <Html
+        transform
+        position={[340, -620, 2600]}
+        wrapperClass="fixed!"
+        className="overflow-hidden"
+        distanceFactor={240}
+      >
+        <div
+          ref={eyesContentRef}
+          className="bg-black/60 p-8 w-[31.5rem] flex flex-col gap-2"
+        >
+          <span className="lowercase text-3xl font-bold">
+            {content.eyes.title}
+          </span>
+          <span className="lowercase text-lg leading-5.5">
+            {content.eyes.description}
           </span>
         </div>
       </Html>
