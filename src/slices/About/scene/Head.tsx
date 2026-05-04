@@ -39,9 +39,10 @@ function HalfCircleWithDisk({ radius, position, scale, thickness }: DiskProps) {
 
 type Props = {
   ref: RefObject<THREE.Group | null>;
+  onGrabbing: (payload: null | "head" | "eyes" | "mouth") => void;
 };
 
-export default function Head({ ref }: Props) {
+export default function Head({ ref, onGrabbing }: Props) {
   const bottom = useTexture("/textures/head/bottom.webp");
   const middle = useTexture("/textures/head/middle.webp");
   const top = useTexture("/textures/head/top.webp");
@@ -55,7 +56,13 @@ export default function Head({ ref }: Props) {
 
   return (
     <group ref={ref}>
-      <sprite position={[0, -800, 2600]} scale={scale} renderOrder={10}>
+      <sprite
+        position={[0, -800, 2600]}
+        scale={scale}
+        renderOrder={10}
+        onPointerDown={() => onGrabbing("head")}
+        onPointerUp={() => onGrabbing(null)}
+      >
         <spriteMaterial
           map={top}
           transparent
@@ -117,7 +124,13 @@ export default function Head({ ref }: Props) {
         ]}
       />
 
-      <sprite position={[0, -800, 2600]} scale={scale} renderOrder={10}>
+      <sprite
+        position={[0, -800, 2600]}
+        scale={scale}
+        renderOrder={10}
+        onPointerDown={() => onGrabbing("eyes")}
+        onPointerUp={() => onGrabbing(null)}
+      >
         <spriteMaterial
           map={middle}
           transparent
@@ -178,7 +191,13 @@ export default function Head({ ref }: Props) {
         ]}
       />
 
-      <sprite position={[0, -800, 2600]} scale={scale} renderOrder={999}>
+      <sprite
+        position={[0, -800, 2600]}
+        scale={scale}
+        renderOrder={999}
+        onPointerDown={() => onGrabbing("mouth")}
+        onPointerUp={() => onGrabbing(null)}
+      >
         <spriteMaterial
           map={bottom}
           transparent

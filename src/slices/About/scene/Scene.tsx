@@ -1,5 +1,12 @@
 import * as THREE from "three";
-import { useLayoutEffect, useMemo, useRef, Suspense, useState } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  Suspense,
+  useState,
+  useCallback,
+} from "react";
 import { ThreeElements, useFrame } from "@react-three/fiber";
 import { Text, Html } from "@react-three/drei";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
@@ -176,6 +183,11 @@ export default function Scene({ scrollWindow, content }: Props) {
   const [progressMouthConnector, setProgressMouthConnector] = useState(0);
   const mouthBillboardRef = useRef<THREE.Group | null>(null);
 
+  const [grabbing, setGrabbing] = useState<null | "head" | "eyes" | "mouth">(
+    null,
+  );
+  const timeRef = useRef(0);
+
   const lines = [
     { x: -690, y: -28 },
     { x: -495, y: -36 },
@@ -210,7 +222,7 @@ export default function Scene({ scrollWindow, content }: Props) {
   const PHASE_WEIGHTS = [0.2, 0.1333, 0.2, 0.1333, 0.2, 0.1333]; // head content, head connector, eyes content, eyes connector, mouth content, mouth connector
   const PHASES = makeRanges(PHASE_WEIGHTS);
 
-  useFrame((state) => {
+  useFrame((_, delta) => {
     const t = progressInVhWindow(scrollVh.current, scrollWindow);
 
     const pHeadContent = segmentProgress(t, PHASES, 0);
@@ -225,12 +237,17 @@ export default function Scene({ scrollWindow, content }: Props) {
     }
 
     if (headBillboardRef.current) {
-      headBillboardRef.current.visible = pHeadConnector >= 0.999;
+      headBillboardRef.current.visible =
+        grabbing !== "head" && pHeadConnector >= 0.999;
     }
 
-    setProgresHeadConnector(
-      pHeadConnector * 301 > 300 ? 700 : pHeadConnector * 300,
-    );
+    if (grabbing === "head") {
+      setProgresHeadConnector(300);
+    } else {
+      setProgresHeadConnector(
+        pHeadConnector * 301 > 300 ? 700 : pHeadConnector * 300,
+      );
+    }
 
     if (eyesContentRef.current) {
       eyesContentRef.current.style.transform = `translateY(${(1 - pEyesContent) * 100}%)`;
@@ -256,10 +273,19 @@ export default function Scene({ scrollWindow, content }: Props) {
       pMouthConnector * 301 > 300 ? 700 : pMouthConnector * 300,
     );
 
-    if (head.current) {
-      head.current.position.y = Math.sin(state.clock.elapsedTime * 0.35) * 10;
+    if (head.current && grabbing == null) {
+      timeRef.current += delta;
+      head.current.position.y = Math.sin(timeRef.current * 0.35) * 10;
     }
   });
+
+  const handleGrabbing = useCallback(
+    (payload: null | "head" | "eyes" | "mouth") => {
+      console.log(payload);
+      setGrabbing(payload);
+    },
+    [],
+  );
 
   return (
     <group>
@@ -292,7 +318,7 @@ export default function Scene({ scrollWindow, content }: Props) {
       </Suspense>
 
       <Suspense fallback={null}>
-        <Head ref={head} />
+        <Head ref={head} onGrabbing={handleGrabbing} />
 
         <TeleportingBillboard
           quad={HEAD_AREA}
