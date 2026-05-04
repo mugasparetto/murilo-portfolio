@@ -36,22 +36,21 @@ export type AnchorBall = {
 };
 
 type HolographicMetaBallsProps = {
-  /** Overall animation speed multiplier */
   speed?: number;
-  /** World-space size of the metaball field */
   animationSize?: number;
-  /** Number of floating metaballs */
   ballCount?: number;
-  /** How tightly balls cluster (0–1) */
   clumpFactor?: number;
-  /** Render with transparency outside the metaball shape */
   enableTransparency?: boolean;
-  /** Fixed anchor blobs (e.g. top/bottom caps) */
   anchors?: AnchorBall[];
   position?: [number, number, number];
   scale?: [number, number, number];
   renderOrder?: number;
   seed?: number;
+  /** When set, balls gradually migrate to the top or bottom anchor */
+  pauseTarget?: "top" | "bottom" | null;
+  /** Lerp speed for migration (0–1, default 0.05) */
+  pauseSpeed?: number;
+  pauseYOffset?: number; // how much above/below the anchor the balls should pause at (default 5)
   // ── Holographic overrides ──────────────────
   holoTimeScale?: number;
   holoSeed?: number;
@@ -64,7 +63,7 @@ type HolographicMetaBallsProps = {
   holoSoftness?: number;
   holoGamma?: number;
   holoGrainAmount?: number;
-  holoZoom?: number; // default 1.0 — smaller = zoomed in, larger = zoomed out
+  holoZoom?: number;
 };
 
 // ─────────────────────────────────────────────
@@ -100,23 +99,11 @@ const vertexShader = /* glsl */ `
   }
 `;
 
-/**
- * Fragment shader — holographic fill + metaball alpha mask.
- *
- * Fill: the mutual-feedback phase accumulator from HolographicPlane.
- *   a += cos(i - d - a * uv.x);
- *   d += sin(uv.y * i + a);
- * This builds organic curved lens shapes whose level sets drive four-color mixing.
- *
- * Mask: classic metaball r²/d² kernel summed over all balls + anchor blobs,
- * thresholded with smoothstep(1.0, 1.02, field) to get a smooth silhouette.
- */
 const fragmentShader = /* glsl */ `
   precision highp float;
 
   varying vec2 vUv;
 
-  // ── Holographic fill uniforms ──────────────
   uniform float uTime;
   uniform vec2  uResolution;
   uniform float uTimeScale;
@@ -132,7 +119,6 @@ const fragmentShader = /* glsl */ `
   uniform float uGrainAmount;
   uniform float uZoom;
 
-  // ── Metaball uniforms ──────────────────────
   uniform float iAnimationSize;
   uniform float iBallCount;
   uniform vec3  iMetaBalls[50];
@@ -144,14 +130,12 @@ const fragmentShader = /* glsl */ `
   uniform float iAnchorYScale[16];
   uniform float iAnchorVisible[16];
 
-  // ── Grain hash ─────────────────────────────
   float hash21(vec2 p) {
     p = fract(p * vec2(234.34, 435.345));
     p += dot(p, p + 34.23);
     return fract(p.x * p.y);
   }
 
-  // ── Metaball kernels ───────────────────────
   float mb(vec2 c, float r, vec2 p) {
     vec2 d = p - c;
     return (r * r) / dot(d, d);
@@ -165,9 +149,6 @@ const fragmentShader = /* glsl */ `
   }
 
   void main() {
-    // ── 1. Holographic fill ────────────────────
-    // Aspect-correct UV matching HolographicPlane convention:
-    //   uv = (fragCoord * 2 - res) / min(res.x, res.y)
     vec2 fragCoord = vUv * uResolution;
     float mr = min(uResolution.x, uResolution.y);
     vec2 uv = (fragCoord * 2.0 - uResolution.xy) / mr;
@@ -175,7 +156,6 @@ const fragmentShader = /* glsl */ `
 
     float t = uTime * uTimeScale;
 
-    // Mutually-recurrent phase accumulators
     float d = -t * 0.5 + uSeed * 3.7;
     float a =  uSeed * 1.3;
 
@@ -187,18 +167,15 @@ const fragmentShader = /* glsl */ `
     }
     d += t * 0.5;
 
-    // Three independent mixers in [0,1]
     float m1 = cos(uv.x * d) * 0.5 + 0.5;
     float m2 = cos(uv.y * a) * 0.5 + 0.5;
     float m3 = sin(d + a)    * 0.5 + 0.5;
 
-    // Softness pulls mixers toward 0.5 for gentler blends
     float s = clamp(uSoftness * 0.1, 0.0, 0.9);
     m1 = mix(m1, 0.5, s);
     m2 = mix(m2, 0.5, s);
     m3 = mix(m3, 0.5, s);
 
-    // Chained four-color blend
     vec3 col = mix(uColor1, uColor2, m1);
     col = mix(col, uColor3, m2);
     col = mix(col, uColor4, m3 * 0.4);
@@ -206,11 +183,9 @@ const fragmentShader = /* glsl */ `
     col *= uColorIntensity;
     col = pow(col, vec3(uGamma));
 
-    // Animated film grain
     float grain = hash21(gl_FragCoord.xy + floor(uTime * 6.0));
     col += (grain - 0.5) * uGrainAmount;
 
-    // ── 2. Metaball alpha mask ─────────────────
     vec2 coord = (vUv - 0.5) * iAnimationSize;
 
     float mbField        = 0.0;
@@ -237,7 +212,6 @@ const fragmentShader = /* glsl */ `
     float fAll     = smoothstep(1.0, 1.02, mbField);
     float fVisible = smoothstep(1.0, 1.02, mbVisibleField);
 
-    // Subtle depth shading from field shape
     col *= 0.85 + 0.15 * fAll;
 
     float alpha = enableTransparency > 0.5 ? fVisible : 1.0;
@@ -277,6 +251,9 @@ function HolographicMetaBallsMesh(props: SceneProps) {
       };
     });
   }, [props.ballCount, props.seed]);
+
+  // Tracked positions for lerping — initialised lazily on first frame
+  const ballPositions = useRef<{ x: number; y: number }[] | null>(null);
 
   // ── Anchor arrays ────────────────────────────
   const anchorPositions = useMemo(
@@ -318,7 +295,6 @@ function HolographicMetaBallsMesh(props: SceneProps) {
   // ── Uniforms ─────────────────────────────────
   const uniforms = useMemo(
     () => ({
-      // Holographic fill
       uTime: { value: 0 },
       uResolution: {
         value: new THREE.Vector2(window.innerWidth, window.innerHeight),
@@ -335,7 +311,6 @@ function HolographicMetaBallsMesh(props: SceneProps) {
       uGamma: { value: props.holoGamma },
       uGrainAmount: { value: props.holoGrainAmount },
       uZoom: { value: props.holoZoom ?? 1.0 },
-      // Metaballs
       iAnimationSize: { value: props.animationSize },
       iBallCount: { value: props.ballCount },
       iMetaBalls: { value: metaBalls },
@@ -365,7 +340,6 @@ function HolographicMetaBallsMesh(props: SceneProps) {
     uniforms.uTime.value = t;
     uniforms.uResolution.value.set(size.width, size.height);
 
-    // Live holo uniform sync (supports runtime prop changes)
     uniforms.uTimeScale.value = props.holoTimeScale;
     uniforms.uSeed.value = props.holoSeed;
     uniforms.uIterations.value = props.holoIterations;
@@ -379,18 +353,75 @@ function HolographicMetaBallsMesh(props: SceneProps) {
     uniforms.uGrainAmount.value = props.holoGrainAmount;
     uniforms.uZoom.value = props.holoZoom;
 
-    // Animate metaballs
     const anchors = props.anchors;
-    const a = anchors[0] ?? { x: 0, y: 37.5 };
+    const topAnchor = anchors[0] ?? { x: 0, y: 37.5 };
+    const bottomAnchor = anchors[1] ?? { x: 0, y: -37.5 };
+
+    const target =
+      props.pauseTarget === "top"
+        ? topAnchor
+        : props.pauseTarget === "bottom"
+          ? bottomAnchor
+          : null;
+
+    const lerpSpeed = props.pauseSpeed;
     const count = props.ballCount;
+
+    // Lazy-init tracked positions to current natural positions
+    if (!ballPositions.current) {
+      ballPositions.current = Array.from({ length: count }, (_, i) => {
+        const p = ballParams[i];
+        const laneT = count > 1 ? i / (count - 1) : 0.5;
+        return {
+          x: (laneT * 2 - 1) * props.animationSize * 0.4 * props.clumpFactor,
+          y:
+            topAnchor.y * 1.3 +
+            Math.sin(t * props.speed * p.speed + p.st) *
+              p.amp *
+              props.clumpFactor,
+        };
+      });
+    }
+
     for (let i = 0; i < count; i++) {
       const p = ballParams[i];
       const laneT = count > 1 ? i / (count - 1) : 0.5;
-      const x = (laneT * 2 - 1) * props.animationSize * 0.4 * props.clumpFactor;
-      const y =
-        a.y * 1.3 +
+
+      // Natural (free-floating) position
+      const naturalX =
+        (laneT * 2 - 1) * props.animationSize * 0.4 * props.clumpFactor;
+      const naturalY =
+        topAnchor.y * 1.3 +
         Math.sin(t * props.speed * p.speed + p.st) * p.amp * props.clumpFactor;
-      metaBalls[i].set(x, y, p.radius);
+
+      let targetY = 0;
+
+      if (target) {
+        targetY =
+          props.pauseTarget === "top"
+            ? target.y + props.pauseYOffset
+            : target.y - props.pauseYOffset;
+      }
+
+      const destX = target ? target.x : naturalX;
+      const destY = target ? targetY : naturalY;
+
+      ballPositions.current[i].x = THREE.MathUtils.lerp(
+        ballPositions.current[i].x,
+        destX,
+        lerpSpeed,
+      );
+      ballPositions.current[i].y = THREE.MathUtils.lerp(
+        ballPositions.current[i].y,
+        destY,
+        lerpSpeed,
+      );
+
+      metaBalls[i].set(
+        ballPositions.current[i].x,
+        ballPositions.current[i].y,
+        p.radius,
+      );
     }
   });
 
@@ -446,7 +477,9 @@ const HolographicMetaBalls: React.FC<HolographicMetaBallsProps> = ({
   scale = [1, 1, 1],
   renderOrder = 1,
   seed = 0,
-  // Holographic fill defaults (match HOLO const above)
+  pauseTarget = null,
+  pauseSpeed = 0.05,
+  pauseYOffset = 5,
   holoTimeScale = HOLO.timeScale,
   holoSeed = HOLO.seed,
   holoIterations = HOLO.iterations,
@@ -471,6 +504,9 @@ const HolographicMetaBalls: React.FC<HolographicMetaBallsProps> = ({
     scale={scale}
     renderOrder={renderOrder}
     seed={seed}
+    pauseTarget={pauseTarget}
+    pauseSpeed={pauseSpeed}
+    pauseYOffset={pauseYOffset}
     holoTimeScale={holoTimeScale}
     holoSeed={holoSeed}
     holoIterations={holoIterations}

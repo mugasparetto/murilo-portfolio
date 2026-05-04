@@ -1,4 +1,4 @@
-import { RefObject, useMemo } from "react";
+import { RefObject, useMemo, useState, useCallback } from "react";
 import * as THREE from "three";
 import { useTexture, Line } from "@react-three/drei";
 import MetaBalls from "./MetaBalls";
@@ -76,12 +76,22 @@ export default function Head({ ref, onGrabbing }: Props) {
   const middle = useTexture("/textures/head/middle.webp");
   const top = useTexture("/textures/head/top.webp");
 
+  const [pause, setPause] = useState<null | "head" | "eyes" | "mouth">(null);
+
   const scale = useMemo<[number, number, number]>(() => {
     const size = 500;
     const img = bottom.image as HTMLImageElement;
     const aspect = img.naturalWidth / img.naturalHeight;
     return [size * aspect, size, 1];
   }, [bottom]);
+
+  const handleGrab = useCallback(
+    (payload: null | "head" | "eyes" | "mouth") => {
+      onGrabbing(payload);
+      setPause(payload);
+    },
+    [onGrabbing],
+  );
 
   return (
     <group ref={ref}>
@@ -91,8 +101,12 @@ export default function Head({ ref, onGrabbing }: Props) {
         position={[0, -800, 2600]}
         scale={scale}
         // debug
-        onPointerDown={() => onGrabbing("head")}
-        onPointerUp={() => onGrabbing(null)}
+        onPointerDown={() => {
+          handleGrab("head");
+        }}
+        onPointerUp={() => {
+          handleGrab(null);
+        }}
       />
 
       <MetaBalls
@@ -103,6 +117,9 @@ export default function Head({ ref, onGrabbing }: Props) {
         renderOrder={5}
         ballCount={12}
         clumpFactor={0.6}
+        pauseTarget={
+          pause === "head" ? "top" : pause === "eyes" ? "bottom" : null
+        }
         seed={5}
         anchors={[
           {
@@ -130,6 +147,9 @@ export default function Head({ ref, onGrabbing }: Props) {
         seed={10}
         ballCount={16}
         clumpFactor={0.85}
+        pauseTarget={
+          pause === "head" ? "top" : pause === "eyes" ? "bottom" : null
+        }
         anchors={[
           {
             x: -1.5,
@@ -154,8 +174,8 @@ export default function Head({ ref, onGrabbing }: Props) {
         position={[0, -800, 2600]}
         scale={scale}
         // debug
-        onPointerDown={() => onGrabbing("eyes")}
-        onPointerUp={() => onGrabbing(null)}
+        onPointerDown={() => handleGrab("eyes")}
+        onPointerUp={() => handleGrab(null)}
       />
 
       <HalfCircleWithDisk
@@ -171,6 +191,10 @@ export default function Head({ ref, onGrabbing }: Props) {
         enableTransparency
         seed={7}
         animationSize={40}
+        pauseTarget={
+          pause === "mouth" ? "bottom" : pause === "eyes" ? "top" : null
+        }
+        pauseYOffset={6}
         ballCount={18}
         anchors={[
           { x: -1.5, y: 1.5, radius: 15, roundness: 0.6, yScale: 0.1 },
@@ -191,6 +215,10 @@ export default function Head({ ref, onGrabbing }: Props) {
         seed={12}
         animationSize={40}
         renderOrder={5}
+        pauseTarget={
+          pause === "mouth" ? "bottom" : pause === "eyes" ? "top" : null
+        }
+        pauseYOffset={pause === "mouth" ? 9 : 6}
         ballCount={18}
         anchors={[
           {
@@ -202,7 +230,7 @@ export default function Head({ ref, onGrabbing }: Props) {
           },
           {
             x: -0.95,
-            y: -5.85,
+            y: -6,
             radius: 15,
             roundness: 0.6,
             yScale: 0.05,
@@ -216,8 +244,8 @@ export default function Head({ ref, onGrabbing }: Props) {
         position={[0, -800, 2600]}
         scale={scale}
         // debug
-        onPointerDown={() => onGrabbing("mouth")}
-        onPointerUp={() => onGrabbing(null)}
+        onPointerDown={() => handleGrab("mouth")}
+        onPointerUp={() => handleGrab(null)}
       />
 
       <HalfCircleWithDisk
