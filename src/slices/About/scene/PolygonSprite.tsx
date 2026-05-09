@@ -47,6 +47,7 @@ interface PolygonSpriteProps {
   onPointerUp?: () => void;
   /** Render a coloured debug overlay so you can tune the polygon + bounds box */
   debug?: boolean;
+  children?: React.ReactNode;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -170,6 +171,7 @@ export default function PolygonSprite({
   onPointerDown,
   onPointerUp,
   debug = false,
+  children,
 }: PolygonSpriteProps) {
   const meshRef = useRef<THREE.Mesh>(null!);
   const groupRef = useRef<THREE.Group>(null!);
@@ -448,6 +450,8 @@ export default function PolygonSprite({
           side={THREE.DoubleSide}
         />
       </mesh>
+
+      {children}
 
       {/* Debug: polygon overlay */}
       {debug && debugGeometry && (

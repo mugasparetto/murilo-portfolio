@@ -171,26 +171,27 @@ export default function Head({ ref, onGrabbing }: Props) {
         ]}
       /> */}
 
-      {/* <group position={[0, -800, 2600]}>
-        <PolygonSprite
-          texture={middle}
-          polygon={EYES_POLYGON}
-          position={[0, 0, 0]}
-          scale={scale}
-          // debug
-          onPointerDown={() => handleGrab("eyes")}
-          onPointerUp={() => handleGrab(null)}
-        />
-
+      <PolygonSprite
+        texture={middle}
+        polygon={EYES_POLYGON}
+        position={[0, -800, 2602]}
+        scale={scale}
+        // debug
+        draggable
+        throwable
+        bounds={{ min: [-550, -1100, 2559], max: [550, -500, 2603] }}
+        onPointerDown={() => handleGrab("eyes")}
+        onPointerUp={() => handleGrab(null)}
+      >
         <HalfCircleWithDisk
           radius={122}
-          position={[5, 82, -5]}
+          position={[5, 82, 1]}
           scale={[1, 0.1, 1]}
           thickness={2}
         />
-      </group>
+      </PolygonSprite>
 
-      <MetaBalls
+      {/* <MetaBalls
         position={[10, -830, 2605]}
         scale={[280, 280, 1]}
         enableTransparency
@@ -241,26 +242,27 @@ export default function Head({ ref, onGrabbing }: Props) {
             yScale: 0.05,
           },
         ]}
-      />
+      /> */}
 
-      <group position={[0, -800, 2600]}>
-        <PolygonSprite
-          texture={bottom}
-          polygon={MOUTH_POLYGON}
-          position={[0, 0, 0]}
-          scale={scale}
-          // debug
-          onPointerDown={() => handleGrab("mouth")}
-          onPointerUp={() => handleGrab(null)}
-        />
-
+      <PolygonSprite
+        texture={bottom}
+        polygon={MOUTH_POLYGON}
+        position={[0, -800, 2604]}
+        scale={scale}
+        // debug
+        draggable
+        throwable
+        bounds={{ min: [-550, -1100, 2559], max: [550, -500, 2605] }}
+        onPointerDown={() => handleGrab("mouth")}
+        onPointerUp={() => handleGrab(null)}
+      >
         <HalfCircleWithDisk
           radius={122}
           position={[1, -58, -5]}
           scale={[1, 0.1, 1]}
           thickness={2}
         />
-      </group> */}
+      </PolygonSprite>
     </group>
   );
 }
