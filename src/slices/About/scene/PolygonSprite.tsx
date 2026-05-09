@@ -448,6 +448,7 @@ export default function PolygonSprite({
           transparent
           alphaTest={0}
           side={THREE.DoubleSide}
+          depthWrite={false}
         />
       </mesh>
 
