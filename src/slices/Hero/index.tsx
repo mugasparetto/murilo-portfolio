@@ -4,7 +4,7 @@ import { FC, useRef, useId, useEffect } from "react";
 import { Content } from "@prismicio/client";
 import { SliceComponentProps } from "@prismicio/react";
 
-import Experience from "./scene/Experience";
+import Scene from "./scene/Scene";
 import { HeroPrimaryProvider } from "./hero-context";
 import { useSceneRegistry } from "@/app/hooks/SceneRegistry";
 
@@ -28,7 +28,7 @@ const Hero: FC<HeroProps> = ({ slice }) => {
       priority: 10,
       node: (
         <HeroPrimaryProvider primary={slice.primary}>
-          <Experience scrollRef={heroRef} />
+          <Scene scrollRef={heroRef} />
         </HeroPrimaryProvider>
       ),
       active: true,
