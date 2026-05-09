@@ -100,7 +100,9 @@ export default function Head({ ref, onGrabbing }: Props) {
         polygon={HEAD_POLYGON}
         position={[0, -800, 2600]}
         scale={scale}
-        // debug
+        debug
+        draggable
+        throwable
         onPointerDown={() => {
           handleGrab("head");
         }}
@@ -109,7 +111,7 @@ export default function Head({ ref, onGrabbing }: Props) {
         }}
       />
 
-      <MetaBalls
+      {/* <MetaBalls
         position={[12, -630, 2605]}
         scale={[280, 280, 1]}
         enableTransparency
@@ -166,24 +168,26 @@ export default function Head({ ref, onGrabbing }: Props) {
             yScale: 0.1,
           },
         ]}
-      />
+      /> */}
 
-      <PolygonSprite
-        texture={middle}
-        polygon={EYES_POLYGON}
-        position={[0, -800, 2600]}
-        scale={scale}
-        // debug
-        onPointerDown={() => handleGrab("eyes")}
-        onPointerUp={() => handleGrab(null)}
-      />
+      {/* <group position={[0, -800, 2600]}>
+        <PolygonSprite
+          texture={middle}
+          polygon={EYES_POLYGON}
+          position={[0, 0, 0]}
+          scale={scale}
+          // debug
+          onPointerDown={() => handleGrab("eyes")}
+          onPointerUp={() => handleGrab(null)}
+        />
 
-      <HalfCircleWithDisk
-        radius={122}
-        position={[5, -718, 2595]}
-        scale={[1, 0.1, 1]}
-        thickness={2}
-      />
+        <HalfCircleWithDisk
+          radius={122}
+          position={[5, 82, -5]}
+          scale={[1, 0.1, 1]}
+          thickness={2}
+        />
+      </group>
 
       <MetaBalls
         position={[10, -830, 2605]}
@@ -238,22 +242,24 @@ export default function Head({ ref, onGrabbing }: Props) {
         ]}
       />
 
-      <PolygonSprite
-        texture={bottom}
-        polygon={MOUTH_POLYGON}
-        position={[0, -800, 2600]}
-        scale={scale}
-        // debug
-        onPointerDown={() => handleGrab("mouth")}
-        onPointerUp={() => handleGrab(null)}
-      />
+      <group position={[0, -800, 2600]}>
+        <PolygonSprite
+          texture={bottom}
+          polygon={MOUTH_POLYGON}
+          position={[0, 0, 0]}
+          scale={scale}
+          // debug
+          onPointerDown={() => handleGrab("mouth")}
+          onPointerUp={() => handleGrab(null)}
+        />
 
-      <HalfCircleWithDisk
-        radius={122}
-        position={[1, -858, 2595]}
-        scale={[1, 0.1, 1]}
-        thickness={2}
-      />
+        <HalfCircleWithDisk
+          radius={122}
+          position={[1, -58, -5]}
+          scale={[1, 0.1, 1]}
+          thickness={2}
+        />
+      </group> */}
     </group>
   );
 }

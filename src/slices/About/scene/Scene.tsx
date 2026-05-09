@@ -291,7 +291,6 @@ export default function Scene({ scrollWindow, content }: Props) {
 
   const handleGrabbing = useCallback(
     (payload: null | "head" | "eyes" | "mouth") => {
-      console.log(payload);
       setGrabbing(payload);
     },
     [],

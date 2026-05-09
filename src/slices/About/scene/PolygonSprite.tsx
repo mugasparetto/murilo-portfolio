@@ -1,6 +1,33 @@
 import { useRef, useMemo, useEffect } from "react";
-import { useThree } from "@react-three/fiber";
+import { useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+
+// ─── Throw tuning ─────────────────────────────────────────────────────────────
+
+/**
+ * Minimum world-space speed (units/s) at release required to trigger a throw.
+ * Lower = easier to throw, higher = only fast flicks count.
+ */
+const THROW_SPEED_THRESHOLD = 500;
+
+/**
+ * Maximum world-space speed (units/s) the throw velocity is clamped to.
+ * Prevents violent flicks from sending the sprite off-screen instantly.
+ */
+const MAX_THROW_SPEED = 1000;
+
+/**
+ * Multiplied against velocity every second (exponential decay).
+ * 0.85 = 85 % of speed kept per second → stops in ~2–3 s.
+ * Raise toward 1 for a longer glide, lower for a quick stop.
+ */
+const FRICTION = 0.25;
+
+/**
+ * How many recent pointer samples to average for the throw velocity.
+ * More samples = smoother but slightly lags; fewer = snappier but noisier.
+ */
+const VELOCITY_SAMPLE_COUNT = 5;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -13,6 +40,13 @@ interface PolygonSpriteProps {
   polygon: UV[];
   position?: [number, number, number];
   scale?: [number, number, number] | number;
+  /** Allow the sprite to be dragged around the scene. Default: false. */
+  draggable?: boolean;
+  /**
+   * When true, releasing after a fast drag throws the sprite — it coasts
+   * with friction until it stops. Requires draggable. Default: false.
+   */
+  throwable?: boolean;
   /** Fired when the pointer is pressed down inside the polygon */
   onPointerDown?: () => void;
   /** Fired when the pointer is released, after a press that started inside the polygon */
@@ -86,6 +120,29 @@ function pointerToUV(
 }
 
 /**
+ * Project a PointerEvent onto a THREE.Plane and return the world-space hit
+ * point. Used during drag to move the sprite along its facing plane.
+ */
+function pointerToWorldPlane(
+  event: PointerEvent,
+  worldPlane: THREE.Plane,
+  camera: THREE.Camera,
+  gl: THREE.WebGLRenderer,
+): THREE.Vector3 | null {
+  const rect = gl.domElement.getBoundingClientRect();
+  const ndcX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  const ndcY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+
+  const target = new THREE.Vector3();
+  return raycaster.ray.intersectPlane(worldPlane, target)
+    ? target.clone()
+    : null;
+}
+
+/**
  * Build a BufferGeometry whose shape exactly matches the UV polygon.
  * UV coords [0,1] are remapped to local plane space [-0.5, 0.5].
  *
@@ -127,14 +184,32 @@ export default function PolygonSprite({
   polygon,
   position = [0, 0, 0],
   scale = 1,
+  draggable = false,
+  throwable = false,
   onPointerDown,
   onPointerUp,
   debug = false,
 }: PolygonSpriteProps) {
   // meshRef is used only for world-space math — not for R3F raycasting.
   const meshRef = useRef<THREE.Mesh>(null!);
+  // groupRef lets us mutate position during drag without a re-render.
+  const groupRef = useRef<THREE.Group>(null!);
   const { camera, gl } = useThree();
+
   const isPressedRef = useRef(false);
+  const isInsideRef = useRef(false);
+  const isDraggingRef = useRef(false);
+
+  // Drag internals — kept in refs to avoid any re-render during movement.
+  const dragPlane = useRef(new THREE.Plane());
+  const dragOffset = useRef(new THREE.Vector3());
+
+  // Throw internals
+  // Ring buffer of recent (worldPosition, timestamp) samples taken during drag.
+  type Sample = { pos: THREE.Vector3; t: number };
+  const velocitySamples = useRef<Sample[]>([]);
+  // Current throw velocity in world units/s; zeroed when stopped.
+  const throwVelocity = useRef(new THREE.Vector3());
 
   const normalizedScale: [number, number, number] =
     typeof scale === "number" ? [scale, scale, scale] : scale;
@@ -146,45 +221,178 @@ export default function PolygonSprite({
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
-      if (!meshRef.current) {
-        console.warn("[PolygonSprite] meshRef not ready");
-        return;
-      }
+      if (!meshRef.current) return;
 
-      // Ensure world matrix is current — required for getWorldPosition / worldToLocal
       meshRef.current.updateWorldMatrix(true, false);
 
       const uv = pointerToUV(event, meshRef.current, camera, gl);
+      if (!uv) return;
 
+      const hit = pointInPolygon(uv[0], uv[1], polygon);
+      if (!hit) return;
+
+      isPressedRef.current = true;
+      document.body.style.cursor = "grabbing";
+      onPointerDown?.();
+
+      if (!draggable) return;
+
+      // Build a drag plane that faces the camera and passes through the
+      // sprite's current world position. This keeps the sprite under the
+      // cursor regardless of camera angle, exactly like a billboard drag.
+      const spriteWorldPos = new THREE.Vector3();
+      meshRef.current.getWorldPosition(spriteWorldPos);
+
+      const normal = new THREE.Vector3();
+      camera.getWorldDirection(normal);
+      normal.negate();
+      dragPlane.current.setFromNormalAndCoplanarPoint(normal, spriteWorldPos);
+
+      // World-space hit point on that plane
+      const worldHit = pointerToWorldPlane(
+        event,
+        dragPlane.current,
+        camera,
+        gl,
+      );
+      if (!worldHit) return;
+
+      // Offset = hit point minus group's current world position,
+      // so the sprite doesn't jump to the cursor's centre.
+      dragOffset.current.set(
+        worldHit.x - groupRef.current.position.x,
+        worldHit.y - groupRef.current.position.y,
+        worldHit.z - groupRef.current.position.z,
+      );
+
+      isDraggingRef.current = true;
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      // ── Drag movement ──────────────────────────────────────────────────────
+      if (isDraggingRef.current && draggable) {
+        const worldHit = pointerToWorldPlane(
+          event,
+          dragPlane.current,
+          camera,
+          gl,
+        );
+        if (worldHit && groupRef.current) {
+          groupRef.current.position.set(
+            worldHit.x - dragOffset.current.x,
+            worldHit.y - dragOffset.current.y,
+            worldHit.z - dragOffset.current.z,
+          );
+
+          // Record sample for throw velocity estimation.
+          if (throwable) {
+            const samples = velocitySamples.current;
+            samples.push({
+              pos: groupRef.current.position.clone(),
+              t: performance.now(),
+            });
+            // Keep only the most recent N samples.
+            if (samples.length > VELOCITY_SAMPLE_COUNT) samples.shift();
+          }
+        }
+        return;
+      }
+
+      // ── Hover detection ────────────────────────────────────────────────────
+      if (!meshRef.current) return;
+      meshRef.current.updateWorldMatrix(true, false);
+
+      const uv = pointerToUV(event, meshRef.current, camera, gl);
       if (!uv) return;
 
       const hit = pointInPolygon(uv[0], uv[1], polygon);
 
       if (hit) {
-        isPressedRef.current = true;
-        onPointerDown?.();
+        if (!isInsideRef.current) {
+          isInsideRef.current = true;
+          document.body.style.cursor = "grab";
+        }
+      } else {
+        if (isInsideRef.current) {
+          isInsideRef.current = false;
+          document.body.style.cursor = "default";
+        }
       }
     };
 
     const handlePointerUp = () => {
       if (!isPressedRef.current) return;
       isPressedRef.current = false;
+      isDraggingRef.current = false;
       onPointerUp?.();
+      document.body.style.cursor = isInsideRef.current ? "grab" : "default";
+
+      // ── Throw ──────────────────────────────────────────────────────────────
+      if (!throwable) return;
+
+      const samples = velocitySamples.current;
+      throwVelocity.current.set(0, 0, 0);
+
+      if (samples.length >= 2) {
+        // Average velocity across all consecutive sample pairs.
+        const vel = new THREE.Vector3();
+        for (let i = 1; i < samples.length; i++) {
+          const dt = (samples[i].t - samples[i - 1].t) / 1000; // ms → s
+          if (dt <= 0) continue;
+          vel.add(
+            new THREE.Vector3()
+              .subVectors(samples[i].pos, samples[i - 1].pos)
+              .divideScalar(dt),
+          );
+        }
+        vel.divideScalar(samples.length - 1);
+
+        if (vel.length() >= THROW_SPEED_THRESHOLD) {
+          throwVelocity.current.copy(vel).clampLength(0, MAX_THROW_SPEED);
+        }
+      }
+
+      velocitySamples.current = [];
     };
 
-    const canvas = gl.domElement;
     document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("pointermove", handlePointerMove);
     document.addEventListener("pointerup", handlePointerUp);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("pointermove", handlePointerMove);
       document.removeEventListener("pointerup", handlePointerUp);
     };
-  }, [camera, gl, polygon, onPointerDown, onPointerUp]);
+  }, [camera, gl, polygon, draggable, throwable, onPointerDown, onPointerUp]);
+
+  // ── Friction / coasting loop ───────────────────────────────────────────────
+  // Runs every frame only when there is active throw velocity.
+  useFrame((_, delta) => {
+    if (!throwable) return;
+    if (throwVelocity.current.lengthSq() < 1e-6) return;
+
+    // Advance position by velocity × delta.
+    groupRef.current.position.addScaledVector(throwVelocity.current, delta);
+
+    // Exponential friction: v *= friction^delta  (frame-rate independent).
+    const frictionFactor = Math.pow(FRICTION, delta);
+    throwVelocity.current.multiplyScalar(frictionFactor);
+
+    // Zero out once negligible to stop the loop.
+    if (throwVelocity.current.length() < 0.01) {
+      throwVelocity.current.set(0, 0, 0);
+    }
+  });
 
   return (
-    <group position={position} scale={normalizedScale}>
+    <group ref={groupRef} position={position}>
       {/* Visible sprite — raycast disabled so R3F never interferes */}
-      <mesh ref={meshRef} raycast={() => null} renderOrder={10}>
+      <mesh
+        ref={meshRef}
+        scale={normalizedScale}
+        raycast={() => null}
+        renderOrder={10}
+      >
         <planeGeometry args={[1, 1]} />
         <meshBasicMaterial
           map={texture}
@@ -197,6 +405,7 @@ export default function PolygonSprite({
       {/* ── Debug overlay — shaped exactly like the polygon ── */}
       {debug && debugGeometry && (
         <mesh
+          scale={normalizedScale}
           position={[0, 0, 0.001]}
           geometry={debugGeometry}
           raycast={() => null}
