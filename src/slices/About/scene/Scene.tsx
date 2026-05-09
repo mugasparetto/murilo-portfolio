@@ -393,7 +393,7 @@ export default function Scene({ scrollWindow, content }: Props) {
       >
         <div
           ref={headContentRef}
-          className="bg-black/60 p-8 w-[31.5rem] flex flex-col gap-2"
+          className="bg-black/60 p-8 w-[31.5rem] flex flex-col gap-2 select-none"
         >
           <span className="lowercase text-3xl font-bold">
             {content.head.title}
@@ -413,7 +413,7 @@ export default function Scene({ scrollWindow, content }: Props) {
       >
         <div
           ref={eyesContentRef}
-          className="bg-black/60 p-8 w-[31.5rem] flex flex-col gap-2"
+          className="bg-black/60 p-8 w-[31.5rem] flex flex-col gap-2 select-none"
         >
           <span className="lowercase text-3xl font-bold">
             {content.eyes.title}
@@ -433,7 +433,7 @@ export default function Scene({ scrollWindow, content }: Props) {
       >
         <div
           ref={mouthContentRef}
-          className="bg-black/60 p-8 w-[31.5rem] flex flex-col gap-2"
+          className="bg-black/60 p-8 w-[31.5rem] flex flex-col gap-2 select-none"
         >
           <span className="lowercase text-3xl font-bold">
             {content.mouth.title}

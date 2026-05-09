@@ -100,9 +100,10 @@ export default function Head({ ref, onGrabbing }: Props) {
         polygon={HEAD_POLYGON}
         position={[0, -800, 2600]}
         scale={scale}
-        debug
+        // debug
         draggable
         throwable
+        bounds={{ min: [-550, -1100, 2559], max: [550, -500, 2601] }}
         onPointerDown={() => {
           handleGrab("head");
         }}
