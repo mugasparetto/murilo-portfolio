@@ -51,6 +51,7 @@ type HolographicMetaBallsProps = {
   /** Lerp speed for migration (0–1, default 0.05) */
   pauseSpeed?: number;
   pauseYOffset?: number; // how much above/below the anchor the balls should pause at (default 5)
+  ref: React.Ref<THREE.Mesh>;
   // ── Holographic overrides ──────────────────
   holoTimeScale?: number;
   holoSeed?: number;
@@ -430,6 +431,7 @@ function HolographicMetaBallsMesh(props: SceneProps) {
       position={props.position}
       scale={props.scale}
       renderOrder={props.renderOrder ?? 1}
+      ref={props.ref}
     >
       <planeGeometry args={[1, 1]} />
       <shaderMaterial
@@ -478,7 +480,8 @@ const HolographicMetaBalls: React.FC<HolographicMetaBallsProps> = ({
   renderOrder = 1,
   seed = 0,
   pauseTarget = null,
-  pauseSpeed = 0.05,
+  pauseSpeed = 0.2,
+  ref,
   pauseYOffset = 5,
   holoTimeScale = HOLO.timeScale,
   holoSeed = HOLO.seed,
@@ -507,6 +510,7 @@ const HolographicMetaBalls: React.FC<HolographicMetaBallsProps> = ({
     pauseTarget={pauseTarget}
     pauseSpeed={pauseSpeed}
     pauseYOffset={pauseYOffset}
+    ref={ref}
     holoTimeScale={holoTimeScale}
     holoSeed={holoSeed}
     holoIterations={holoIterations}

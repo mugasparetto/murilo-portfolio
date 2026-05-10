@@ -145,9 +145,10 @@ function clampToBounds(sprite: SpriteHandle) {
 type Props = {
   ref: RefObject<THREE.Group | null>;
   onGrabbing: (payload: null | "head" | "eyes" | "mouth") => void;
+  hideBillboard: (payload: "head" | "eyes" | "mouth") => void;
 };
 
-export default function Head({ ref, onGrabbing }: Props) {
+export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
   const bottom = useTexture("/textures/head/bottom.webp");
   const middle = useTexture("/textures/head/middle.webp");
   const top = useTexture("/textures/head/top.webp");
@@ -155,6 +156,11 @@ export default function Head({ ref, onGrabbing }: Props) {
   const headRef = useRef<SpriteHandle>(null);
   const eyesRef = useRef<SpriteHandle>(null);
   const mouthRef = useRef<SpriteHandle>(null);
+
+  const metaBallsHeadFront = useRef<THREE.Mesh>(null);
+  const metaBallsHeadBack = useRef<THREE.Mesh>(null);
+  const metaBallsMouthFront = useRef<THREE.Mesh>(null);
+  const metaBallsMouthBack = useRef<THREE.Mesh>(null);
 
   const [pause, setPause] = useState<null | "head" | "eyes" | "mouth">(null);
 
@@ -239,6 +245,50 @@ export default function Head({ ref, onGrabbing }: Props) {
     }
   });
 
+  useFrame(() => {
+    const initalPos = new THREE.Vector3(0, -800, 2600);
+
+    if (
+      headRef.current &&
+      metaBallsHeadFront.current &&
+      metaBallsHeadBack.current
+    ) {
+      if (headRef.current.getPosition().distanceTo(initalPos) > 2) {
+        metaBallsHeadFront.current.visible = false;
+        metaBallsHeadBack.current.visible = false;
+        hideBillboard("head");
+      }
+    }
+
+    if (
+      eyesRef.current &&
+      metaBallsHeadFront.current &&
+      metaBallsHeadBack.current &&
+      metaBallsMouthFront.current &&
+      metaBallsMouthBack.current
+    ) {
+      if (eyesRef.current.getPosition().distanceTo(initalPos) > 2) {
+        metaBallsHeadFront.current.visible = false;
+        metaBallsHeadBack.current.visible = false;
+        metaBallsMouthFront.current.visible = false;
+        metaBallsMouthBack.current.visible = false;
+        hideBillboard("eyes");
+      }
+    }
+
+    if (
+      mouthRef.current &&
+      metaBallsMouthFront.current &&
+      metaBallsMouthBack.current
+    ) {
+      if (mouthRef.current.getPosition().distanceTo(initalPos) > 4) {
+        metaBallsMouthFront.current.visible = false;
+        metaBallsMouthBack.current.visible = false;
+        hideBillboard("mouth");
+      }
+    }
+  });
+
   return (
     <group ref={ref}>
       <PolygonSprite
@@ -260,6 +310,7 @@ export default function Head({ ref, onGrabbing }: Props) {
       />
 
       <MetaBalls
+        ref={metaBallsHeadBack}
         position={[12, -630, 2605]}
         scale={[280, 280, 1]}
         enableTransparency
@@ -290,6 +341,7 @@ export default function Head({ ref, onGrabbing }: Props) {
       />
 
       <MetaBalls
+        ref={metaBallsHeadFront}
         position={[12, -630, 2605]}
         scale={[280, 280, 1]}
         enableTransparency
@@ -340,6 +392,7 @@ export default function Head({ ref, onGrabbing }: Props) {
       </PolygonSprite>
 
       <MetaBalls
+        ref={metaBallsMouthFront}
         position={[10, -830, 2605]}
         scale={[280, 280, 1]}
         enableTransparency
@@ -363,6 +416,7 @@ export default function Head({ ref, onGrabbing }: Props) {
       />
 
       <MetaBalls
+        ref={metaBallsMouthBack}
         position={[10, -830, 2605]}
         scale={[280, 280, 1]}
         enableTransparency

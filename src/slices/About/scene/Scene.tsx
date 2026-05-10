@@ -290,6 +290,24 @@ export default function Scene({ scrollWindow, content }: Props) {
     [],
   );
 
+  const handleHideBillboard = useCallback(
+    (payload: "head" | "eyes" | "mouth") => {
+      if (payload === "head") {
+        setProgresHeadConnector(300);
+        headBillboardRef.current!.visible = false;
+      }
+      if (payload === "eyes") {
+        setProgressEyesConnector(300);
+        eyesBillboardRef.current!.visible = false;
+      }
+      if (payload === "mouth") {
+        setProgressMouthConnector(300);
+        mouthBillboardRef.current!.visible = false;
+      }
+    },
+    [],
+  );
+
   return (
     <group>
       <mesh position={planePos}>
@@ -321,7 +339,11 @@ export default function Scene({ scrollWindow, content }: Props) {
       </Suspense>
 
       <Suspense fallback={null}>
-        <Head ref={head} onGrabbing={handleGrabbing} />
+        <Head
+          ref={head}
+          onGrabbing={handleGrabbing}
+          hideBillboard={handleHideBillboard}
+        />
 
         <TeleportingBillboard
           quad={HEAD_AREA}
