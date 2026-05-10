@@ -314,6 +314,8 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
       <MetaBalls
         ref={metaBallsHeadBack}
         position={[12, -630, 2605]}
+        mouseMinX={-11}
+        mouseMaxX={11}
         scale={[280, 280, 1]}
         enableTransparency
         animationSize={40}
@@ -345,6 +347,8 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
       <MetaBalls
         ref={metaBallsHeadFront}
         position={[12, -630, 2605]}
+        mouseMinX={-10}
+        mouseMaxX={10}
         scale={[280, 280, 1]}
         enableTransparency
         animationSize={40}
@@ -387,7 +391,7 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
       >
         <HalfCircleWithDisk
           radius={122}
-          position={[5, 82, 0]}
+          position={[5, 82, -1]}
           scale={[1, 0.1, 1]}
           thickness={2}
         />
@@ -397,6 +401,8 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         ref={metaBallsMouthFront}
         position={[10, -830, 2605]}
         scale={[280, 280, 1]}
+        mouseMinX={-12}
+        mouseMaxX={12}
         enableTransparency
         seed={7}
         animationSize={40}
@@ -421,6 +427,8 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         ref={metaBallsMouthBack}
         position={[10, -830, 2605]}
         scale={[280, 280, 1]}
+        mouseMinX={-12}
+        mouseMaxX={12}
         enableTransparency
         seed={12}
         animationSize={40}
