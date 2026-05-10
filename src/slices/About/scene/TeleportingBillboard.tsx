@@ -55,6 +55,7 @@ export interface TeleportingBillboardProps {
   progressMode?: "normalized" | "distance";
   billboardRef?: React.Ref<THREE.Group> | null;
   divider: number;
+  billboardPosition?: THREE.Vector3; // Optional fixed position for the billboard (overrides random teleporting)
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -363,22 +364,20 @@ export default function TeleportingBillboard({
   progressMode = "normalized", // ← add with default
   divider = 0.0000000000002, // ← add with default
   billboardRef = null,
+  billboardPosition,
 }: TeleportingBillboardProps) {
-  const [position, setPosition] = useState<THREE.Vector3>(() =>
-    randomPointInQuad(quad),
+  const [position, setPosition] = useState<THREE.Vector3>(
+    () => billboardPosition || randomPointInQuad(quad),
   );
 
   useEffect(() => {
-    setPosition(randomPointInQuad(quad));
-  }, [quad]);
-
-  useEffect(() => {
+    if (billboardPosition) return;
     const id = setInterval(
       () => setPosition(randomPointInQuad(quad)),
       intervalMs,
     );
     return () => clearInterval(id);
-  }, [quad, intervalMs]);
+  }, [quad, intervalMs, billboardPosition]);
 
   const svgSize = Math.min(width, height) * svgScale;
 

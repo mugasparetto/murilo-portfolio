@@ -244,9 +244,7 @@ export default function Scene({ scrollWindow, content }: Props) {
     if (grabbing === "head") {
       setProgresHeadConnector(300);
     } else {
-      setProgresHeadConnector(
-        pHeadConnector * 301 > 300 ? 700 : pHeadConnector * 300,
-      );
+      setProgresHeadConnector(pHeadConnector * 580);
     }
 
     if (eyesContentRef.current) {
@@ -261,9 +259,7 @@ export default function Scene({ scrollWindow, content }: Props) {
     if (grabbing === "eyes") {
       setProgressEyesConnector(300);
     } else {
-      setProgressEyesConnector(
-        pEyesConnector * 301 > 300 ? 700 : pEyesConnector * 300,
-      );
+      setProgressEyesConnector(pEyesConnector * 440);
     }
 
     if (mouthContentRef.current) {
@@ -278,9 +274,7 @@ export default function Scene({ scrollWindow, content }: Props) {
     if (grabbing === "mouth") {
       setProgressMouthConnector(300);
     } else {
-      setProgressMouthConnector(
-        pMouthConnector * 301 > 300 ? 700 : pMouthConnector * 300,
-      );
+      setProgressMouthConnector(pMouthConnector * 485);
     }
 
     if (head.current && grabbing == null) {
@@ -345,6 +339,7 @@ export default function Scene({ scrollWindow, content }: Props) {
           progressMode="distance"
           billboardRef={headBillboardRef}
           divider={0.0000000000002}
+          billboardPosition={new THREE.Vector3(-80, -620, 2600)}
         />
 
         <TeleportingBillboard
@@ -363,6 +358,7 @@ export default function Scene({ scrollWindow, content }: Props) {
           progressMode="distance"
           billboardRef={eyesBillboardRef}
           divider={0.00000000006}
+          billboardPosition={new THREE.Vector3(110, -800, 2600)}
         />
 
         <TeleportingBillboard
@@ -381,6 +377,7 @@ export default function Scene({ scrollWindow, content }: Props) {
           progressMode="distance"
           billboardRef={mouthBillboardRef}
           divider={0.00000000006}
+          billboardPosition={new THREE.Vector3(40, -980, 2600)}
         />
       </Suspense>
 
