@@ -1,6 +1,23 @@
-import { useRef, useMemo, useEffect } from "react";
+import {
+  useRef,
+  useMemo,
+  useEffect,
+  useImperativeHandle,
+  forwardRef,
+} from "react";
 import { useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+
+// New exported handle type
+export type SpriteHandle = {
+  getPosition: () => THREE.Vector3;
+  setPosition: (v: THREE.Vector3) => void;
+  getVelocity: () => THREE.Vector3;
+  setVelocity: (v: THREE.Vector3) => void;
+  getWorldPolygon: () => THREE.Vector2[]; // polygon in world XY space
+  isDragging: () => boolean;
+  getCentreBox: () => THREE.Box3 | null;
+};
 
 // ─── Throw tuning ─────────────────────────────────────────────────────────────
 
@@ -160,317 +177,350 @@ function polygonExtents(polygon: UV[], scale: [number, number, number]) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function PolygonSprite({
-  texture,
-  polygon,
-  position = [0, 0, 0],
-  scale = 1,
-  draggable = false,
-  throwable = false,
-  bounds,
-  onPointerDown,
-  onPointerUp,
-  debug = false,
-  children,
-}: PolygonSpriteProps) {
-  const meshRef = useRef<THREE.Mesh>(null!);
-  const groupRef = useRef<THREE.Group>(null!);
-  const { camera, gl, scene } = useThree();
+const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
+  function PolygonSprite(
+    {
+      texture,
+      polygon,
+      position = [0, 0, 0],
+      scale = 1,
+      draggable = false,
+      throwable = false,
+      bounds,
+      onPointerDown,
+      onPointerUp,
+      debug = false,
+      children,
+    },
+    ref,
+  ) {
+    const meshRef = useRef<THREE.Mesh>(null!);
+    const groupRef = useRef<THREE.Group>(null!);
+    const { camera, gl, scene } = useThree();
 
-  const isPressedRef = useRef(false);
-  const isInsideRef = useRef(false);
-  const isDraggingRef = useRef(false);
+    const isPressedRef = useRef(false);
+    const isInsideRef = useRef(false);
+    const isDraggingRef = useRef(false);
 
-  const dragPlane = useRef(new THREE.Plane());
-  const dragOffset = useRef(new THREE.Vector3());
+    const dragPlane = useRef(new THREE.Plane());
+    const dragOffset = useRef(new THREE.Vector3());
 
-  type Sample = { pos: THREE.Vector3; t: number };
-  const velocitySamples = useRef<Sample[]>([]);
-  const throwVelocity = useRef(new THREE.Vector3());
+    type Sample = { pos: THREE.Vector3; t: number };
+    const velocitySamples = useRef<Sample[]>([]);
+    const throwVelocity = useRef(new THREE.Vector3());
 
-  const normalizedScale = useMemo<[number, number, number]>(
-    () => (typeof scale === "number" ? [scale, scale, scale] : scale),
-    [scale],
-  );
-
-  const debugGeometry = useMemo(
-    () => (debug ? buildPolygonGeometry(polygon) : null),
-    [debug, polygon],
-  );
-
-  // Half-extents of the polygon in world space — used to inset the bounce walls
-  // so the sprite's visible edge (not its centre) lands on the boundary.
-  const extents = useMemo(
-    () => polygonExtents(polygon, normalizedScale),
-    [polygon, normalizedScale],
-  );
-
-  // centreBox: the region the group's CENTRE is allowed to move within.
-  const centreBox = useMemo(() => {
-    if (!bounds) return null;
-    const { min, max } = bounds;
-    const { minX, maxX, minY, maxY } = extents;
-    return new THREE.Box3(
-      new THREE.Vector3(
-        isFinite(min[0]) ? min[0] - minX : -Infinity, // minX is negative, so subtract it
-        isFinite(min[1]) ? min[1] - minY : -Infinity, // minY is negative, so subtract it
-        min[2],
-      ),
-      new THREE.Vector3(
-        isFinite(max[0]) ? max[0] - maxX : Infinity,
-        isFinite(max[1]) ? max[1] - maxY : Infinity,
-        max[2],
-      ),
-    );
-  }, [bounds, extents]);
-
-  // ── Debug: Box3Helper for the OUTER bounds ────────────────────────────────
-  // Added imperatively to the scene so it renders in world space, independent
-  // of the sprite's group transform, and aligns with the visible bounce walls.
-  useEffect(() => {
-    if (!debug || !bounds) return;
-
-    const LARGE = 1e5;
-    const safeBox = new THREE.Box3(
-      new THREE.Vector3(
-        Math.max(bounds.min[0], -LARGE),
-        Math.max(bounds.min[1], -LARGE),
-        Math.max(bounds.min[2], -LARGE),
-      ),
-      new THREE.Vector3(
-        Math.min(bounds.max[0], LARGE),
-        Math.min(bounds.max[1], LARGE),
-        Math.min(bounds.max[2], LARGE),
-      ),
+    const normalizedScale = useMemo<[number, number, number]>(
+      () => (typeof scale === "number" ? [scale, scale, scale] : scale),
+      [scale],
     );
 
-    const helper = new THREE.Box3Helper(safeBox, new THREE.Color(0x00ff88));
-    scene.add(helper);
-    return () => {
-      scene.remove(helper);
-    };
-  }, [debug, bounds, scene]);
+    const debugGeometry = useMemo(
+      () => (debug ? buildPolygonGeometry(polygon) : null),
+      [debug, polygon],
+    );
 
-  useEffect(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!meshRef.current) return;
-      meshRef.current.updateWorldMatrix(true, false);
+    // Half-extents of the polygon in world space — used to inset the bounce walls
+    // so the sprite's visible edge (not its centre) lands on the boundary.
+    const extents = useMemo(
+      () => polygonExtents(polygon, normalizedScale),
+      [polygon, normalizedScale],
+    );
 
-      const uv = pointerToUV(event, meshRef.current, camera, gl);
-      if (!uv) return;
-      if (!pointInPolygon(uv[0], uv[1], polygon)) return;
-
-      isPressedRef.current = true;
-      document.body.style.cursor = "grabbing";
-      onPointerDown?.();
-
-      if (!draggable) return;
-
-      // Stop any in-flight throw when the user grabs again
-      throwVelocity.current.set(0, 0, 0);
-
-      const spriteWorldPos = new THREE.Vector3();
-      meshRef.current.getWorldPosition(spriteWorldPos);
-
-      const normal = new THREE.Vector3();
-      camera.getWorldDirection(normal);
-      normal.negate();
-      dragPlane.current.setFromNormalAndCoplanarPoint(normal, spriteWorldPos);
-
-      const worldHit = pointerToWorldPlane(
-        event,
-        dragPlane.current,
-        camera,
-        gl,
+    // centreBox: the region the group's CENTRE is allowed to move within.
+    const centreBox = useMemo(() => {
+      if (!bounds) return null;
+      const { min, max } = bounds;
+      const { minX, maxX, minY, maxY } = extents;
+      return new THREE.Box3(
+        new THREE.Vector3(
+          isFinite(min[0]) ? min[0] - minX : -Infinity, // minX is negative, so subtract it
+          isFinite(min[1]) ? min[1] - minY : -Infinity, // minY is negative, so subtract it
+          min[2],
+        ),
+        new THREE.Vector3(
+          isFinite(max[0]) ? max[0] - maxX : Infinity,
+          isFinite(max[1]) ? max[1] - maxY : Infinity,
+          max[2],
+        ),
       );
-      if (!worldHit) return;
+    }, [bounds, extents]);
 
-      dragOffset.current.set(
-        worldHit.x - groupRef.current.position.x,
-        worldHit.y - groupRef.current.position.y,
-        worldHit.z - groupRef.current.position.z,
+    // ── Debug: Box3Helper for the OUTER bounds ────────────────────────────────
+    // Added imperatively to the scene so it renders in world space, independent
+    // of the sprite's group transform, and aligns with the visible bounce walls.
+    useEffect(() => {
+      if (!debug || !bounds) return;
+
+      const LARGE = 1e5;
+      const safeBox = new THREE.Box3(
+        new THREE.Vector3(
+          Math.max(bounds.min[0], -LARGE),
+          Math.max(bounds.min[1], -LARGE),
+          Math.max(bounds.min[2], -LARGE),
+        ),
+        new THREE.Vector3(
+          Math.min(bounds.max[0], LARGE),
+          Math.min(bounds.max[1], LARGE),
+          Math.min(bounds.max[2], LARGE),
+        ),
       );
 
-      isDraggingRef.current = true;
-    };
+      const helper = new THREE.Box3Helper(safeBox, new THREE.Color(0x00ff88));
+      scene.add(helper);
+      return () => {
+        scene.remove(helper);
+      };
+    }, [debug, bounds, scene]);
 
-    const handlePointerMove = (event: PointerEvent) => {
-      if (isDraggingRef.current && draggable) {
+    useEffect(() => {
+      const handlePointerDown = (event: PointerEvent) => {
+        if (!meshRef.current) return;
+        meshRef.current.updateWorldMatrix(true, false);
+
+        const uv = pointerToUV(event, meshRef.current, camera, gl);
+        if (!uv) return;
+        if (!pointInPolygon(uv[0], uv[1], polygon)) return;
+
+        isPressedRef.current = true;
+        document.body.style.cursor = "grabbing";
+        onPointerDown?.();
+
+        if (!draggable) return;
+
+        // Stop any in-flight throw when the user grabs again
+        throwVelocity.current.set(0, 0, 0);
+
+        const spriteWorldPos = new THREE.Vector3();
+        meshRef.current.getWorldPosition(spriteWorldPos);
+
+        const normal = new THREE.Vector3();
+        camera.getWorldDirection(normal);
+        normal.negate();
+        dragPlane.current.setFromNormalAndCoplanarPoint(normal, spriteWorldPos);
+
         const worldHit = pointerToWorldPlane(
           event,
           dragPlane.current,
           camera,
           gl,
         );
-        if (worldHit && groupRef.current) {
-          groupRef.current.position.set(
-            worldHit.x - dragOffset.current.x,
-            worldHit.y - dragOffset.current.y,
-            worldHit.z - dragOffset.current.z,
+        if (!worldHit) return;
+
+        dragOffset.current.set(
+          worldHit.x - groupRef.current.position.x,
+          worldHit.y - groupRef.current.position.y,
+          worldHit.z - groupRef.current.position.z,
+        );
+
+        isDraggingRef.current = true;
+      };
+
+      const handlePointerMove = (event: PointerEvent) => {
+        if (isDraggingRef.current && draggable) {
+          const worldHit = pointerToWorldPlane(
+            event,
+            dragPlane.current,
+            camera,
+            gl,
           );
+          if (worldHit && groupRef.current) {
+            groupRef.current.position.set(
+              worldHit.x - dragOffset.current.x,
+              worldHit.y - dragOffset.current.y,
+              worldHit.z - dragOffset.current.z,
+            );
 
-          // Clamp to the inset centre box during drag
-          if (centreBox) {
-            groupRef.current.position.clamp(centreBox.min, centreBox.max);
+            // Clamp to the inset centre box during drag
+            if (centreBox) {
+              groupRef.current.position.clamp(centreBox.min, centreBox.max);
+            }
+
+            if (throwable) {
+              const samples = velocitySamples.current;
+              samples.push({
+                pos: groupRef.current.position.clone(),
+                t: performance.now(),
+              });
+              if (samples.length > VELOCITY_SAMPLE_COUNT) samples.shift();
+            }
           }
+          return;
+        }
 
-          if (throwable) {
-            const samples = velocitySamples.current;
-            samples.push({
-              pos: groupRef.current.position.clone(),
-              t: performance.now(),
-            });
-            if (samples.length > VELOCITY_SAMPLE_COUNT) samples.shift();
+        if (!meshRef.current) return;
+        meshRef.current.updateWorldMatrix(true, false);
+
+        const uv = pointerToUV(event, meshRef.current, camera, gl);
+        if (!uv) return;
+
+        const hit = pointInPolygon(uv[0], uv[1], polygon);
+        if (hit && !isInsideRef.current) {
+          isInsideRef.current = true;
+          document.body.style.cursor = "grab";
+        } else if (!hit && isInsideRef.current) {
+          isInsideRef.current = false;
+          document.body.style.cursor = "default";
+        }
+      };
+
+      const handlePointerUp = () => {
+        if (!isPressedRef.current) return;
+        isPressedRef.current = false;
+        isDraggingRef.current = false;
+        onPointerUp?.();
+        document.body.style.cursor = isInsideRef.current ? "grab" : "default";
+
+        if (!throwable) return;
+
+        const samples = velocitySamples.current;
+        throwVelocity.current.set(0, 0, 0);
+
+        if (samples.length >= 2) {
+          const vel = new THREE.Vector3();
+          for (let i = 1; i < samples.length; i++) {
+            const dt = (samples[i].t - samples[i - 1].t) / 1000;
+            if (dt <= 0) continue;
+            vel.add(
+              new THREE.Vector3()
+                .subVectors(samples[i].pos, samples[i - 1].pos)
+                .divideScalar(dt),
+            );
+          }
+          vel.divideScalar(samples.length - 1);
+
+          if (vel.length() >= THROW_SPEED_THRESHOLD) {
+            throwVelocity.current.copy(vel).clampLength(0, MAX_THROW_SPEED);
           }
         }
-        return;
-      }
 
-      if (!meshRef.current) return;
-      meshRef.current.updateWorldMatrix(true, false);
+        velocitySamples.current = [];
+      };
 
-      const uv = pointerToUV(event, meshRef.current, camera, gl);
-      if (!uv) return;
+      document.addEventListener("pointerdown", handlePointerDown);
+      document.addEventListener("pointermove", handlePointerMove);
+      document.addEventListener("pointerup", handlePointerUp);
+      return () => {
+        document.removeEventListener("pointerdown", handlePointerDown);
+        document.removeEventListener("pointermove", handlePointerMove);
+        document.removeEventListener("pointerup", handlePointerUp);
+      };
+    }, [
+      camera,
+      gl,
+      polygon,
+      draggable,
+      throwable,
+      centreBox,
+      onPointerDown,
+      onPointerUp,
+    ]);
 
-      const hit = pointInPolygon(uv[0], uv[1], polygon);
-      if (hit && !isInsideRef.current) {
-        isInsideRef.current = true;
-        document.body.style.cursor = "grab";
-      } else if (!hit && isInsideRef.current) {
-        isInsideRef.current = false;
-        document.body.style.cursor = "default";
-      }
-    };
-
-    const handlePointerUp = () => {
-      if (!isPressedRef.current) return;
-      isPressedRef.current = false;
-      isDraggingRef.current = false;
-      onPointerUp?.();
-      document.body.style.cursor = isInsideRef.current ? "grab" : "default";
-
+    // ── Friction / coasting + bounce loop ────────────────────────────────────────
+    useFrame((_, delta) => {
       if (!throwable) return;
+      if (throwVelocity.current.lengthSq() < 1e-6) return;
 
-      const samples = velocitySamples.current;
-      throwVelocity.current.set(0, 0, 0);
+      const pos = groupRef.current.position;
+      const vel = throwVelocity.current;
 
-      if (samples.length >= 2) {
-        const vel = new THREE.Vector3();
-        for (let i = 1; i < samples.length; i++) {
-          const dt = (samples[i].t - samples[i - 1].t) / 1000;
-          if (dt <= 0) continue;
-          vel.add(
-            new THREE.Vector3()
-              .subVectors(samples[i].pos, samples[i - 1].pos)
-              .divideScalar(dt),
+      pos.addScaledVector(vel, delta);
+
+      if (centreBox) {
+        const b = centreBox;
+        if (pos.x < b.min.x) {
+          pos.x = b.min.x;
+          vel.x = Math.abs(vel.x);
+        } else if (pos.x > b.max.x) {
+          pos.x = b.max.x;
+          vel.x = -Math.abs(vel.x);
+        }
+        if (pos.y < b.min.y) {
+          pos.y = b.min.y;
+          vel.y = Math.abs(vel.y);
+        } else if (pos.y > b.max.y) {
+          pos.y = b.max.y;
+          vel.y = -Math.abs(vel.y);
+        }
+        if (pos.z < b.min.z) {
+          pos.z = b.min.z;
+          vel.z = Math.abs(vel.z);
+        } else if (pos.z > b.max.z) {
+          pos.z = b.max.z;
+          vel.z = -Math.abs(vel.z);
+        }
+      }
+
+      vel.multiplyScalar(Math.pow(FRICTION, delta));
+      if (vel.length() < 0.01) vel.set(0, 0, 0);
+    });
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        getPosition: () => groupRef.current.position.clone(),
+        setPosition: (v) => groupRef.current.position.copy(v),
+        getVelocity: () => throwVelocity.current.clone(),
+        setVelocity: (v) => throwVelocity.current.copy(v),
+        isDragging: () => isDraggingRef.current,
+        getCentreBox: () => centreBox,
+
+        getWorldPolygon: () => {
+          // Transform each UV vertex into world XY using the group's world position + scale
+          const pos = groupRef.current.position;
+          const s = normalizedScale;
+          return polygon.map(
+            ([u, v]) =>
+              new THREE.Vector2(
+                pos.x + (u - 0.5) * s[0],
+                pos.y + (v - 0.5) * s[1],
+              ),
           );
-        }
-        vel.divideScalar(samples.length - 1);
+        },
+      }),
+      [polygon, normalizedScale],
+    );
 
-        if (vel.length() >= THROW_SPEED_THRESHOLD) {
-          throwVelocity.current.copy(vel).clampLength(0, MAX_THROW_SPEED);
-        }
-      }
-
-      velocitySamples.current = [];
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("pointermove", handlePointerMove);
-    document.addEventListener("pointerup", handlePointerUp);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("pointermove", handlePointerMove);
-      document.removeEventListener("pointerup", handlePointerUp);
-    };
-  }, [
-    camera,
-    gl,
-    polygon,
-    draggable,
-    throwable,
-    centreBox,
-    onPointerDown,
-    onPointerUp,
-  ]);
-
-  // ── Friction / coasting + bounce loop ────────────────────────────────────────
-  useFrame((_, delta) => {
-    if (!throwable) return;
-    if (throwVelocity.current.lengthSq() < 1e-6) return;
-
-    const pos = groupRef.current.position;
-    const vel = throwVelocity.current;
-
-    pos.addScaledVector(vel, delta);
-
-    if (centreBox) {
-      const b = centreBox;
-      if (pos.x < b.min.x) {
-        pos.x = b.min.x;
-        vel.x = Math.abs(vel.x);
-      } else if (pos.x > b.max.x) {
-        pos.x = b.max.x;
-        vel.x = -Math.abs(vel.x);
-      }
-      if (pos.y < b.min.y) {
-        pos.y = b.min.y;
-        vel.y = Math.abs(vel.y);
-      } else if (pos.y > b.max.y) {
-        pos.y = b.max.y;
-        vel.y = -Math.abs(vel.y);
-      }
-      if (pos.z < b.min.z) {
-        pos.z = b.min.z;
-        vel.z = Math.abs(vel.z);
-      } else if (pos.z > b.max.z) {
-        pos.z = b.max.z;
-        vel.z = -Math.abs(vel.z);
-      }
-    }
-
-    vel.multiplyScalar(Math.pow(FRICTION, delta));
-    if (vel.length() < 0.01) vel.set(0, 0, 0);
-  });
-
-  return (
-    <group ref={groupRef} position={position}>
-      {/* Visible sprite — raycast disabled so R3F never interferes */}
-      <mesh
-        ref={meshRef}
-        scale={normalizedScale}
-        raycast={() => null}
-        renderOrder={10}
-      >
-        <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial
-          map={texture}
-          transparent
-          alphaTest={0}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-        />
-      </mesh>
-
-      {children}
-
-      {/* Debug: polygon overlay */}
-      {debug && debugGeometry && (
+    return (
+      <group ref={groupRef} position={position}>
+        {/* Visible sprite — raycast disabled so R3F never interferes */}
         <mesh
+          ref={meshRef}
           scale={normalizedScale}
-          position={[0, 0, 0.001]}
-          geometry={debugGeometry}
           raycast={() => null}
+          renderOrder={10}
         >
+          <planeGeometry args={[1, 1]} />
           <meshBasicMaterial
+            map={texture}
             transparent
-            opacity={0.35}
-            color="#0088ff"
-            depthWrite={false}
+            alphaTest={0}
             side={THREE.DoubleSide}
+            depthWrite={false}
           />
         </mesh>
-      )}
-    </group>
-  );
-}
+
+        {children}
+
+        {/* Debug: polygon overlay */}
+        {debug && debugGeometry && (
+          <mesh
+            scale={normalizedScale}
+            position={[0, 0, 0.001]}
+            geometry={debugGeometry}
+            raycast={() => null}
+          >
+            <meshBasicMaterial
+              transparent
+              opacity={0.35}
+              color="#0088ff"
+              depthWrite={false}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+        )}
+      </group>
+    );
+  },
+);
+
+export default PolygonSprite;

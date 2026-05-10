@@ -73,7 +73,7 @@ export default function Headline({
         !up.md ? 90 : RESPONSIVE[tier]?.position.y,
         !up.md ? 0 : -5500,
       ]}
-      className="w-[22rem] md:w-[16rem] xl:w-[18rem] opacity-75 md:opacity-100 px-5! md:px-0! max-w-100 left-[50%]! md:left-0! translate-x-[-50%] md:translate-x-0"
+      className="w-[22rem] md:w-[16rem] xl:w-[18rem] opacity-75 md:opacity-100 px-5! md:px-0! max-w-100 left-[50%]! md:left-0! translate-x-[-50%] md:translate-x-0 select-none"
     >
       <div className="flex flex-col pointer-events-none">
         <span

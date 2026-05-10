@@ -1,8 +1,9 @@
-import { RefObject, useMemo, useState, useCallback } from "react";
+import { RefObject, useMemo, useState, useCallback, useRef } from "react";
 import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
 import { useTexture, Line } from "@react-three/drei";
 import MetaBalls from "./MetaBalls";
-import PolygonSprite, { UV } from "./PolygonSprite";
+import PolygonSprite, { UV, SpriteHandle } from "./PolygonSprite";
 
 type DiskProps = {
   radius: number;
@@ -66,6 +67,81 @@ const MOUTH_POLYGON: UV[] = [
   [0.1, 0.15],
 ];
 
+// ── SAT Helpers ───────────────────────────────────────────────────────────────
+
+function getAxes(poly: THREE.Vector2[]): THREE.Vector2[] {
+  const axes: THREE.Vector2[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % poly.length];
+    const edge = new THREE.Vector2(b.x - a.x, b.y - a.y);
+    // Perpendicular (normal) to the edge
+    axes.push(new THREE.Vector2(-edge.y, edge.x).normalize());
+  }
+  return axes;
+}
+
+function projectPolygon(axis: THREE.Vector2, poly: THREE.Vector2[]) {
+  let min = Infinity,
+    max = -Infinity;
+  for (const v of poly) {
+    const p = axis.dot(v);
+    if (p < min) min = p;
+    if (p > max) max = p;
+  }
+  return { min, max };
+}
+
+/**
+ * Returns null if no collision, or { depth, axis } (MTV) if overlapping.
+ * axis points from polyA toward polyB.
+ */
+function satCollide(
+  polyA: THREE.Vector2[],
+  polyB: THREE.Vector2[],
+): { depth: number; axis: THREE.Vector2 } | null {
+  let minDepth = Infinity;
+  const minAxis = new THREE.Vector2();
+
+  const axes = [...getAxes(polyA), ...getAxes(polyB)];
+
+  for (const axis of axes) {
+    const a = projectPolygon(axis, polyA);
+    const b = projectPolygon(axis, polyB);
+    const overlap = Math.min(a.max, b.max) - Math.max(a.min, b.min);
+    if (overlap <= 0) return null; // Separating axis found — no collision
+    if (overlap < minDepth) {
+      minDepth = overlap;
+      minAxis.copy(axis);
+    }
+  }
+
+  // Ensure axis points from A to B
+  const centreA = polyA
+    .reduce((s, v) => s.add(v), new THREE.Vector2())
+    .divideScalar(polyA.length);
+  const centreB = polyB
+    .reduce((s, v) => s.add(v), new THREE.Vector2())
+    .divideScalar(polyB.length);
+  if (
+    minAxis.dot(
+      new THREE.Vector2(centreB.x - centreA.x, centreB.y - centreA.y),
+    ) < 0
+  ) {
+    minAxis.negate();
+  }
+
+  return { depth: minDepth, axis: minAxis };
+}
+
+function clampToBounds(sprite: SpriteHandle) {
+  const box = sprite.getCentreBox();
+  if (!box) return;
+  const pos = sprite.getPosition();
+  pos.clamp(box.min, box.max);
+  sprite.setPosition(pos);
+}
+
 type Props = {
   ref: RefObject<THREE.Group | null>;
   onGrabbing: (payload: null | "head" | "eyes" | "mouth") => void;
@@ -75,6 +151,10 @@ export default function Head({ ref, onGrabbing }: Props) {
   const bottom = useTexture("/textures/head/bottom.webp");
   const middle = useTexture("/textures/head/middle.webp");
   const top = useTexture("/textures/head/top.webp");
+
+  const headRef = useRef<SpriteHandle>(null);
+  const eyesRef = useRef<SpriteHandle>(null);
+  const mouthRef = useRef<SpriteHandle>(null);
 
   const [pause, setPause] = useState<null | "head" | "eyes" | "mouth">(null);
 
@@ -93,6 +173,72 @@ export default function Head({ ref, onGrabbing }: Props) {
     [onGrabbing],
   );
 
+  useFrame(() => {
+    const sprites = [headRef.current, eyesRef.current, mouthRef.current];
+
+    for (let i = 0; i < sprites.length; i++) {
+      for (let j = i + 1; j < sprites.length; j++) {
+        const a = sprites[i];
+        const b = sprites[j];
+        if (!a || !b) continue;
+
+        const polyA = a.getWorldPolygon();
+        const polyB = b.getWorldPolygon();
+        const result = satCollide(polyA, polyB);
+        if (!result) continue;
+
+        const { depth, axis } = result;
+        const ax2 = new THREE.Vector2(axis.x, axis.y);
+
+        const aDragging = a.isDragging();
+        const bDragging = b.isDragging();
+
+        if (!aDragging && !bDragging) {
+          const posA = a.getPosition();
+          const posB = b.getPosition();
+          posA.x -= ax2.x * depth * 0.5;
+          posA.y -= ax2.y * depth * 0.5;
+          posB.x += ax2.x * depth * 0.5;
+          posB.y += ax2.y * depth * 0.5;
+          a.setPosition(posA);
+          b.setPosition(posB);
+          clampToBounds(a); // ← clamp after push
+          clampToBounds(b); // ← clamp after push
+        } else if (aDragging) {
+          const posB = b.getPosition();
+          posB.x += ax2.x * depth;
+          posB.y += ax2.y * depth;
+          b.setPosition(posB);
+          clampToBounds(b); // ← clamp after push
+        } else {
+          const posA = a.getPosition();
+          posA.x -= ax2.x * depth;
+          posA.y -= ax2.y * depth;
+          a.setPosition(posA);
+          clampToBounds(a); // ← clamp after push
+        }
+
+        // Velocity reflection — unchanged
+        const velA = a.getVelocity();
+        const velB = b.getVelocity();
+        const relVel = new THREE.Vector2(velA.x - velB.x, velA.y - velB.y);
+        const impactSpeed = relVel.dot(ax2);
+        if (impactSpeed < 0) continue;
+
+        if (!aDragging) {
+          velA.x -= impactSpeed * ax2.x;
+          velA.y -= impactSpeed * ax2.y;
+          a.setVelocity(velA);
+        }
+        if (!bDragging) {
+          velB.x += impactSpeed * ax2.x;
+          velB.y += impactSpeed * ax2.y;
+          b.setVelocity(velB);
+        }
+      }
+    }
+  });
+
   return (
     <group ref={ref}>
       <PolygonSprite
@@ -101,6 +247,7 @@ export default function Head({ ref, onGrabbing }: Props) {
         position={[0, -800, 2600]}
         scale={scale}
         // debug
+        ref={headRef}
         draggable
         throwable
         bounds={{ min: [-550, -1100, 2559], max: [550, -500, 2601] }}
@@ -112,7 +259,7 @@ export default function Head({ ref, onGrabbing }: Props) {
         }}
       />
 
-      {/* <MetaBalls
+      <MetaBalls
         position={[12, -630, 2605]}
         scale={[280, 280, 1]}
         enableTransparency
@@ -169,7 +316,7 @@ export default function Head({ ref, onGrabbing }: Props) {
             yScale: 0.1,
           },
         ]}
-      /> */}
+      />
 
       <PolygonSprite
         texture={middle}
@@ -178,6 +325,7 @@ export default function Head({ ref, onGrabbing }: Props) {
         scale={scale}
         // debug
         draggable
+        ref={eyesRef}
         throwable
         bounds={{ min: [-550, -1100, 2559], max: [550, -500, 2603] }}
         onPointerDown={() => handleGrab("eyes")}
@@ -191,7 +339,7 @@ export default function Head({ ref, onGrabbing }: Props) {
         />
       </PolygonSprite>
 
-      {/* <MetaBalls
+      <MetaBalls
         position={[10, -830, 2605]}
         scale={[280, 280, 1]}
         enableTransparency
@@ -242,7 +390,7 @@ export default function Head({ ref, onGrabbing }: Props) {
             yScale: 0.05,
           },
         ]}
-      /> */}
+      />
 
       <PolygonSprite
         texture={bottom}
@@ -252,6 +400,7 @@ export default function Head({ ref, onGrabbing }: Props) {
         // debug
         draggable
         throwable
+        ref={mouthRef}
         bounds={{ min: [-550, -1100, 2559], max: [550, -500, 2605] }}
         onPointerDown={() => handleGrab("mouth")}
         onPointerUp={() => handleGrab(null)}
