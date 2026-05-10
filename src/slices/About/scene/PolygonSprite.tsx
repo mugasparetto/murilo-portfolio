@@ -465,19 +465,30 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         getCentreBox: () => centreBox,
 
         getWorldPolygon: () => {
-          // Transform each UV vertex into world XY using the group's world position + scale
           const pos = groupRef.current.position;
           const s = normalizedScale;
-          return polygon.map(
-            ([u, v]) =>
-              new THREE.Vector2(
-                pos.x + (u - 0.5) * s[0],
-                pos.y + (v - 0.5) * s[1],
-              ),
-          );
+          const INFLATE = -0.03; // tune this — in UV space
+
+          // Compute centroid
+          const cx = polygon.reduce((sum, [u]) => sum + u, 0) / polygon.length;
+          const cy =
+            polygon.reduce((sum, [, v]) => sum + v, 0) / polygon.length;
+
+          return polygon.map(([u, v]) => {
+            // Push vertex away from centroid by INFLATE amount
+            const du = u - cx;
+            const dv = v - cy;
+            const len = Math.sqrt(du * du + dv * dv) || 1;
+            const iu = u + (du / len) * INFLATE;
+            const iv = v + (dv / len) * INFLATE;
+            return new THREE.Vector2(
+              pos.x + (iu - 0.5) * s[0],
+              pos.y + (iv - 0.5) * s[1],
+            );
+          });
         },
       }),
-      [polygon, normalizedScale],
+      [polygon, normalizedScale, centreBox],
     );
 
     return (

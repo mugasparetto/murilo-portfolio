@@ -52,9 +52,10 @@ const HEAD_POLYGON: UV[] = [
 
 const EYES_POLYGON: UV[] = [
   [0.01, 0.45],
-  [0.5, 0.425],
+  [0.5, 0.43],
   [0.98, 0.45],
   [1, 0.67],
+  [0.5, 0.64],
   [0.04, 0.67],
 ];
 
@@ -63,6 +64,7 @@ const MOUTH_POLYGON: UV[] = [
   [0.8, 0.02], // top-right
   [0.97, 0.2], // bottom-right
   [0.99, 0.38], // top-right
+  [0.5, 0.37], // top-right
   [0.02, 0.38], // top-left
   [0.1, 0.15],
 ];
@@ -294,7 +296,7 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
       <PolygonSprite
         texture={top}
         polygon={HEAD_POLYGON}
-        position={[0, -800, 2600]}
+        position={[0, -800, 2602]}
         scale={scale}
         // debug
         ref={headRef}
@@ -373,19 +375,19 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
       <PolygonSprite
         texture={middle}
         polygon={EYES_POLYGON}
-        position={[0, -800, 2602]}
+        position={[0, -800, 2600]}
         scale={scale}
         // debug
         draggable
         ref={eyesRef}
         throwable
-        bounds={{ min: [-550, -1100, 2559], max: [550, -500, 2603] }}
+        bounds={{ min: [-550, -1100, 2559], max: [550, -500, 2601] }}
         onPointerDown={() => handleGrab("eyes")}
         onPointerUp={() => handleGrab(null)}
       >
         <HalfCircleWithDisk
           radius={122}
-          position={[5, 82, 1]}
+          position={[5, 82, 0]}
           scale={[1, 0.1, 1]}
           thickness={2}
         />

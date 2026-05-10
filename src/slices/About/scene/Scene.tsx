@@ -187,6 +187,7 @@ export default function Scene({ scrollWindow, content }: Props) {
     null,
   );
   const timeRef = useRef(0);
+  const shouldFloat = useRef(true);
 
   const lines = [
     { x: -690, y: -28 },
@@ -277,7 +278,7 @@ export default function Scene({ scrollWindow, content }: Props) {
       setProgressMouthConnector(pMouthConnector * 485);
     }
 
-    if (head.current && grabbing == null) {
+    if (head.current && grabbing == null && shouldFloat.current) {
       timeRef.current += delta;
       head.current.position.y = Math.sin(timeRef.current * 0.35) * 10;
     }
@@ -304,6 +305,8 @@ export default function Scene({ scrollWindow, content }: Props) {
         setProgressMouthConnector(300);
         mouthBillboardRef.current!.visible = false;
       }
+
+      shouldFloat.current = false;
     },
     [],
   );
