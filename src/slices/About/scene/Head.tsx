@@ -5,14 +5,48 @@ import { useTexture, Line } from "@react-three/drei";
 import MetaBalls from "./MetaBalls";
 import PolygonSprite, { UV, SpriteHandle } from "./PolygonSprite";
 
+// ─── Snap configuration ───────────────────────────────────────────────────────
+
+/**
+ * XY offset from head → eyes and eyes → mouth in the assembled face.
+ * Z is ignored — each sprite keeps its own Z (render layering only).
+ */
+const EYES_OFFSET = new THREE.Vector2(0, -33.5); // eyes sit below head centre
+const MOUTH_OFFSET = new THREE.Vector2(0, -33.5); // mouth sits below eyes
+
+/** World-unit XY distance below which two pieces snap together. */
+const SNAP_DISTANCE = 20;
+
+/**
+ * Lerp factor per frame toward the snap target.
+ * 1.0 = instant lock; 0.1 = springy follow.
+ */
+const SNAP_LERP = 0.18;
+
+// ─── Snap state ───────────────────────────────────────────────────────────────
+
+type SnapState = {
+  headEyes: boolean; // eyes is locked relative to head
+  eyesMouth: boolean; // mouth is locked relative to eyes
+};
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 type DiskProps = {
   radius: number;
   position: [number, number, number];
   scale: [number, number, number];
   thickness: number;
+  renderOrder: number;
 };
 
-function HalfCircleWithDisk({ radius, position, scale, thickness }: DiskProps) {
+function HalfCircleWithDisk({
+  radius,
+  position,
+  scale,
+  thickness,
+  renderOrder = 0,
+}: DiskProps) {
   const segments = 100;
 
   const points = useMemo(() => {
@@ -21,7 +55,7 @@ function HalfCircleWithDisk({ radius, position, scale, thickness }: DiskProps) {
   }, [radius]);
 
   return (
-    <group position={position} scale={scale}>
+    <group position={position} scale={scale} renderOrder={renderOrder}>
       {/* Black disk */}
       <mesh position={[0, 0, -1.8]}>
         <circleGeometry args={[radius, 64]} />
@@ -32,7 +66,7 @@ function HalfCircleWithDisk({ radius, position, scale, thickness }: DiskProps) {
       <Line
         points={points}
         color="white"
-        lineWidth={thickness} // thickness (in pixels)
+        lineWidth={thickness}
         rotation={[0, 0, Math.PI]}
       />
     </group>
@@ -61,11 +95,11 @@ const EYES_POLYGON: UV[] = [
 
 const MOUTH_POLYGON: UV[] = [
   [0.4, 0.01],
-  [0.8, 0.02], // top-right
-  [0.97, 0.2], // bottom-right
-  [0.99, 0.38], // top-right
-  [0.5, 0.37], // top-right
-  [0.02, 0.38], // top-left
+  [0.8, 0.02],
+  [0.97, 0.2],
+  [0.99, 0.38],
+  [0.5, 0.37],
+  [0.02, 0.38],
   [0.1, 0.15],
 ];
 
@@ -77,7 +111,6 @@ function getAxes(poly: THREE.Vector2[]): THREE.Vector2[] {
     const a = poly[i];
     const b = poly[(i + 1) % poly.length];
     const edge = new THREE.Vector2(b.x - a.x, b.y - a.y);
-    // Perpendicular (normal) to the edge
     axes.push(new THREE.Vector2(-edge.y, edge.x).normalize());
   }
   return axes;
@@ -94,10 +127,6 @@ function projectPolygon(axis: THREE.Vector2, poly: THREE.Vector2[]) {
   return { min, max };
 }
 
-/**
- * Returns null if no collision, or { depth, axis } (MTV) if overlapping.
- * axis points from polyA toward polyB.
- */
 function satCollide(
   polyA: THREE.Vector2[],
   polyB: THREE.Vector2[],
@@ -111,14 +140,13 @@ function satCollide(
     const a = projectPolygon(axis, polyA);
     const b = projectPolygon(axis, polyB);
     const overlap = Math.min(a.max, b.max) - Math.max(a.min, b.min);
-    if (overlap <= 0) return null; // Separating axis found — no collision
+    if (overlap <= 0) return null;
     if (overlap < minDepth) {
       minDepth = overlap;
       minAxis.copy(axis);
     }
   }
 
-  // Ensure axis points from A to B
   const centreA = polyA
     .reduce((s, v) => s.add(v), new THREE.Vector2())
     .divideScalar(polyA.length);
@@ -166,6 +194,9 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
 
   const [pause, setPause] = useState<null | "head" | "eyes" | "mouth">(null);
 
+  // ── Snap state ──────────────────────────────────────────────────────────────
+  const snap = useRef<SnapState>({ headEyes: false, eyesMouth: false });
+
   const scale = useMemo<[number, number, number]>(() => {
     const size = 500;
     const img = bottom.image as HTMLImageElement;
@@ -177,72 +208,179 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
     (payload: null | "head" | "eyes" | "mouth") => {
       onGrabbing(payload);
       setPause(payload);
+
+      // ── Un-snap on drag ────────────────────────────────────────────────────
+      // When the user grabs a piece, break any bond it participates in so it
+      // moves freely. The other piece keeps its current position and coasts.
+      if (payload === "head" || payload === "eyes") {
+        snap.current.headEyes = false;
+      }
+      if (payload === "eyes" || payload === "mouth") {
+        snap.current.eyesMouth = false;
+      }
     },
     [onGrabbing],
   );
 
+  // ── Snap + collision frame loop ────────────────────────────────────────────
   useFrame(() => {
-    const sprites = [headRef.current, eyesRef.current, mouthRef.current];
+    const head = headRef.current;
+    const eyes = eyesRef.current;
+    const mouth = mouthRef.current;
+    if (!head || !eyes || !mouth) return;
 
-    for (let i = 0; i < sprites.length; i++) {
-      for (let j = i + 1; j < sprites.length; j++) {
-        const a = sprites[i];
-        const b = sprites[j];
-        if (!a || !b) continue;
+    const snapState = snap.current;
 
-        const polyA = a.getWorldPolygon();
-        const polyB = b.getWorldPolygon();
-        const result = satCollide(polyA, polyB);
-        if (!result) continue;
+    // ── 1. Un-snap if the user is currently dragging a snapped piece ─────────
+    //
+    // handleGrab fires on pointerdown, which is enough for most cases, but
+    // re-checking isDragging() here is the safety net for rapid grabs where
+    // the React state hasn't flushed yet.
+    if (snapState.headEyes && (head.isDragging() || eyes.isDragging())) {
+      snapState.headEyes = false;
+    }
+    if (snapState.eyesMouth && (eyes.isDragging() || mouth.isDragging())) {
+      snapState.eyesMouth = false;
+    }
 
-        const { depth, axis } = result;
-        const ax2 = new THREE.Vector2(axis.x, axis.y);
+    // ── 2. Drive snapped pieces toward their target offset ───────────────────
+    //
+    // Only X and Y are driven — Z stays as-is (render layering).
+    // After lerping we clamp to bounds so invisible walls still apply.
+    if (snapState.headEyes) {
+      const headPos = head.getPosition();
+      const eyesPos = eyes.getPosition();
 
-        const aDragging = a.isDragging();
-        const bDragging = b.isDragging();
+      // Target: head XY minus the offset (eyes sit *below* head, so Y is lower)
+      const targetX = headPos.x - EYES_OFFSET.x;
+      const targetY = headPos.y - EYES_OFFSET.y;
 
-        if (!aDragging && !bDragging) {
-          const posA = a.getPosition();
-          const posB = b.getPosition();
-          posA.x -= ax2.x * depth * 0.5;
-          posA.y -= ax2.y * depth * 0.5;
-          posB.x += ax2.x * depth * 0.5;
-          posB.y += ax2.y * depth * 0.5;
-          a.setPosition(posA);
-          b.setPosition(posB);
-          clampToBounds(a); // ← clamp after push
-          clampToBounds(b); // ← clamp after push
-        } else if (aDragging) {
-          const posB = b.getPosition();
-          posB.x += ax2.x * depth;
-          posB.y += ax2.y * depth;
-          b.setPosition(posB);
-          clampToBounds(b); // ← clamp after push
-        } else {
-          const posA = a.getPosition();
-          posA.x -= ax2.x * depth;
-          posA.y -= ax2.y * depth;
-          a.setPosition(posA);
-          clampToBounds(a); // ← clamp after push
-        }
+      eyesPos.x += (targetX - eyesPos.x) * SNAP_LERP;
+      eyesPos.y += (targetY - eyesPos.y) * SNAP_LERP;
+      eyes.setPosition(eyesPos);
+      clampToBounds(eyes);
 
-        // Velocity reflection — unchanged
-        const velA = a.getVelocity();
-        const velB = b.getVelocity();
-        const relVel = new THREE.Vector2(velA.x - velB.x, velA.y - velB.y);
-        const impactSpeed = relVel.dot(ax2);
-        if (impactSpeed < 0) continue;
+      // Zero out throw velocity so it doesn't fight the lerp
+      const vel = eyes.getVelocity();
+      vel.multiplyScalar(1 - SNAP_LERP);
+      eyes.setVelocity(vel);
+    }
 
-        if (!aDragging) {
-          velA.x -= impactSpeed * ax2.x;
-          velA.y -= impactSpeed * ax2.y;
-          a.setVelocity(velA);
-        }
-        if (!bDragging) {
-          velB.x += impactSpeed * ax2.x;
-          velB.y += impactSpeed * ax2.y;
-          b.setVelocity(velB);
-        }
+    if (snapState.eyesMouth) {
+      const eyesPos = eyes.getPosition();
+      const mouthPos = mouth.getPosition();
+
+      const targetX = eyesPos.x - MOUTH_OFFSET.x;
+      const targetY = eyesPos.y - MOUTH_OFFSET.y;
+
+      mouthPos.x += (targetX - mouthPos.x) * SNAP_LERP;
+      mouthPos.y += (targetY - mouthPos.y) * SNAP_LERP;
+      mouth.setPosition(mouthPos);
+      clampToBounds(mouth);
+
+      const vel = mouth.getVelocity();
+      vel.multiplyScalar(1 - SNAP_LERP);
+      mouth.setVelocity(vel);
+    }
+
+    // ── 3. Proximity check → snap ─────────────────────────────────────────────
+    //
+    // We check XY distance only. Neither piece should be dragging when we
+    // snap — a drag will have already cleared the flag in step 1.
+    if (!snapState.headEyes && !head.isDragging() && !eyes.isDragging()) {
+      const hp = head.getPosition();
+      const ep = eyes.getPosition();
+      const dx = hp.x - ep.x - EYES_OFFSET.x; // distance from ideal position
+      const dy = hp.y - ep.y - EYES_OFFSET.y;
+      if (Math.sqrt(dx * dx + dy * dy) < SNAP_DISTANCE) {
+        snapState.headEyes = true;
+        // Kill velocity on the follower (eyes) so there's no pop
+        eyes.setVelocity(new THREE.Vector3());
+      }
+    }
+
+    if (!snapState.eyesMouth && !eyes.isDragging() && !mouth.isDragging()) {
+      const ep = eyes.getPosition();
+      const mp = mouth.getPosition();
+      const dx = ep.x - mp.x - MOUTH_OFFSET.x;
+      const dy = ep.y - mp.y - MOUTH_OFFSET.y;
+      if (Math.sqrt(dx * dx + dy * dy) < SNAP_DISTANCE) {
+        snapState.eyesMouth = true;
+        mouth.setVelocity(new THREE.Vector3());
+      }
+    }
+
+    // ── 4. SAT collision — skip snapped pairs ─────────────────────────────────
+    //
+    // When two sprites are snapped they're intentionally overlapping at their
+    // correct face position, so running SAT would immediately push them apart.
+    // We skip the pair entirely; unsnapped pairs still collide normally.
+    type SpritePair = {
+      a: SpriteHandle;
+      b: SpriteHandle;
+      snapped: boolean;
+    };
+
+    const pairs: SpritePair[] = [
+      { a: head, b: eyes, snapped: snapState.headEyes },
+      { a: eyes, b: mouth, snapped: snapState.eyesMouth },
+      { a: head, b: mouth, snapped: false }, // head↔mouth never snap
+    ];
+
+    for (const { a, b, snapped } of pairs) {
+      if (snapped) continue; // ← collision suppressed while snapped
+
+      const polyA = a.getWorldPolygon();
+      const polyB = b.getWorldPolygon();
+      const result = satCollide(polyA, polyB);
+      if (!result) continue;
+
+      const { depth, axis } = result;
+      const ax2 = new THREE.Vector2(axis.x, axis.y);
+
+      const aDragging = a.isDragging();
+      const bDragging = b.isDragging();
+
+      if (!aDragging && !bDragging) {
+        const posA = a.getPosition();
+        const posB = b.getPosition();
+        posA.x -= ax2.x * depth * 0.5;
+        posA.y -= ax2.y * depth * 0.5;
+        posB.x += ax2.x * depth * 0.5;
+        posB.y += ax2.y * depth * 0.5;
+        a.setPosition(posA);
+        b.setPosition(posB);
+        clampToBounds(a);
+        clampToBounds(b);
+      } else if (aDragging) {
+        const posB = b.getPosition();
+        posB.x += ax2.x * depth;
+        posB.y += ax2.y * depth;
+        b.setPosition(posB);
+        clampToBounds(b);
+      } else {
+        const posA = a.getPosition();
+        posA.x -= ax2.x * depth;
+        posA.y -= ax2.y * depth;
+        a.setPosition(posA);
+        clampToBounds(a);
+      }
+
+      const velA = a.getVelocity();
+      const velB = b.getVelocity();
+      const relVel = new THREE.Vector2(velA.x - velB.x, velA.y - velB.y);
+      const impactSpeed = relVel.dot(ax2);
+      if (impactSpeed < 0) continue;
+
+      if (!aDragging) {
+        velA.x -= impactSpeed * ax2.x;
+        velA.y -= impactSpeed * ax2.y;
+        a.setVelocity(velA);
+      }
+      if (!bDragging) {
+        velB.x += impactSpeed * ax2.x;
+        velB.y += impactSpeed * ax2.y;
+        b.setVelocity(velB);
       }
     }
   });
@@ -250,42 +388,53 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
   useFrame(() => {
     const initalPos = new THREE.Vector3(0, -800, 2600);
 
-    if (
-      headRef.current &&
-      metaBallsHeadFront.current &&
-      metaBallsHeadBack.current
-    ) {
-      if (headRef.current.getPosition().distanceTo(initalPos) > 2) {
+    const head = headRef.current;
+    const eyes = eyesRef.current;
+    const mouth = mouthRef.current;
+
+    if (head && metaBallsHeadFront.current && metaBallsHeadBack.current) {
+      const headPosition = head.getPosition();
+      if (headPosition.distanceTo(initalPos) > 2) {
         metaBallsHeadFront.current.visible = false;
         metaBallsHeadBack.current.visible = false;
+        // Resetting z position to fix collisions
+        head.setPosition(
+          new THREE.Vector3(headPosition.x, headPosition.y, 2600),
+        );
         hideBillboard("head");
       }
     }
 
     if (
-      eyesRef.current &&
+      eyes &&
       metaBallsHeadFront.current &&
       metaBallsHeadBack.current &&
       metaBallsMouthFront.current &&
       metaBallsMouthBack.current
     ) {
-      if (eyesRef.current.getPosition().distanceTo(initalPos) > 2) {
+      const eyesPosition = eyes.getPosition();
+      if (eyesPosition.distanceTo(initalPos) > 2) {
         metaBallsHeadFront.current.visible = false;
         metaBallsHeadBack.current.visible = false;
         metaBallsMouthFront.current.visible = false;
         metaBallsMouthBack.current.visible = false;
+        // Resetting z position to fix collisions
+        eyes.setPosition(
+          new THREE.Vector3(eyesPosition.x, eyesPosition.y, 2600),
+        );
         hideBillboard("eyes");
       }
     }
 
-    if (
-      mouthRef.current &&
-      metaBallsMouthFront.current &&
-      metaBallsMouthBack.current
-    ) {
-      if (mouthRef.current.getPosition().distanceTo(initalPos) > 4) {
+    if (mouth && metaBallsMouthFront.current && metaBallsMouthBack.current) {
+      const mouthPosition = mouth.getPosition();
+      if (mouthPosition.distanceTo(initalPos) > 4) {
         metaBallsMouthFront.current.visible = false;
         metaBallsMouthBack.current.visible = false;
+        // Resetting z position to fix collisions
+        mouth.setPosition(
+          new THREE.Vector3(mouthPosition.x, mouthPosition.y, 2600),
+        );
         hideBillboard("mouth");
       }
     }
@@ -296,19 +445,14 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
       <PolygonSprite
         texture={top}
         polygon={HEAD_POLYGON}
-        position={[0, -800, 2602]}
+        position={[0, -800, 2600]}
         scale={scale}
-        // debug
         ref={headRef}
         draggable
         throwable
         bounds={{ min: [-550, -1100, 2559], max: [550, -500, 2601] }}
-        onPointerDown={() => {
-          handleGrab("head");
-        }}
-        onPointerUp={() => {
-          handleGrab(null);
-        }}
+        onPointerDown={() => handleGrab("head")}
+        onPointerUp={() => handleGrab(null)}
       />
 
       <MetaBalls
@@ -327,20 +471,8 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         }
         seed={5}
         anchors={[
-          {
-            x: -1.5,
-            y: -7.25,
-            radius: 16,
-            roundness: 0.6,
-            yScale: 0.1,
-          },
-          {
-            x: -1,
-            y: -17,
-            radius: 16,
-            roundness: 0.6,
-            yScale: 0.1,
-          },
+          { x: -1.5, y: -7.25, radius: 16, roundness: 0.6, yScale: 0.1 },
+          { x: -1, y: -17, radius: 16, roundness: 0.6, yScale: 0.1 },
         ]}
       />
 
@@ -359,20 +491,8 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
           pause === "head" ? "top" : pause === "eyes" ? "bottom" : null
         }
         anchors={[
-          {
-            x: -1.5,
-            y: -7.25,
-            radius: 15,
-            roundness: 0.6,
-            yScale: 0.1,
-          },
-          {
-            x: -1,
-            y: -17,
-            radius: 15,
-            roundness: 0.6,
-            yScale: 0.1,
-          },
+          { x: -1.5, y: -7.25, radius: 15, roundness: 0.6, yScale: 0.1 },
+          { x: -1, y: -17, radius: 15, roundness: 0.6, yScale: 0.1 },
         ]}
       />
 
@@ -381,7 +501,6 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         polygon={EYES_POLYGON}
         position={[0, -800, 2600]}
         scale={scale}
-        // debug
         draggable
         ref={eyesRef}
         throwable
@@ -394,6 +513,7 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
           position={[5, 82, -1]}
           scale={[1, 0.1, 1]}
           thickness={2}
+          renderOrder={0}
         />
       </PolygonSprite>
 
@@ -413,13 +533,7 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         ballCount={18}
         anchors={[
           { x: -1.5, y: 1.5, radius: 15, roundness: 0.6, yScale: 0.1 },
-          {
-            x: -0.95,
-            y: -6,
-            radius: 15,
-            roundness: 0.6,
-            yScale: 0.05,
-          },
+          { x: -0.95, y: -6, radius: 15, roundness: 0.6, yScale: 0.05 },
         ]}
       />
 
@@ -439,29 +553,16 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         pauseYOffset={pause === "mouth" ? 9 : 6}
         ballCount={18}
         anchors={[
-          {
-            x: -1.5,
-            y: 1.5,
-            radius: 15,
-            roundness: 0.6,
-            yScale: 0.1,
-          },
-          {
-            x: -0.95,
-            y: -6,
-            radius: 15,
-            roundness: 0.6,
-            yScale: 0.05,
-          },
+          { x: -1.5, y: 1.5, radius: 15, roundness: 0.6, yScale: 0.1 },
+          { x: -0.95, y: -6, radius: 15, roundness: 0.6, yScale: 0.05 },
         ]}
       />
 
       <PolygonSprite
         texture={bottom}
         polygon={MOUTH_POLYGON}
-        position={[0, -800, 2604]}
+        position={[0, -800, 2600]}
         scale={scale}
-        // debug
         draggable
         throwable
         ref={mouthRef}
@@ -474,6 +575,7 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
           position={[1, -58, -5]}
           scale={[1, 0.1, 1]}
           thickness={2}
+          renderOrder={0}
         />
       </PolygonSprite>
     </group>
