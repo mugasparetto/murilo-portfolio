@@ -194,6 +194,8 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
 
   const [pause, setPause] = useState<null | "head" | "eyes" | "mouth">(null);
 
+  const isComplete = useRef(false);
+
   // ── Snap state ──────────────────────────────────────────────────────────────
   const snap = useRef<SnapState>({ headEyes: false, eyesMouth: false });
 
@@ -228,6 +230,8 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
     const eyes = eyesRef.current;
     const mouth = mouthRef.current;
     if (!head || !eyes || !mouth) return;
+
+    if (isComplete.current) return;
 
     const snapState = snap.current;
 
@@ -381,6 +385,29 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         velB.x += impactSpeed * ax2.x;
         velB.y += impactSpeed * ax2.y;
         b.setVelocity(velB);
+      }
+    }
+
+    // ── 5. All pairs snapped → fire onComplete once ───────────────────
+    if (!isComplete.current && snapState.headEyes && snapState.eyesMouth) {
+      const headPos = head.getPosition();
+      const eyesPos = eyes.getPosition();
+      const mouthPos = mouth.getPosition();
+
+      const dx1 = eyesPos.x - (headPos.x - EYES_OFFSET.x);
+      const dy1 = eyesPos.y - (headPos.y - EYES_OFFSET.y);
+      const eyesSettled = Math.sqrt(dx1 * dx1 + dy1 * dy1) < 0.5;
+
+      const dx2 = mouthPos.x - (eyesPos.x - MOUTH_OFFSET.x);
+      const dy2 = mouthPos.y - (eyesPos.y - MOUTH_OFFSET.y);
+      const mouthSettled = Math.sqrt(dx2 * dx2 + dy2 * dy2) < 0.5;
+
+      if (eyesSettled && mouthSettled) {
+        isComplete.current = true;
+        headRef.current?.setEnabled(false);
+        eyesRef.current?.setEnabled(false);
+        mouthRef.current?.setEnabled(false);
+        console.log("complete");
       }
     }
   });

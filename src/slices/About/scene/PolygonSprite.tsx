@@ -17,6 +17,7 @@ export type SpriteHandle = {
   getWorldPolygon: () => THREE.Vector2[]; // polygon in world XY space
   isDragging: () => boolean;
   getCentreBox: () => THREE.Box3 | null;
+  setEnabled: (enabled: boolean) => void;
 };
 
 // ─── Throw tuning ─────────────────────────────────────────────────────────────
@@ -202,6 +203,8 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     const isInsideRef = useRef(false);
     const isDraggingRef = useRef(false);
 
+    const enabledRef = useRef(true);
+
     const dragPlane = useRef(new THREE.Plane());
     const dragOffset = useRef(new THREE.Vector3());
 
@@ -274,6 +277,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
 
     useEffect(() => {
       const handlePointerDown = (event: PointerEvent) => {
+        if (!enabledRef.current) return;
         if (!meshRef.current) return;
         meshRef.current.updateWorldMatrix(true, false);
 
@@ -355,6 +359,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
 
         const hit = pointInPolygon(uv[0], uv[1], polygon);
         if (hit && !isInsideRef.current) {
+          if (!enabledRef.current) return;
           isInsideRef.current = true;
           document.body.style.cursor = "grab";
         } else if (!hit && isInsideRef.current) {
@@ -486,6 +491,16 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
               pos.y + (iv - 0.5) * s[1],
             );
           });
+        },
+        setEnabled: (enabled: boolean) => {
+          enabledRef.current = enabled;
+          if (!enabled) {
+            // Clean up any in-progress drag immediately
+            isDraggingRef.current = false;
+            isPressedRef.current = false;
+            throwVelocity.current.set(0, 0, 0);
+            document.body.style.cursor = "default";
+          }
         },
       }),
       [polygon, normalizedScale, centreBox],
