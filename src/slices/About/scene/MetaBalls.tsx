@@ -1,5 +1,5 @@
-import React, { useMemo, useRef } from "react";
-import { useFrame, useThree } from "@react-three/fiber";
+import React, { useMemo, useRef, useImperativeHandle, forwardRef } from "react";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
 // ─────────────────────────────────────────────
@@ -24,6 +24,12 @@ const HOLO = {
 // ─────────────────────────────────────────────
 //  Types
 // ─────────────────────────────────────────────
+
+export type MetaBallsHandle = {
+  setPauseTarget: (target: "top" | "bottom" | null) => void;
+  setVisible: (visible: boolean) => void;
+  setPauseYOffset: (offset: number) => void;
+};
 
 export type AnchorBall = {
   x: number;
@@ -92,7 +98,7 @@ function fract(x: number) {
 }
 
 function hash31(p: number): number[] {
-  let r = [p * 0.1031, p * 0.103, p * 0.0973].map(fract);
+  const r = [p * 0.1031, p * 0.103, p * 0.0973].map(fract);
   const dot =
     r[0] * (r[1] + 33.33) + r[1] * (r[2] + 33.33) + r[2] * (r[0] + 33.33);
   return r.map((v) => fract(v + dot));
@@ -237,7 +243,7 @@ const fragmentShader = /* glsl */ `
 const MAX_ANCHORS = 16;
 
 type SceneProps = Required<
-  Omit<HolographicMetaBallsProps, "position" | "scale">
+  Omit<HolographicMetaBallsProps, "position" | "scale" | "ref">
 > & {
   position: [number, number, number];
   scale: [number, number, number];
@@ -245,393 +251,416 @@ type SceneProps = Required<
   seed: number;
 };
 
-function HolographicMetaBallsMesh(props: SceneProps) {
-  const metaBalls = useMemo(
-    () => Array.from({ length: 50 }, () => new THREE.Vector3()),
-    [],
-  );
+const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
+  function HolographicMetaBallsMesh(props, ref) {
+    const pauseTargetRef = useRef<"top" | "bottom" | null>(props.pauseTarget);
+    const pauseYOffsetRef = useRef<number>(props.pauseYOffset);
 
-  const ballParams = useMemo(() => {
-    return Array.from({ length: props.ballCount }, (_, i) => {
-      const h = hash31(i + 1 + props.seed * 100.0);
-      return {
-        st: h[0] * Math.PI * 2,
-        speed: 0.5 + h[1],
-        amp: 4 + h[2] * 4,
-        radius: 0.8 + h[1] * 1.2,
-      };
-    });
-  }, [props.ballCount, props.seed]);
-
-  // Tracked positions for lerping — initialised lazily on first frame
-  const ballPositions = useRef<{ x: number; y: number }[] | null>(null);
-
-  // Per-ball mouse-disturbance offsets (lerped independently)
-  const mouseOffsets = useRef<{ x: number; y: number }[]>(
-    Array.from({ length: 50 }, () => ({ x: 0, y: 0 })),
-  );
-
-  // ── Anchor arrays ────────────────────────────
-  const anchorPositions = useMemo(
-    () => Array.from({ length: MAX_ANCHORS }, () => new THREE.Vector3()),
-    [],
-  );
-  const anchorRoundness = useMemo(
-    () => new Float32Array(MAX_ANCHORS).fill(1),
-    [],
-  );
-  const anchorStrength = useMemo(
-    () => new Float32Array(MAX_ANCHORS).fill(1),
-    [],
-  );
-  const anchorYScale = useMemo(() => new Float32Array(MAX_ANCHORS).fill(1), []);
-  const anchorVisible = useMemo(
-    () => new Float32Array(MAX_ANCHORS).fill(1),
-    [],
-  );
-
-  useMemo(() => {
-    const list = props.anchors.slice(0, MAX_ANCHORS);
-    list.forEach((a, i) => {
-      anchorPositions[i].set(a.x, a.y, a.radius);
-      anchorRoundness[i] = a.roundness ?? 1.0;
-      anchorStrength[i] = a.strength ?? 1.0;
-      anchorYScale[i] = a.yScale ?? 1.0;
-      anchorVisible[i] = (a.visible ?? true) ? 1.0 : 0.0;
-    });
-    for (let i = list.length; i < MAX_ANCHORS; i++) {
-      anchorPositions[i].set(0, 0, 0);
-      anchorRoundness[i] = 1;
-      anchorStrength[i] = 1;
-      anchorYScale[i] = 1;
-      anchorVisible[i] = 1;
-    }
-  }, [props.anchors]);
-
-  // ── Uniforms ─────────────────────────────────
-  const uniforms = useMemo(
-    () => ({
-      uTime: { value: 0 },
-      uResolution: {
-        value: new THREE.Vector2(window.innerWidth, window.innerHeight),
+    useImperativeHandle(ref, () => ({
+      setPauseTarget: (target) => {
+        pauseTargetRef.current = target;
       },
-      uTimeScale: { value: props.holoTimeScale },
-      uSeed: { value: props.holoSeed },
-      uIterations: { value: props.holoIterations },
-      uColor1: { value: hexToVec3(props.holoColor1) },
-      uColor2: { value: hexToVec3(props.holoColor2) },
-      uColor3: { value: hexToVec3(props.holoColor3) },
-      uColor4: { value: hexToVec3(props.holoColor4) },
-      uColorIntensity: { value: props.holoColorIntensity },
-      uSoftness: { value: props.holoSoftness },
-      uGamma: { value: props.holoGamma },
-      uGrainAmount: { value: props.holoGrainAmount },
-      uZoom: { value: props.holoZoom ?? 1.0 },
-      iAnimationSize: { value: props.animationSize },
-      iBallCount: { value: props.ballCount },
-      iMetaBalls: { value: metaBalls },
-      enableTransparency: { value: props.enableTransparency ? 1.0 : 0.0 },
-      iAnchorCount: { value: Math.min(props.anchors.length, MAX_ANCHORS) },
-      iAnchors: { value: anchorPositions },
-      iAnchorRoundness: { value: anchorRoundness },
-      iAnchorStrength: { value: anchorStrength },
-      iAnchorYScale: { value: anchorYScale },
-      iAnchorVisible: { value: anchorVisible },
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+      setVisible: (visible) => {
+        if (meshRef.current) meshRef.current.visible = visible;
+      },
+      setPauseYOffset: (offset) => {
+        pauseYOffsetRef.current = offset;
+      },
+    }));
 
-  const uniformsRef = useRef(uniforms);
-  useMemo(() => {
-    uniformsRef.current.iAnchorCount.value = Math.min(
-      props.anchors.length,
-      MAX_ANCHORS,
+    const metaBalls = useMemo(
+      () => Array.from({ length: 50 }, () => new THREE.Vector3()),
+      [],
     );
-  }, [props.anchors]);
 
-  // Ref to the mesh so we can read its world position for coordinate mapping
-  const meshRef = useRef<THREE.Mesh>(null);
-
-  // ── Animation ────────────────────────────────
-  useFrame(({ clock, size, pointer, camera: frameCamera }) => {
-    const t = clock.getElapsedTime() + props.seed * 10.0;
-    uniforms.uTime.value = t;
-    uniforms.uResolution.value.set(size.width, size.height);
-
-    uniforms.uTimeScale.value = props.holoTimeScale;
-    uniforms.uSeed.value = props.holoSeed;
-    uniforms.uIterations.value = props.holoIterations;
-    uniforms.uColor1.value.copy(hexToVec3(props.holoColor1));
-    uniforms.uColor2.value.copy(hexToVec3(props.holoColor2));
-    uniforms.uColor3.value.copy(hexToVec3(props.holoColor3));
-    uniforms.uColor4.value.copy(hexToVec3(props.holoColor4));
-    uniforms.uColorIntensity.value = props.holoColorIntensity;
-    uniforms.uSoftness.value = props.holoSoftness;
-    uniforms.uGamma.value = props.holoGamma;
-    uniforms.uGrainAmount.value = props.holoGrainAmount;
-    uniforms.uZoom.value = props.holoZoom;
-
-    const anchors = props.anchors;
-    const topAnchor = anchors[0] ?? { x: 0, y: 37.5 };
-    const bottomAnchor = anchors[1] ?? { x: 0, y: -37.5 };
-
-    const target =
-      props.pauseTarget === "top"
-        ? topAnchor
-        : props.pauseTarget === "bottom"
-          ? bottomAnchor
-          : null;
-
-    const lerpSpeed = props.pauseSpeed;
-    const count = props.ballCount;
-
-    // Lazy-init tracked positions to current natural positions
-    if (!ballPositions.current) {
-      ballPositions.current = Array.from({ length: count }, (_, i) => {
-        const p = ballParams[i];
-        const laneT = count > 1 ? i / (count - 1) : 0.5;
+    const ballParams = useMemo(() => {
+      return Array.from({ length: props.ballCount }, (_, i) => {
+        const h = hash31(i + 1 + props.seed * 100.0);
         return {
-          x: (laneT * 2 - 1) * props.animationSize * 0.4 * props.clumpFactor,
-          y:
-            topAnchor.y * 1.3 +
-            Math.sin(t * props.speed * p.speed + p.st) *
-              p.amp *
-              props.clumpFactor,
+          st: h[0] * Math.PI * 2,
+          speed: 0.5 + h[1],
+          amp: 4 + h[2] * 4,
+          radius: 0.8 + h[1] * 1.2,
         };
       });
-    }
+    }, [props.ballCount, props.seed]);
 
-    const mouseRadius = props.mouseRadius;
-    const mouseStrength = props.mouseStrength;
-    const mouseInfluenceSpeed = props.mouseInfluenceSpeed;
+    // Tracked positions for lerping — initialised lazily on first frame
+    const ballPositions = useRef<{ x: number; y: number }[] | null>(null);
 
-    // Unproject the NDC pointer through the camera onto the mesh's Z plane,
-    // then convert to animation-space by subtracting the mesh world position
-    // and dividing by its scale (which maps 1 world unit → 1/scale animation unit).
-    let mouse: { x: number; y: number } | null = null;
-    if (meshRef.current) {
-      const meshWorldPos = new THREE.Vector3();
-      meshRef.current.getWorldPosition(meshWorldPos);
+    // Per-ball mouse-disturbance offsets (lerped independently)
+    const mouseOffsets = useRef<{ x: number; y: number }[]>(
+      Array.from({ length: 50 }, () => ({ x: 0, y: 0 })),
+    );
 
-      // Ray from camera through the NDC pointer position
-      const ray = new THREE.Ray();
-      const ndcPoint = new THREE.Vector3(pointer.x, pointer.y, 0.5);
-      ndcPoint.unproject(frameCamera);
-      ray.origin.copy(frameCamera.position);
-      ray.direction.subVectors(ndcPoint, frameCamera.position).normalize();
+    // ── Anchor arrays ────────────────────────────
+    const anchorPositions = useMemo(
+      () => Array.from({ length: MAX_ANCHORS }, () => new THREE.Vector3()),
+      [],
+    );
+    const anchorRoundness = useMemo(
+      () => new Float32Array(MAX_ANCHORS).fill(1),
+      [],
+    );
+    const anchorStrength = useMemo(
+      () => new Float32Array(MAX_ANCHORS).fill(1),
+      [],
+    );
+    const anchorYScale = useMemo(
+      () => new Float32Array(MAX_ANCHORS).fill(1),
+      [],
+    );
+    const anchorVisible = useMemo(
+      () => new Float32Array(MAX_ANCHORS).fill(1),
+      [],
+    );
 
-      // Intersect with the Z=meshWorldPos.z plane
-      const planeZ = meshWorldPos.z;
-      const t_intersect = (planeZ - ray.origin.z) / ray.direction.z;
-      if (t_intersect > 0) {
-        const worldX = ray.origin.x + ray.direction.x * t_intersect;
-        const worldY = ray.origin.y + ray.direction.y * t_intersect;
-
-        // Convert world coords → animation-space:
-        // The mesh is a unit plane scaled by props.scale, so
-        // animationSize world-units span props.scale[0] world-units → scale factor
-        const worldUnitsPerAnimUnit = props.scale[0] / props.animationSize;
-        mouse = {
-          x: (worldX - meshWorldPos.x) / worldUnitsPerAnimUnit,
-          y: (worldY - meshWorldPos.y) / worldUnitsPerAnimUnit,
-        };
+    useMemo(() => {
+      const list = props.anchors.slice(0, MAX_ANCHORS);
+      list.forEach((a, i) => {
+        anchorPositions[i].set(a.x, a.y, a.radius);
+        anchorRoundness[i] = a.roundness ?? 1.0;
+        anchorStrength[i] = a.strength ?? 1.0;
+        anchorYScale[i] = a.yScale ?? 1.0;
+        anchorVisible[i] = (a.visible ?? true) ? 1.0 : 0.0;
+      });
+      for (let i = list.length; i < MAX_ANCHORS; i++) {
+        anchorPositions[i].set(0, 0, 0);
+        anchorRoundness[i] = 1;
+        anchorStrength[i] = 1;
+        anchorYScale[i] = 1;
+        anchorVisible[i] = 1;
       }
-    }
+    }, [props.anchors]);
 
-    for (let i = 0; i < count; i++) {
-      const p = ballParams[i];
-      const laneT = count > 1 ? i / (count - 1) : 0.5;
+    // ── Uniforms ─────────────────────────────────
+    const uniforms = useMemo(
+      () => ({
+        uTime: { value: 0 },
+        uResolution: {
+          value: new THREE.Vector2(window.innerWidth, window.innerHeight),
+        },
+        uTimeScale: { value: props.holoTimeScale },
+        uSeed: { value: props.holoSeed },
+        uIterations: { value: props.holoIterations },
+        uColor1: { value: hexToVec3(props.holoColor1) },
+        uColor2: { value: hexToVec3(props.holoColor2) },
+        uColor3: { value: hexToVec3(props.holoColor3) },
+        uColor4: { value: hexToVec3(props.holoColor4) },
+        uColorIntensity: { value: props.holoColorIntensity },
+        uSoftness: { value: props.holoSoftness },
+        uGamma: { value: props.holoGamma },
+        uGrainAmount: { value: props.holoGrainAmount },
+        uZoom: { value: props.holoZoom ?? 1.0 },
+        iAnimationSize: { value: props.animationSize },
+        iBallCount: { value: props.ballCount },
+        iMetaBalls: { value: metaBalls },
+        enableTransparency: { value: props.enableTransparency ? 1.0 : 0.0 },
+        iAnchorCount: { value: Math.min(props.anchors.length, MAX_ANCHORS) },
+        iAnchors: { value: anchorPositions },
+        iAnchorRoundness: { value: anchorRoundness },
+        iAnchorStrength: { value: anchorStrength },
+        iAnchorYScale: { value: anchorYScale },
+        iAnchorVisible: { value: anchorVisible },
+      }),
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [],
+    );
 
-      // Natural (free-floating) position
-      const naturalX =
-        (laneT * 2 - 1) * props.animationSize * 0.4 * props.clumpFactor;
-      const naturalY =
-        topAnchor.y * 1.3 +
-        Math.sin(t * props.speed * p.speed + p.st) * p.amp * props.clumpFactor;
+    const uniformsRef = useRef(uniforms);
+    useMemo(() => {
+      uniformsRef.current.iAnchorCount.value = Math.min(
+        props.anchors.length,
+        MAX_ANCHORS,
+      );
+    }, [props.anchors]);
 
-      let targetY = 0;
+    // Ref to the mesh so we can read its world position for coordinate mapping
+    const meshRef = useRef<THREE.Mesh>(null);
 
-      if (target) {
-        targetY =
-          props.pauseTarget === "top"
-            ? target.y + props.pauseYOffset
-            : target.y - props.pauseYOffset;
+    // ── Animation ────────────────────────────────
+    useFrame(({ clock, size, pointer, camera: frameCamera }) => {
+      const t = clock.getElapsedTime() + props.seed * 10.0;
+      uniforms.uTime.value = t;
+      uniforms.uResolution.value.set(size.width, size.height);
+
+      uniforms.uTimeScale.value = props.holoTimeScale;
+      uniforms.uSeed.value = props.holoSeed;
+      uniforms.uIterations.value = props.holoIterations;
+      uniforms.uColor1.value.copy(hexToVec3(props.holoColor1));
+      uniforms.uColor2.value.copy(hexToVec3(props.holoColor2));
+      uniforms.uColor3.value.copy(hexToVec3(props.holoColor3));
+      uniforms.uColor4.value.copy(hexToVec3(props.holoColor4));
+      uniforms.uColorIntensity.value = props.holoColorIntensity;
+      uniforms.uSoftness.value = props.holoSoftness;
+      uniforms.uGamma.value = props.holoGamma;
+      uniforms.uGrainAmount.value = props.holoGrainAmount;
+      uniforms.uZoom.value = props.holoZoom;
+
+      const anchors = props.anchors;
+      const topAnchor = anchors[0] ?? { x: 0, y: 37.5 };
+      const bottomAnchor = anchors[1] ?? { x: 0, y: -37.5 };
+
+      const target =
+        pauseTargetRef.current === "top"
+          ? topAnchor
+          : pauseTargetRef.current === "bottom"
+            ? bottomAnchor
+            : null;
+
+      const lerpSpeed = props.pauseSpeed;
+      const count = props.ballCount;
+
+      // Lazy-init tracked positions to current natural positions
+      if (!ballPositions.current) {
+        ballPositions.current = Array.from({ length: count }, (_, i) => {
+          const p = ballParams[i];
+          const laneT = count > 1 ? i / (count - 1) : 0.5;
+          return {
+            x: (laneT * 2 - 1) * props.animationSize * 0.4 * props.clumpFactor,
+            y:
+              topAnchor.y * 1.3 +
+              Math.sin(t * props.speed * p.speed + p.st) *
+                p.amp *
+                props.clumpFactor,
+          };
+        });
       }
 
-      const destX = target ? target.x : naturalX;
-      const destY = target ? targetY : naturalY;
+      const mouseRadius = props.mouseRadius;
+      const mouseStrength = props.mouseStrength;
+      const mouseInfluenceSpeed = props.mouseInfluenceSpeed;
 
-      ballPositions.current[i].x = THREE.MathUtils.lerp(
-        ballPositions.current[i].x,
-        destX,
-        lerpSpeed,
-      );
-      ballPositions.current[i].y = THREE.MathUtils.lerp(
-        ballPositions.current[i].y,
-        destY,
-        lerpSpeed,
-      );
+      // Unproject the NDC pointer through the camera onto the mesh's Z plane,
+      // then convert to animation-space by subtracting the mesh world position
+      // and dividing by its scale (which maps 1 world unit → 1/scale animation unit).
+      let mouse: { x: number; y: number } | null = null;
+      if (meshRef.current) {
+        const meshWorldPos = new THREE.Vector3();
+        meshRef.current.getWorldPosition(meshWorldPos);
 
-      // ── Mouse disturbance ──────────────────────
-      // Compute desired offset based on current mouse position
-      let wantOffX = 0;
-      let wantOffY = 0;
+        // Ray from camera through the NDC pointer position
+        const ray = new THREE.Ray();
+        const ndcPoint = new THREE.Vector3(pointer.x, pointer.y, 0.5);
+        ndcPoint.unproject(frameCamera);
+        ray.origin.copy(frameCamera.position);
+        ray.direction.subVectors(ndcPoint, frameCamera.position).normalize();
 
-      if (mouse) {
-        const bx = ballPositions.current[i].x;
-        const by = ballPositions.current[i].y;
-        const dx = bx - mouse.x;
-        const dy = by - mouse.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        // Intersect with the Z=meshWorldPos.z plane
+        const planeZ = meshWorldPos.z;
+        const t_intersect = (planeZ - ray.origin.z) / ray.direction.z;
+        if (t_intersect > 0) {
+          const worldX = ray.origin.x + ray.direction.x * t_intersect;
+          const worldY = ray.origin.y + ray.direction.y * t_intersect;
 
-        if (dist < mouseRadius && dist > 0.001) {
-          // Falloff: strongest at centre, zero at mouseRadius
-          const falloff = 1.0 - dist / mouseRadius;
-          const force = mouseStrength * falloff * falloff;
-          // Normalised direction away from mouse (repel) or toward (attract)
-          wantOffX = (dx / dist) * force;
-          wantOffY = (dy / dist) * force;
+          // Convert world coords → animation-space:
+          // The mesh is a unit plane scaled by props.scale, so
+          // animationSize world-units span props.scale[0] world-units → scale factor
+          const worldUnitsPerAnimUnit = props.scale[0] / props.animationSize;
+          mouse = {
+            x: (worldX - meshWorldPos.x) / worldUnitsPerAnimUnit,
+            y: (worldY - meshWorldPos.y) / worldUnitsPerAnimUnit,
+          };
         }
       }
 
-      // Lerp the offset toward the desired value (snappy in, gentle decay out)
-      const offRef = mouseOffsets.current[i];
-      const lerpIn = mouse ? mouseInfluenceSpeed : mouseInfluenceSpeed * 0.3;
-      offRef.x = THREE.MathUtils.lerp(offRef.x, wantOffX, lerpIn);
-      offRef.y = THREE.MathUtils.lerp(offRef.y, wantOffY, lerpIn);
+      for (let i = 0; i < count; i++) {
+        const p = ballParams[i];
+        const laneT = count > 1 ? i / (count - 1) : 0.5;
 
-      // ── Invisible walls: clamp X within [mouseMinX, mouseMaxX] ───────────
-      let finalX = ballPositions.current[i].x + offRef.x;
-      const finalY = ballPositions.current[i].y + offRef.y;
+        // Natural (free-floating) position
+        const naturalX =
+          (laneT * 2 - 1) * props.animationSize * 0.4 * props.clumpFactor;
+        const naturalY =
+          topAnchor.y * 1.3 +
+          Math.sin(t * props.speed * p.speed + p.st) *
+            p.amp *
+            props.clumpFactor;
 
-      if (props.mouseMinX !== null && finalX < props.mouseMinX) {
-        finalX = props.mouseMinX;
-        offRef.x = finalX - ballPositions.current[i].x;
-      } else if (props.mouseMaxX !== null && finalX > props.mouseMaxX) {
-        finalX = props.mouseMaxX;
-        offRef.x = finalX - ballPositions.current[i].x;
+        let targetY = 0;
+
+        if (target) {
+          targetY =
+            pauseTargetRef.current === "top"
+              ? target.y + pauseYOffsetRef.current
+              : target.y - pauseYOffsetRef.current;
+        }
+
+        const destX = target ? target.x : naturalX;
+        const destY = target ? targetY : naturalY;
+
+        ballPositions.current[i].x = THREE.MathUtils.lerp(
+          ballPositions.current[i].x,
+          destX,
+          lerpSpeed,
+        );
+        ballPositions.current[i].y = THREE.MathUtils.lerp(
+          ballPositions.current[i].y,
+          destY,
+          lerpSpeed,
+        );
+
+        // ── Mouse disturbance ──────────────────────
+        // Compute desired offset based on current mouse position
+        let wantOffX = 0;
+        let wantOffY = 0;
+
+        if (mouse && !target) {
+          const bx = ballPositions.current[i].x;
+          const by = ballPositions.current[i].y;
+          const dx = bx - mouse.x;
+          const dy = by - mouse.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < mouseRadius && dist > 0.001) {
+            // Falloff: strongest at centre, zero at mouseRadius
+            const falloff = 1.0 - dist / mouseRadius;
+            const force = mouseStrength * falloff * falloff;
+            // Normalised direction away from mouse (repel) or toward (attract)
+            wantOffX = (dx / dist) * force;
+            wantOffY = (dy / dist) * force;
+          }
+        }
+
+        // Lerp the offset toward the desired value (snappy in, gentle decay out)
+        const offRef = mouseOffsets.current[i];
+        const lerpIn = mouse ? mouseInfluenceSpeed : mouseInfluenceSpeed * 0.3;
+        offRef.x = THREE.MathUtils.lerp(offRef.x, wantOffX, lerpIn);
+        offRef.y = THREE.MathUtils.lerp(offRef.y, wantOffY, lerpIn);
+
+        // ── Invisible walls: clamp X within [mouseMinX, mouseMaxX] ───────────
+        let finalX = ballPositions.current[i].x + offRef.x;
+        const finalY = ballPositions.current[i].y + offRef.y;
+
+        if (props.mouseMinX !== null && finalX < props.mouseMinX) {
+          finalX = props.mouseMinX;
+          offRef.x = finalX - ballPositions.current[i].x;
+        } else if (props.mouseMaxX !== null && finalX > props.mouseMaxX) {
+          finalX = props.mouseMaxX;
+          offRef.x = finalX - ballPositions.current[i].x;
+        }
+
+        metaBalls[i].set(finalX, finalY, p.radius);
       }
+    });
 
-      metaBalls[i].set(finalX, finalY, p.radius);
-    }
-  });
-
-  return (
-    <mesh
-      position={props.position}
-      scale={props.scale}
-      renderOrder={props.renderOrder ?? 1}
-      ref={(node) => {
-        meshRef.current = node;
-        if (typeof props.ref === "function") props.ref(node);
-        else if (props.ref)
-          (props.ref as React.MutableRefObject<THREE.Mesh | null>).current =
-            node;
-      }}
-    >
-      <planeGeometry args={[1, 1]} />
-      <shaderMaterial
-        fragmentShader={fragmentShader}
-        vertexShader={vertexShader}
-        uniforms={uniforms}
-        transparent={props.enableTransparency}
-        depthWrite={false}
-      />
-    </mesh>
-  );
-}
+    return (
+      <mesh
+        position={props.position}
+        scale={props.scale}
+        renderOrder={props.renderOrder ?? 1}
+        ref={meshRef}
+      >
+        <planeGeometry args={[1, 1]} />
+        <shaderMaterial
+          fragmentShader={fragmentShader}
+          vertexShader={vertexShader}
+          uniforms={uniforms}
+          transparent={props.enableTransparency}
+          depthWrite={false}
+        />
+      </mesh>
+    );
+  },
+);
 
 // ─────────────────────────────────────────────
 //  Public component
 // ─────────────────────────────────────────────
 
-const HolographicMetaBalls: React.FC<HolographicMetaBallsProps> = ({
-  speed = 0.5,
-  animationSize = 50,
-  ballCount = 20,
-  clumpFactor = 0.8,
-  enableTransparency = false,
-  anchors = [
-    {
-      x: 0,
-      y: 37.5,
-      radius: 20,
-      roundness: 1,
-      strength: 1,
-      yScale: 1,
-      visible: true,
-    },
-    {
-      x: 0,
-      y: -37.5,
-      radius: 20,
-      roundness: 1,
-      strength: 1,
-      yScale: 1,
-      visible: true,
-    },
-  ],
-  position = [0, 0, 0],
-  scale = [1, 1, 1],
-  renderOrder = 1,
-  seed = 0,
-  pauseTarget = null,
-  pauseSpeed = 0.2,
+const HolographicMetaBalls = forwardRef<
+  MetaBallsHandle,
+  HolographicMetaBallsProps
+>(function HolographicMetaBalls(
+  {
+    speed = 0.5,
+    animationSize = 50,
+    ballCount = 20,
+    clumpFactor = 0.8,
+    enableTransparency = false,
+    anchors = [
+      {
+        x: 0,
+        y: 37.5,
+        radius: 20,
+        roundness: 1,
+        strength: 1,
+        yScale: 1,
+        visible: true,
+      },
+      {
+        x: 0,
+        y: -37.5,
+        radius: 20,
+        roundness: 1,
+        strength: 1,
+        yScale: 1,
+        visible: true,
+      },
+    ],
+    position = [0, 0, 0],
+    scale = [1, 1, 1],
+    renderOrder = 1,
+    seed = 0,
+    pauseTarget = null,
+    pauseSpeed = 0.2,
+    pauseYOffset = 5,
+    mouseRadius = 8,
+    mouseStrength = 12,
+    mouseInfluenceSpeed = 0.12,
+    mouseMinX = null,
+    mouseMaxX = null,
+    holoTimeScale = HOLO.timeScale,
+    holoSeed = HOLO.seed,
+    holoIterations = HOLO.iterations,
+    holoColor1 = HOLO.color1,
+    holoColor2 = HOLO.color2,
+    holoColor3 = HOLO.color3,
+    holoColor4 = HOLO.color4,
+    holoColorIntensity = HOLO.colorIntensity,
+    holoSoftness = HOLO.softness,
+    holoGamma = HOLO.gamma,
+    holoGrainAmount = HOLO.grainAmount,
+    holoZoom = HOLO.zoom,
+  },
   ref,
-  pauseYOffset = 5,
-  mouseRadius = 8,
-  mouseStrength = 12,
-  mouseInfluenceSpeed = 0.12,
-  mouseMinX = null,
-  mouseMaxX = null,
-  holoTimeScale = HOLO.timeScale,
-  holoSeed = HOLO.seed,
-  holoIterations = HOLO.iterations,
-  holoColor1 = HOLO.color1,
-  holoColor2 = HOLO.color2,
-  holoColor3 = HOLO.color3,
-  holoColor4 = HOLO.color4,
-  holoColorIntensity = HOLO.colorIntensity,
-  holoSoftness = HOLO.softness,
-  holoGamma = HOLO.gamma,
-  holoGrainAmount = HOLO.grainAmount,
-  holoZoom = HOLO.zoom,
-}) => (
-  <HolographicMetaBallsMesh
-    speed={speed}
-    animationSize={animationSize}
-    ballCount={ballCount}
-    clumpFactor={clumpFactor}
-    enableTransparency={enableTransparency}
-    anchors={anchors}
-    position={position}
-    scale={scale}
-    renderOrder={renderOrder}
-    seed={seed}
-    pauseTarget={pauseTarget}
-    pauseSpeed={pauseSpeed}
-    pauseYOffset={pauseYOffset}
-    ref={ref}
-    mouseRadius={mouseRadius}
-    mouseStrength={mouseStrength}
-    mouseInfluenceSpeed={mouseInfluenceSpeed}
-    mouseMinX={mouseMinX}
-    mouseMaxX={mouseMaxX}
-    holoTimeScale={holoTimeScale}
-    holoSeed={holoSeed}
-    holoIterations={holoIterations}
-    holoColor1={holoColor1}
-    holoColor2={holoColor2}
-    holoColor3={holoColor3}
-    holoColor4={holoColor4}
-    holoColorIntensity={holoColorIntensity}
-    holoSoftness={holoSoftness}
-    holoGamma={holoGamma}
-    holoGrainAmount={holoGrainAmount}
-    holoZoom={holoZoom}
-  />
-);
+) {
+  return (
+    <HolographicMetaBallsMesh
+      speed={speed}
+      animationSize={animationSize}
+      ballCount={ballCount}
+      clumpFactor={clumpFactor}
+      enableTransparency={enableTransparency}
+      anchors={anchors}
+      position={position}
+      scale={scale}
+      renderOrder={renderOrder}
+      seed={seed}
+      pauseTarget={pauseTarget}
+      pauseSpeed={pauseSpeed}
+      pauseYOffset={pauseYOffset}
+      ref={ref}
+      mouseRadius={mouseRadius}
+      mouseStrength={mouseStrength}
+      mouseInfluenceSpeed={mouseInfluenceSpeed}
+      mouseMinX={mouseMinX}
+      mouseMaxX={mouseMaxX}
+      holoTimeScale={holoTimeScale}
+      holoSeed={holoSeed}
+      holoIterations={holoIterations}
+      holoColor1={holoColor1}
+      holoColor2={holoColor2}
+      holoColor3={holoColor3}
+      holoColor4={holoColor4}
+      holoColorIntensity={holoColorIntensity}
+      holoSoftness={holoSoftness}
+      holoGamma={holoGamma}
+      holoGrainAmount={holoGrainAmount}
+      holoZoom={holoZoom}
+    />
+  );
+});
 
 export default HolographicMetaBalls;
 export type { HolographicMetaBallsProps };

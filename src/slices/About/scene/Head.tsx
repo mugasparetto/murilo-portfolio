@@ -1,8 +1,8 @@
-import { RefObject, useMemo, useState, useCallback, useRef } from "react";
+import { RefObject, useMemo, useCallback, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { useTexture, Line } from "@react-three/drei";
-import MetaBalls from "./MetaBalls";
+import MetaBalls, { MetaBallsHandle } from "./MetaBalls";
 import PolygonSprite, { UV, SpriteHandle } from "./PolygonSprite";
 
 // ─── Snap configuration ───────────────────────────────────────────────────────
@@ -187,12 +187,10 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
   const eyesRef = useRef<SpriteHandle>(null);
   const mouthRef = useRef<SpriteHandle>(null);
 
-  const metaBallsHeadFront = useRef<THREE.Mesh>(null);
-  const metaBallsHeadBack = useRef<THREE.Mesh>(null);
-  const metaBallsMouthFront = useRef<THREE.Mesh>(null);
-  const metaBallsMouthBack = useRef<THREE.Mesh>(null);
-
-  const [pause, setPause] = useState<null | "head" | "eyes" | "mouth">(null);
+  const metaBallsHeadFront = useRef<MetaBallsHandle>(null);
+  const metaBallsHeadBack = useRef<MetaBallsHandle>(null);
+  const metaBallsMouthFront = useRef<MetaBallsHandle>(null);
+  const metaBallsMouthBack = useRef<MetaBallsHandle>(null);
 
   const isComplete = useRef(false);
 
@@ -209,7 +207,6 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
   const handleGrab = useCallback(
     (payload: null | "head" | "eyes" | "mouth") => {
       onGrabbing(payload);
-      setPause(payload);
 
       // ── Un-snap on drag ────────────────────────────────────────────────────
       // When the user grabs a piece, break any bond it participates in so it
@@ -220,6 +217,18 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
       if (payload === "eyes" || payload === "mouth") {
         snap.current.eyesMouth = false;
       }
+
+      const headTarget =
+        payload === "head" ? "top" : payload === "eyes" ? "bottom" : null;
+      const mouthTarget =
+        payload === "mouth" ? "bottom" : payload === "eyes" ? "top" : null;
+
+      metaBallsHeadFront.current?.setPauseTarget(headTarget);
+      metaBallsHeadBack.current?.setPauseTarget(headTarget);
+      metaBallsMouthFront.current?.setPauseTarget(mouthTarget);
+      metaBallsMouthBack.current?.setPauseTarget(mouthTarget);
+
+      metaBallsMouthBack.current?.setPauseYOffset(payload === "mouth" ? 9 : 6);
     },
     [onGrabbing],
   );
@@ -422,8 +431,8 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
     if (head && metaBallsHeadFront.current && metaBallsHeadBack.current) {
       const headPosition = head.getPosition();
       if (headPosition.distanceTo(initalPos) > 2) {
-        metaBallsHeadFront.current.visible = false;
-        metaBallsHeadBack.current.visible = false;
+        metaBallsHeadFront.current?.setVisible(false);
+        metaBallsHeadBack.current?.setVisible(false);
         // Resetting z position to fix collisions
         head.setPosition(
           new THREE.Vector3(headPosition.x, headPosition.y, 2600),
@@ -441,10 +450,10 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
     ) {
       const eyesPosition = eyes.getPosition();
       if (eyesPosition.distanceTo(initalPos) > 2) {
-        metaBallsHeadFront.current.visible = false;
-        metaBallsHeadBack.current.visible = false;
-        metaBallsMouthFront.current.visible = false;
-        metaBallsMouthBack.current.visible = false;
+        metaBallsHeadFront.current?.setVisible(false);
+        metaBallsHeadBack.current?.setVisible(false);
+        metaBallsMouthFront.current?.setVisible(false);
+        metaBallsMouthBack.current?.setVisible(false);
         // Resetting z position to fix collisions
         eyes.setPosition(
           new THREE.Vector3(eyesPosition.x, eyesPosition.y, 2600),
@@ -456,8 +465,8 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
     if (mouth && metaBallsMouthFront.current && metaBallsMouthBack.current) {
       const mouthPosition = mouth.getPosition();
       if (mouthPosition.distanceTo(initalPos) > 4) {
-        metaBallsMouthFront.current.visible = false;
-        metaBallsMouthBack.current.visible = false;
+        metaBallsMouthFront.current?.setVisible(false);
+        metaBallsMouthBack.current?.setVisible(false);
         // Resetting z position to fix collisions
         mouth.setPosition(
           new THREE.Vector3(mouthPosition.x, mouthPosition.y, 2600),
@@ -493,9 +502,6 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         renderOrder={5}
         ballCount={12}
         clumpFactor={0.6}
-        pauseTarget={
-          pause === "head" ? "top" : pause === "eyes" ? "bottom" : null
-        }
         seed={5}
         anchors={[
           { x: -1.5, y: -7.25, radius: 16, roundness: 0.6, yScale: 0.1 },
@@ -514,9 +520,6 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         seed={10}
         ballCount={16}
         clumpFactor={0.85}
-        pauseTarget={
-          pause === "head" ? "top" : pause === "eyes" ? "bottom" : null
-        }
         anchors={[
           { x: -1.5, y: -7.25, radius: 15, roundness: 0.6, yScale: 0.1 },
           { x: -1, y: -17, radius: 15, roundness: 0.6, yScale: 0.1 },
@@ -553,9 +556,6 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         enableTransparency
         seed={7}
         animationSize={40}
-        pauseTarget={
-          pause === "mouth" ? "bottom" : pause === "eyes" ? "top" : null
-        }
         pauseYOffset={6}
         ballCount={18}
         anchors={[
@@ -574,10 +574,7 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         seed={12}
         animationSize={40}
         renderOrder={5}
-        pauseTarget={
-          pause === "mouth" ? "bottom" : pause === "eyes" ? "top" : null
-        }
-        pauseYOffset={pause === "mouth" ? 9 : 6}
+        // pauseYOffset={pause === "mouth" ? 9 : 6}
         ballCount={18}
         anchors={[
           { x: -1.5, y: 1.5, radius: 15, roundness: 0.6, yScale: 0.1 },
