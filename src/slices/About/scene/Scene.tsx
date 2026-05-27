@@ -174,14 +174,20 @@ export default function Scene({ scrollWindow, content }: Props) {
   const headContentRef = useRef<HTMLDivElement>(null);
   const [progressHeadConnector, setProgresHeadConnector] = useState(0);
   const headBillboardRef = useRef<THREE.Group | null>(null);
+  const pHeadConnectorRef = useRef(0);
+  const HEAD_CONNECTOR_LENGTH = 580;
 
   const eyesContentRef = useRef<HTMLDivElement>(null);
   const [progressEyesConnector, setProgressEyesConnector] = useState(0);
   const eyesBillboardRef = useRef<THREE.Group | null>(null);
+  const pEyesConnectorRef = useRef(0);
+  const EYES_CONNECTOR_LENGTH = 440;
 
   const mouthContentRef = useRef<HTMLDivElement>(null);
   const [progressMouthConnector, setProgressMouthConnector] = useState(0);
   const mouthBillboardRef = useRef<THREE.Group | null>(null);
+  const pMouthConnectorRef = useRef(0);
+  const MOUTH_CONNECTOR_LENGTH = 485;
 
   const [grabbing, setGrabbing] = useState<null | "head" | "eyes" | "mouth">(
     null,
@@ -245,7 +251,8 @@ export default function Scene({ scrollWindow, content }: Props) {
     if (grabbing === "head") {
       setProgresHeadConnector(300);
     } else {
-      setProgresHeadConnector(pHeadConnector * 580);
+      setProgresHeadConnector(pHeadConnector * HEAD_CONNECTOR_LENGTH);
+      pHeadConnectorRef.current = pHeadConnector;
     }
 
     if (eyesContentRef.current) {
@@ -260,7 +267,8 @@ export default function Scene({ scrollWindow, content }: Props) {
     if (grabbing === "eyes") {
       setProgressEyesConnector(300);
     } else {
-      setProgressEyesConnector(pEyesConnector * 440);
+      setProgressEyesConnector(pEyesConnector * EYES_CONNECTOR_LENGTH);
+      pEyesConnectorRef.current = pEyesConnector;
     }
 
     if (mouthContentRef.current) {
@@ -275,7 +283,8 @@ export default function Scene({ scrollWindow, content }: Props) {
     if (grabbing === "mouth") {
       setProgressMouthConnector(300);
     } else {
-      setProgressMouthConnector(pMouthConnector * 485);
+      setProgressMouthConnector(pMouthConnector * MOUTH_CONNECTOR_LENGTH);
+      pMouthConnectorRef.current = pMouthConnector;
     }
 
     if (head.current && grabbing == null && shouldFloat.current) {
@@ -294,15 +303,33 @@ export default function Scene({ scrollWindow, content }: Props) {
   const handleHideBillboard = useCallback(
     (payload: "head" | "eyes" | "mouth") => {
       if (payload === "head") {
-        setProgresHeadConnector(300);
+        if (pHeadConnectorRef.current * HEAD_CONNECTOR_LENGTH < 300) {
+          setProgresHeadConnector(
+            pHeadConnectorRef.current * HEAD_CONNECTOR_LENGTH,
+          );
+        } else {
+          setProgresHeadConnector(300);
+        }
         headBillboardRef.current!.visible = false;
       }
       if (payload === "eyes") {
-        setProgressEyesConnector(300);
+        if (pEyesConnectorRef.current * EYES_CONNECTOR_LENGTH < 300) {
+          setProgressEyesConnector(
+            pEyesConnectorRef.current * EYES_CONNECTOR_LENGTH,
+          );
+        } else {
+          setProgressEyesConnector(300);
+        }
         eyesBillboardRef.current!.visible = false;
       }
       if (payload === "mouth") {
-        setProgressMouthConnector(300);
+        if (pMouthConnectorRef.current * MOUTH_CONNECTOR_LENGTH < 300) {
+          setProgressMouthConnector(
+            pMouthConnectorRef.current * MOUTH_CONNECTOR_LENGTH,
+          );
+        } else {
+          setProgressMouthConnector(300);
+        }
         mouthBillboardRef.current!.visible = false;
       }
 
