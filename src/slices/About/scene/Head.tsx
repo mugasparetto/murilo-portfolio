@@ -4,6 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import { useTexture, Line } from "@react-three/drei";
 import MetaBalls, { MetaBallsHandle } from "./MetaBalls";
 import PolygonSprite, { UV, SpriteHandle } from "./PolygonSprite";
+import UfoScene from "./Ufo";
 
 // ─── Snap configuration ───────────────────────────────────────────────────────
 
@@ -602,6 +603,8 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
           renderOrder={0}
         />
       </PolygonSprite>
+
+      <UfoScene position={[0, -400, 2600]} />
     </group>
   );
 }
