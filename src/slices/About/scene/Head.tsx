@@ -173,6 +173,8 @@ function clampToBounds(sprite: SpriteHandle) {
   sprite.setPosition(pos);
 }
 
+const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t);
+
 type Props = {
   ref: RefObject<THREE.Group | null>;
   onGrabbing: (payload: null | "head" | "eyes" | "mouth") => void;
@@ -194,6 +196,16 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
   const metaBallsMouthBack = useRef<MetaBallsHandle>(null);
 
   const isComplete = useRef(false);
+
+  const lidAngle = useRef(0);
+  const lidAnimating = useRef(false);
+  const lidLocked = useRef(false);
+  const lidStartTime = useRef<number | null>(null);
+  const lidStartPosition = useRef<THREE.Vector2 | null>(null);
+  const lidDelay = useRef<number | null>(null);
+  const LID_DURATION = 2.0; // seconds — tune this
+  const LID_TARGET_ANGLE = Math.PI * 0.65;
+  const LID_DELAY = 1.0; // seconds to wait before lid opens
 
   // ── Snap state ──────────────────────────────────────────────────────────────
   const snap = useRef<SnapState>({ headEyes: false, eyesMouth: false });
@@ -414,10 +426,11 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
 
       if (eyesSettled && mouthSettled) {
         isComplete.current = true;
-        headRef.current?.setEnabled(false);
+        headRef.current?.setInteractable(false);
         eyesRef.current?.setEnabled(false);
         mouthRef.current?.setEnabled(false);
-        console.log("complete");
+        lidLocked.current = true;
+        lidDelay.current = 0;
       }
     }
   });
@@ -474,6 +487,62 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         );
         hideBillboard("mouth");
       }
+    }
+  });
+
+  useFrame(({ clock }, delta) => {
+    // Tick delay before animation starts
+    if (lidDelay.current !== null && !lidAnimating.current) {
+      lidDelay.current += delta;
+      if (lidDelay.current >= LID_DELAY) {
+        lidDelay.current = null;
+        lidAnimating.current = true;
+      }
+      return;
+    }
+
+    if (!lidAnimating.current) return;
+
+    const headGroup = headRef.current?.getGroup();
+    if (!headGroup) return;
+
+    // Record start time and position on the first frame
+    if (lidStartTime.current === null) {
+      lidStartTime.current = clock.getElapsedTime();
+      lidStartPosition.current = new THREE.Vector2(
+        headGroup.position.x,
+        headGroup.position.y,
+      );
+      return;
+    }
+
+    const startPos = lidStartPosition.current!;
+
+    const elapsed = clock.getElapsedTime() - lidStartTime.current;
+    const t = Math.min(elapsed / LID_DURATION, 1);
+    const eased = easeInOut(t);
+
+    const angle = eased * LID_TARGET_ANGLE;
+    lidAngle.current = angle;
+
+    // Pivot is fixed relative to where the head was when animation started
+    const pivotX = startPos.x - 117;
+    const pivotY = startPos.y + 117; // adjust this offset to taste
+    const restOffsetX = startPos.x - pivotX;
+    const restOffsetY = startPos.y - pivotY;
+
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+
+    headGroup.position.x = pivotX + cos * restOffsetX - sin * restOffsetY;
+    headGroup.position.y = pivotY + sin * restOffsetX + cos * restOffsetY;
+    headGroup.rotation.z = angle;
+
+    if (t >= 1) {
+      lidAnimating.current = false;
+      lidStartTime.current = null;
+      lidStartPosition.current = null;
+      console.log("lid open");
     }
   });
 
@@ -604,7 +673,7 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         />
       </PolygonSprite>
 
-      <UfoScene position={[0, -400, 2600]} />
+      {/* <UfoScene position={[0, -400, 2600]} /> */}
     </group>
   );
 }

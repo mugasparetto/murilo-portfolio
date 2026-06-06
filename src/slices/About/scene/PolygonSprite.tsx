@@ -18,6 +18,8 @@ export type SpriteHandle = {
   isDragging: () => boolean;
   getCentreBox: () => THREE.Box3 | null;
   setEnabled: (enabled: boolean) => void;
+  getGroup: () => THREE.Object3D;
+  setInteractable: (value: boolean) => void;
 };
 
 // ─── Throw tuning ─────────────────────────────────────────────────────────────
@@ -202,6 +204,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     const isPressedRef = useRef(false);
     const isInsideRef = useRef(false);
     const isDraggingRef = useRef(false);
+    const interactable = useRef(true);
 
     const enabledRef = useRef(true);
 
@@ -278,6 +281,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     useEffect(() => {
       const handlePointerDown = (event: PointerEvent) => {
         if (!enabledRef.current) return;
+        if (!interactable.current) return;
         if (!meshRef.current) return;
         meshRef.current.updateWorldMatrix(true, false);
 
@@ -361,7 +365,9 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         if (hit && !isInsideRef.current) {
           if (!enabledRef.current) return;
           isInsideRef.current = true;
-          document.body.style.cursor = "grab";
+          document.body.style.cursor = interactable.current
+            ? "grab"
+            : "default";
         } else if (!hit && isInsideRef.current) {
           isInsideRef.current = false;
           document.body.style.cursor = "default";
@@ -501,6 +507,10 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
             throwVelocity.current.set(0, 0, 0);
             document.body.style.cursor = "default";
           }
+        },
+        getGroup: () => groupRef.current,
+        setInteractable: (value: boolean) => {
+          interactable.current = value; // a new ref inside PolygonSprite
         },
       }),
       [polygon, normalizedScale, centreBox],
