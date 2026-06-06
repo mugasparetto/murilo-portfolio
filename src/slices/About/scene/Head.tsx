@@ -4,7 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import { useTexture, Line } from "@react-three/drei";
 import MetaBalls, { MetaBallsHandle } from "./MetaBalls";
 import PolygonSprite, { UV, SpriteHandle } from "./PolygonSprite";
-import UfoScene from "./Ufo";
+import UfoScene, { UfoSceneHandle } from "./Ufo";
 
 // ─── Snap configuration ───────────────────────────────────────────────────────
 
@@ -189,6 +189,7 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
   const headRef = useRef<SpriteHandle>(null);
   const eyesRef = useRef<SpriteHandle>(null);
   const mouthRef = useRef<SpriteHandle>(null);
+  const ufoRef = useRef<UfoSceneHandle>(null);
 
   const metaBallsHeadFront = useRef<MetaBallsHandle>(null);
   const metaBallsHeadBack = useRef<MetaBallsHandle>(null);
@@ -543,6 +544,7 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
       lidStartTime.current = null;
       lidStartPosition.current = null;
       console.log("lid open");
+      ufoRef.current?.trigger();
     }
   });
 
@@ -673,7 +675,7 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         />
       </PolygonSprite>
 
-      {/* <UfoScene position={[0, -400, 2600]} /> */}
+      <UfoScene ref={ufoRef} position={[0, -400, 2600]} />
     </group>
   );
 }

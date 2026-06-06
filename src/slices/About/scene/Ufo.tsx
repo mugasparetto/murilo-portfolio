@@ -1,4 +1,11 @@
-import React, { useRef, useMemo, useEffect, RefObject } from "react";
+import React, {
+  useRef,
+  useMemo,
+  useEffect,
+  RefObject,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
@@ -437,19 +444,34 @@ function BeamLight({ revealProgress, beamRef }: BeamLightProps) {
   return <pointLight ref={ref} color="#7ef7d6" distance={7} decay={1.5} />;
 }
 
-export default function UfoScene({
-  position = [800, 1000, 0],
-}: {
+export interface UfoSceneHandle {
+  trigger: () => void;
+}
+
+type UfoSceneProps = {
   position?: [number, number, number];
-}) {
+};
+
+export default forwardRef<UfoSceneHandle, UfoSceneProps>(function UfoScene(
+  { position = [800, 1000, 0] },
+  ref,
+) {
   const sharedUniformsRef = useRef<SharedUniforms>(makeSharedUniforms());
   const revealProgress = useRef(0);
-  const startTimeRef = useRef<number>(null);
+  const startTimeRef = useRef<number | null>(null);
 
   // Ref to the beam mesh so we can read its world transform.
   const beamRef = useRef<THREE.Mesh>(null);
   // Scratch vector used for matrix decomposition each frame.
   const tmpVec = useMemo(() => new THREE.Vector3(), []);
+
+  useImperativeHandle(ref, () => ({
+    trigger() {
+      startTimeRef.current = 0; // signal useFrame to grab the clock on next tick
+      revealProgress.current = 0;
+      sharedUniformsRef.current.uReveal.value = 0;
+    },
+  }));
 
   useFrame(({ clock }) => {
     const u = sharedUniformsRef.current;
@@ -462,8 +484,13 @@ export default function UfoScene({
       u.uBeamBottomY.value = center.y - BEAM_HEIGHT / 2;
     }
 
-    if (startTimeRef.current === null)
+    if (startTimeRef.current === null) return;
+
+    // First frame after trigger() — latch the start time
+    if (startTimeRef.current === 0) {
       startTimeRef.current = clock.getElapsedTime();
+    }
+
     const elapsed = clock.getElapsedTime() - startTimeRef.current;
     const revealDuration = 3.5;
     const tNorm = Math.min(1, elapsed / revealDuration);
@@ -476,7 +503,7 @@ export default function UfoScene({
   });
 
   return (
-    <group position={position} scale={120}>
+    <group position={position} scale={80}>
       <BeamLight revealProgress={revealProgress} beamRef={beamRef} />
 
       <AbductionBeam ref={beamRef} sharedUniforms={sharedUniformsRef} />
@@ -488,4 +515,4 @@ export default function UfoScene({
       </React.Suspense>
     </group>
   );
-}
+});
