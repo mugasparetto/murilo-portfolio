@@ -10,23 +10,6 @@ import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
-/**
- * UFO Abduction Beam + Character
- * ------------------------------
- * KEY FIX (this revision):
- *   The beam's "top Y" and "bottom Y" used by both the beam shader and
- *   the character material are no longer hardcoded constants. They're
- *   read from the beam mesh's *actual world transform* every frame.
- *   That means you can wrap the scene in any number of <group>s with
- *   their own offsets and the gradient direction stays correct: the
- *   reveal animation always sweeps from the actual UFO down to the
- *   actual ground, no matter where you place the scene.
- *
- *   Same fix is applied to the supporting BeamLight: it slides between
- *   the beam mesh's real top and bottom world positions instead of
- *   between two literal numbers.
- */
-
 const MODEL_URL = "/models/human.glb";
 
 // ---------------------------------------------------------------------------
@@ -61,7 +44,6 @@ interface SharedUniforms {
   uBeamTopY: { value: number };
   uBeamBottomY: { value: number };
 
-  // Index signature required to satisfy THREE's `{ [uniform: string]: IUniform }`
   [uniform: string]: { value: unknown };
 }
 
@@ -69,8 +51,6 @@ interface SharedUniforms {
 // GLSL
 // ---------------------------------------------------------------------------
 
-// Shared GLSL for the holographic field (same recurrence used by beam
-// and character material so they sample the exact same pattern).
 const HOLO_FIELD_GLSL: string = /* glsl */ `
   vec3 holoField(vec2 beamUV, float time, float seed, float iters, float softness,
                  vec3 c1, vec3 c2, vec3 c3, vec3 c4) {
@@ -146,8 +126,6 @@ const beamFragment: string = /* glsl */ `
   }
 
   void main() {
-    // vUv.y is 0 at the bottom of the quad, 1 at the top.
-    // y01 = 0 at the UFO (top), 1 at the ground (bottom).
     float y01 = 1.0 - vUv.y;
     float x01 = vUv.x;
     float halfW = mix(uTopWidth, uBottomWidth, y01);
@@ -193,17 +171,12 @@ const hexToVec3 = (hex: string): THREE.Vector3 => {
   return new THREE.Vector3(c.r, c.g, c.b);
 };
 
-// Beam mesh "local" dimensions. The mesh is BEAM_HEIGHT tall and
-// BEAM_WIDTH wide, and we anchor it so its top edge is at local y=0 and
-// its bottom edge is at local y=-BEAM_HEIGHT (by positioning the mesh
-// at y=-BEAM_HEIGHT/2). The actual world Y of those edges is computed
-// from the mesh's world matrix each frame.
-const BEAM_HEIGHT = 6;
 const BEAM_WIDTH = 3;
 const BEAM_HALF_WIDTH = BEAM_WIDTH / 2;
 
-// Shared uniforms object — both the beam quad and the character material
-// read from this. Updated once per frame from the actual beam mesh.
+// Initial beam height — will be overridden dynamically each frame
+const INITIAL_BEAM_HEIGHT = 6;
+
 function makeSharedUniforms(): SharedUniforms {
   return {
     uTime: { value: 0 },
@@ -228,33 +201,31 @@ function makeSharedUniforms(): SharedUniforms {
     uBottomFade: { value: 0.25 },
     uFrontGlow: { value: 1.9 },
 
-    // Character / world-space beam mapping. These are derived from the
-    // beam mesh's world transform each frame, so any group hierarchy
-    // works correctly.
     uBodyGlow: { value: 1.4 },
     uBeamHalfW: { value: BEAM_HALF_WIDTH },
     uBeamTopY: { value: 0 },
-    uBeamBottomY: { value: -BEAM_HEIGHT },
+    uBeamBottomY: { value: -INITIAL_BEAM_HEIGHT },
   };
 }
 
 // ============================================================
-// BEAM
+// BEAM — static geometry, positioned via group transform
 // ============================================================
 
 interface AbductionBeamProps {
   sharedUniforms: RefObject<SharedUniforms>;
 }
 
-// AbductionBeam: exposes its mesh through a ref so the parent Scene can
-// read the actual world position of the beam's top/bottom edges and
-// feed those into the shared uniforms. This is what removes the
-// "hardcoded world Y" bug.
+// The beam mesh always spans from y=0 (top/UFO) to y=-1 (bottom/target)
+// in its own local space. The parent group is scaled to the correct height
+// and shifted to the correct X each frame — no geometry rebuilds needed.
 const AbductionBeam = React.forwardRef<THREE.Mesh, AbductionBeamProps>(
   function AbductionBeam({ sharedUniforms }, ref) {
     return (
-      <mesh ref={ref} position={[0, -BEAM_HEIGHT / 2, 0]}>
-        <planeGeometry args={[BEAM_WIDTH, BEAM_HEIGHT]} />
+      // Plane spans [0..BEAM_WIDTH] × [-0.5..0.5] by default, so shift it
+      // so the top edge sits at y=0 and the bottom at y=-1 after scaling.
+      <mesh ref={ref} position={[0, -0.5, 0]}>
+        <planeGeometry args={[BEAM_WIDTH, 1]} />
         <shaderMaterial
           vertexShader={beamVertex}
           fragmentShader={beamFragment}
@@ -349,9 +320,6 @@ function patchMaterial(
                           * uFrontGlow
                           * wavefrontPresence;
         
-          // --- FIX 2: light comes from above, so weight the holographic       ---
-          // emission toward the top of the model. y01=0 (head) = full glow,    ---
-          // y01=1 (feet) = ~30%. This stops the underside from looking lit.    ---
           float topBias = mix(1.0, 0.3, y01);
         
           float strength = radial * topA * botA * revealA * topBias;
@@ -378,8 +346,10 @@ interface VictimProps {
   revealProgress: RefObject<number>;
 }
 
-function Victim({ sharedUniforms, revealProgress }: VictimProps) {
-  const groupRef = useRef<THREE.Group>(null);
+const Victim = React.forwardRef<THREE.Group, VictimProps>(function Victim(
+  { sharedUniforms, revealProgress },
+  ref,
+) {
   const { scene } = useGLTF(MODEL_URL);
 
   useEffect(() => {
@@ -400,24 +370,29 @@ function Victim({ sharedUniforms, revealProgress }: VictimProps) {
 
   return (
     <primitive
-      ref={groupRef}
+      ref={ref}
       object={scene}
-      position={[1, -2, 0]}
+      // Local offset so the model's feet sit at y=0 of this group.
+      // Tune these values to match your GLB's pivot point.
+      position={[0, 0, 0]}
       scale={0.01}
       rotation={[-Math.PI / 2, 0, Math.PI / 2]}
     />
   );
-}
+});
 
-// Real point light that tracks the wavefront. Position is now derived
-// from the beam mesh's actual world top/bottom Y so any group offsets
-// are respected.
+// ============================================================
+// BEAM LIGHT
+// ============================================================
+
 interface BeamLightProps {
   revealProgress: RefObject<number>;
   beamRef: RefObject<THREE.Mesh | null>;
+  // Current beam height in local space (pre-scale), updated each frame
+  beamHeightRef: RefObject<number>;
 }
 
-function BeamLight({ revealProgress, beamRef }: BeamLightProps) {
+function BeamLight({ revealProgress, beamRef, beamHeightRef }: BeamLightProps) {
   const ref = useRef<THREE.PointLight>(null);
   const tmp = useMemo(() => new THREE.Vector3(), []);
 
@@ -427,14 +402,15 @@ function BeamLight({ revealProgress, beamRef }: BeamLightProps) {
     const beam = beamRef.current;
     beam.updateWorldMatrix(true, false);
 
+    // The beam mesh sits at y=-0.5 (local), scaled by beamHeight in world
+    // space. We read the world-space top/bottom from the uniforms directly
+    // since they're kept up-to-date every frame in the parent useFrame.
     const center = tmp.setFromMatrixPosition(beam.matrixWorld);
-    const topY = center.y + BEAM_HEIGHT / 2;
-    const bottomY = center.y - BEAM_HEIGHT / 2;
+    const beamHeight = beamHeightRef.current;
+    const topY = center.y + beamHeight / 2;
+    const bottomY = center.y - beamHeight / 2;
 
     const r = revealProgress.current ?? 0;
-    // Travel only through the TOP HALF of the beam, never below the
-    // model. This keeps the light source above the victim so the
-    // chest/front (facing up) catches the highlight, not the back.
     const travelEnd = THREE.MathUtils.lerp(topY, bottomY, 0.45);
     const y = THREE.MathUtils.lerp(topY, travelEnd, r);
     ref.current.position.set(center.x, y, center.z);
@@ -444,13 +420,26 @@ function BeamLight({ revealProgress, beamRef }: BeamLightProps) {
   return <pointLight ref={ref} color="#7ef7d6" distance={7} decay={1.5} />;
 }
 
+// ============================================================
+// UFO SCENE
+// ============================================================
+
 export interface UfoSceneHandle {
-  trigger: () => void;
+  /**
+   * Start the abduction beam animation.
+   * @param target  Optional world-space [x, y, z] of the abduction target.
+   *                X drives horizontal beam offset; Y drives beam height.
+   *                If omitted, the last known target (or the default) is used.
+   */
+  trigger: (target?: [number, number, number]) => void;
 }
 
 type UfoSceneProps = {
+  /** World-space position of the UFO (belly = group origin). */
   position?: [number, number, number];
 };
+
+const GROUP_SCALE = 80;
 
 export default forwardRef<UfoSceneHandle, UfoSceneProps>(function UfoScene(
   { position = [800, 1000, 0] },
@@ -460,33 +449,90 @@ export default forwardRef<UfoSceneHandle, UfoSceneProps>(function UfoScene(
   const revealProgress = useRef(0);
   const startTimeRef = useRef<number | null>(null);
 
-  // Ref to the beam mesh so we can read its world transform.
+  // The target in world space. Updated via trigger().
+  // Default: directly below the UFO at a reasonable distance.
+  const targetRef = useRef<[number, number, number]>([
+    position[0],
+    position[1] - INITIAL_BEAM_HEIGHT * GROUP_SCALE,
+    position[2],
+  ]);
+
+  // Refs to the beam sub-group and victim sub-group so we can reposition
+  // them in useFrame without re-rendering.
+  const beamGroupRef = useRef<THREE.Group>(null);
+  const victimGroupRef = useRef<THREE.Group>(null);
   const beamRef = useRef<THREE.Mesh>(null);
-  // Scratch vector used for matrix decomposition each frame.
+
+  // Current beam height in *world* space (i.e. already multiplied by GROUP_SCALE).
+  // Stored as a ref so BeamLight can read it without prop drilling.
+  const beamHeightWorldRef = useRef<number>(INITIAL_BEAM_HEIGHT * GROUP_SCALE);
+
   const tmpVec = useMemo(() => new THREE.Vector3(), []);
 
+  // ── Public API ────────────────────────────────────────────────────────────
   useImperativeHandle(ref, () => ({
-    trigger() {
-      startTimeRef.current = 0; // signal useFrame to grab the clock on next tick
+    trigger(overrideTarget?: [number, number, number]) {
+      if (overrideTarget) {
+        targetRef.current = overrideTarget;
+      }
+      startTimeRef.current = 0;
       revealProgress.current = 0;
       sharedUniformsRef.current.uReveal.value = 0;
     },
   }));
 
+  // ── Per-frame update ──────────────────────────────────────────────────────
   useFrame(({ clock }) => {
     const u = sharedUniformsRef.current;
     u.uTime.value = clock.getElapsedTime();
 
+    // ── Derive local-space beam geometry from current target ──────────────
+    //
+    // "Local space" = the coordinate space inside the <group scale={GROUP_SCALE}>.
+    // UFO belly is always at local (0, 0, 0).
+    // target world → subtract group world origin → divide by scale.
+    const [tx, ty] = targetRef.current;
+
+    // How far the target is from the UFO belly, in local units
+    const beamLocalX = (tx - position[0]) / GROUP_SCALE;
+    const targetLocalY = (ty - position[1]) / GROUP_SCALE; // negative = below UFO
+
+    // Height: distance from UFO belly (local y=0) down to the target.
+    // Minimum of 0.5 local units to avoid a degenerate beam.
+    const beamLocalHeight = Math.max(0.5, Math.abs(targetLocalY));
+
+    // World-space height (used by BeamLight)
+    beamHeightWorldRef.current = beamLocalHeight * GROUP_SCALE;
+
+    // ── Reposition beam group (shifts beam left/right to follow target X) ──
+    if (beamGroupRef.current) {
+      beamGroupRef.current.position.x = beamLocalX;
+      // Scale Y so the unit-height beam mesh covers the full distance.
+      // The mesh itself spans y: [-0.5 .. 0.5], so scaleY = beamLocalHeight
+      // places its top at y=0 and its bottom at y=-beamLocalHeight.
+      beamGroupRef.current.scale.set(1, beamLocalHeight, 1);
+    }
+
+    // ── Reposition victim group to sit at the target world position ────────
+    if (victimGroupRef.current) {
+      victimGroupRef.current.position.set(beamLocalX, targetLocalY, 0);
+    }
+
+    // ── Update uniforms that the shaders use for world-space gradient ──────
     if (beamRef.current) {
       beamRef.current.updateWorldMatrix(true, false);
       const center = tmpVec.setFromMatrixPosition(beamRef.current.matrixWorld);
-      u.uBeamTopY.value = center.y + BEAM_HEIGHT / 2;
-      u.uBeamBottomY.value = center.y - BEAM_HEIGHT / 2;
+      // The beam mesh (scale applied by parent group) sits centred at center.
+      // Its top edge is half the world-height above center, bottom half below.
+      const halfH = beamHeightWorldRef.current / 2;
+      u.uBeamTopY.value = center.y + halfH;
+      u.uBeamBottomY.value = center.y - halfH;
     }
 
+    // ── Reveal animation ──────────────────────────────────────────────────
     if (startTimeRef.current === null) return;
 
-    // First frame after trigger() — latch the start time
+    // First frame after trigger() — latch the clock
     if (startTimeRef.current === 0) {
       startTimeRef.current = clock.getElapsedTime();
     }
@@ -498,21 +544,43 @@ export default forwardRef<UfoSceneHandle, UfoSceneProps>(function UfoScene(
       tNorm < 0.5
         ? 4 * tNorm * tNorm * tNorm
         : 1 - Math.pow(-2 * tNorm + 2, 3) / 2;
+
     revealProgress.current = eased;
     u.uReveal.value = eased;
   });
 
   return (
-    <group position={position} scale={80}>
-      <BeamLight revealProgress={revealProgress} beamRef={beamRef} />
+    // The group origin is the UFO belly. Everything inside is in local space.
+    <group position={position} scale={GROUP_SCALE}>
+      <BeamLight
+        revealProgress={revealProgress}
+        beamRef={beamRef}
+        beamHeightRef={beamHeightWorldRef}
+      />
 
-      <AbductionBeam ref={beamRef} sharedUniforms={sharedUniformsRef} />
-      <React.Suspense fallback={null}>
-        <Victim
-          sharedUniforms={sharedUniformsRef}
-          revealProgress={revealProgress}
-        />
-      </React.Suspense>
+      {/*
+        beamGroupRef handles:
+          - position.x  → horizontal tracking of the target
+          - scale.y     → stretches the unit-height beam to the correct length
+        The beam mesh itself is a unit-height plane centred at y=-0.5,
+        so scale.y=N makes it span from y=0 (UFO belly) to y=-N (target).
+      */}
+      <group ref={beamGroupRef}>
+        <AbductionBeam ref={beamRef} sharedUniforms={sharedUniformsRef} />
+      </group>
+
+      {/*
+        victimGroupRef tracks the target's world position in local space.
+        Add any per-model position tweaks (pivot correction etc.) inside Victim.
+      */}
+      <group ref={victimGroupRef}>
+        <React.Suspense fallback={null}>
+          <Victim
+            sharedUniforms={sharedUniformsRef}
+            revealProgress={revealProgress}
+          />
+        </React.Suspense>
+      </group>
     </group>
   );
 });

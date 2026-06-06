@@ -539,12 +539,24 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
     headGroup.position.y = pivotY + sin * restOffsetX + cos * restOffsetY;
     headGroup.rotation.z = angle;
 
+    if (t >= 0.6) {
+      // Trigger UFO abduction when lid is mostly open
+      const eyeGroup = eyesRef.current?.getGroup();
+      let abductTarget: [number, number, number] = [0, -800, 2600];
+      if (eyeGroup) {
+        const worldPos = new THREE.Vector3();
+        eyeGroup.getWorldPosition(worldPos);
+        abductTarget = [worldPos.x + 8, worldPos.y, worldPos.z];
+      }
+
+      ufoRef.current?.trigger(abductTarget);
+    }
+
     if (t >= 1) {
       lidAnimating.current = false;
       lidStartTime.current = null;
       lidStartPosition.current = null;
       console.log("lid open");
-      ufoRef.current?.trigger();
     }
   });
 
