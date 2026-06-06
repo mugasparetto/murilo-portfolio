@@ -538,7 +538,7 @@ export default forwardRef<UfoSceneHandle, UfoSceneProps>(function UfoScene(
     }
 
     const elapsed = clock.getElapsedTime() - startTimeRef.current;
-    const revealDuration = 3.5;
+    const revealDuration = 0.75;
     const tNorm = Math.min(1, elapsed / revealDuration);
     const eased =
       tNorm < 0.5

@@ -208,6 +208,8 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
   const LID_TARGET_ANGLE = Math.PI * 0.65;
   const LID_DELAY = 1.0; // seconds to wait before lid opens
 
+  const triggeredUfo = useRef(false);
+
   // ── Snap state ──────────────────────────────────────────────────────────────
   const snap = useRef<SnapState>({ headEyes: false, eyesMouth: false });
 
@@ -539,7 +541,7 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
     headGroup.position.y = pivotY + sin * restOffsetX + cos * restOffsetY;
     headGroup.rotation.z = angle;
 
-    if (t >= 0.6) {
+    if (t >= 0.5 && !triggeredUfo.current) {
       // Trigger UFO abduction when lid is mostly open
       const eyeGroup = eyesRef.current?.getGroup();
       let abductTarget: [number, number, number] = [0, -800, 2600];
@@ -550,6 +552,7 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
       }
 
       ufoRef.current?.trigger(abductTarget);
+      triggeredUfo.current = true;
     }
 
     if (t >= 1) {
