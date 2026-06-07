@@ -414,20 +414,29 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
     }
 
     // ── 5. All pairs snapped → fire onComplete once ───────────────────
-    if (!isComplete.current && snapState.headEyes && snapState.eyesMouth) {
+    if (snapState.headEyes && snapState.eyesMouth) {
+      const SUPER_DAMP = 0.85; // tune: higher = stops faster (0–1)
+
+      for (const sprite of [head, eyes, mouth]) {
+        const vel = sprite.getVelocity();
+        vel.multiplyScalar(1 - SUPER_DAMP);
+        sprite.setVelocity(vel);
+      }
+
       const headPos = head.getPosition();
       const eyesPos = eyes.getPosition();
       const mouthPos = mouth.getPosition();
 
       const dx1 = eyesPos.x - (headPos.x - EYES_OFFSET.x);
       const dy1 = eyesPos.y - (headPos.y - EYES_OFFSET.y);
-      const eyesSettled = Math.sqrt(dx1 * dx1 + dy1 * dy1) < 0.5;
-
       const dx2 = mouthPos.x - (eyesPos.x - MOUTH_OFFSET.x);
       const dy2 = mouthPos.y - (eyesPos.y - MOUTH_OFFSET.y);
-      const mouthSettled = Math.sqrt(dx2 * dx2 + dy2 * dy2) < 0.5;
 
-      if (eyesSettled && mouthSettled) {
+      const allSettled =
+        Math.sqrt(dx1 * dx1 + dy1 * dy1) < 0.5 &&
+        Math.sqrt(dx2 * dx2 + dy2 * dy2) < 0.5;
+
+      if (!isComplete.current && allSettled) {
         isComplete.current = true;
         headRef.current?.setInteractable(false);
         eyesRef.current?.setEnabled(false);
