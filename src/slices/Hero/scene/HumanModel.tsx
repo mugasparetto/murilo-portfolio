@@ -1,11 +1,14 @@
 import * as THREE from "three";
-import { useRef, JSX, useEffect, useMemo, useState } from "react";
+import { useRef, JSX, useEffect, useMemo, useState, useCallback } from "react";
 import { useGLTF, useAnimations, Outlines } from "@react-three/drei";
 import { GLTF } from "three-stdlib";
+import gsap from "gsap";
 
 import { useStore } from "@/app/hooks/store";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import { useAdaptiveGate } from "@/app/hooks/adaptiveGate";
+
+const INITIAL_ROTATION_Y = Math.PI - Math.PI * 0.05;
 
 type GLTFResult = GLTF & {
   nodes: {
@@ -21,12 +24,13 @@ export default function HumanModel(props: JSX.IntrinsicElements["group"]) {
   const group = useRef<THREE.Group>(null);
 
   const { nodes, materials, animations } = useGLTF(
-    "/models/human.glb",
+    "/models/looking-cycle.glb",
   ) as unknown as GLTFResult;
 
-  const { actions, names } = useAnimations(animations, group);
+  const { actions } = useAnimations(animations, group);
 
   const [hovered, setHovered] = useState(false);
+  const isLooking = useRef(false);
 
   const setOutlined = useStore((s) => s.setOutlined);
   const clearOutlined = useStore((s) => s.clearOutlined);
@@ -70,18 +74,90 @@ export default function HumanModel(props: JSX.IntrinsicElements["group"]) {
   }, [hovered, material]);
 
   /**
-   * Play animation
+   * Play idle animation
+   */
+  const playIdle = useCallback(() => {
+    const idleAction = actions?.["Idle"];
+
+    if (!idleAction) return;
+
+    idleAction.reset().play();
+  }, [actions]);
+
+  const playLookCycle = useCallback(() => {
+    if (isLooking.current) return;
+
+    const idleAction = actions?.["Idle"];
+    const lookAction = actions?.["LookCycleIdle"];
+
+    if (!lookAction || !group.current) return;
+
+    isLooking.current = true;
+
+    idleAction?.stop();
+
+    // Play look cycle forward once
+    lookAction.reset();
+    lookAction.setLoop(THREE.LoopOnce, 1);
+    lookAction.clampWhenFinished = true;
+    lookAction.timeScale = 1;
+    lookAction.play();
+
+    // GSAP Z rotation forward — runs alongside the animation
+    // gsap.to(group.current.rotation, {
+    //   y: INITIAL_ROTATION_Y + 0.15,
+    //   duration: 1,
+    //   ease: "power2.inOut",
+    // });
+
+    // gsap.to(group.current.rotation, {
+    //   y: INITIAL_ROTATION_Y,
+    //   duration: 1,
+    //   delay: 6,
+    //   ease: "power2.inOut",
+    // });
+
+    const mixer = lookAction.getMixer();
+
+    const onFinished = (e: { action: THREE.AnimationAction }) => {
+      if (e.action !== lookAction) return;
+
+      mixer.removeEventListener("finished", onFinished);
+
+      lookAction.stop();
+      isLooking.current = false;
+      playIdle();
+    };
+
+    mixer.addEventListener("finished", onFinished);
+  }, [actions, playIdle]);
+
+  /**
+   * Initial idle playback
    */
   useEffect(() => {
-    const name = names?.[0];
-    const action = name ? actions?.[name] : undefined;
-
-    action?.reset().play();
+    playIdle();
 
     return () => {
-      action?.stop();
+      const idleAction = actions?.["Idle"];
+      idleAction?.stop();
     };
-  }, [actions, names]);
+  }, [actions, playIdle]);
+
+  /**
+   * Spacebar → trigger Turn animation
+   */
+  // useEffect(() => {
+  //   const handleKeyDown = (e: KeyboardEvent) => {
+  //     if (e.code === "Space") {
+  //       e.preventDefault();
+  //       playLookCycle();
+  //     }
+  //   };
+
+  //   window.addEventListener("keydown", handleKeyDown);
+  //   return () => window.removeEventListener("keydown", handleKeyDown);
+  // }, [playLookCycle]);
 
   /**
    * Outline registration
@@ -106,7 +182,7 @@ export default function HumanModel(props: JSX.IntrinsicElements["group"]) {
   const transform = useMemo(
     () => ({
       scale: 80,
-      rotationY: Math.PI - Math.PI * 0.05,
+      rotationY: INITIAL_ROTATION_Y,
       position: new THREE.Vector3(-200, 50, -50),
     }),
     [],
@@ -130,6 +206,7 @@ export default function HumanModel(props: JSX.IntrinsicElements["group"]) {
             skeleton={nodes.Cube.skeleton}
             onPointerEnter={() => setHovered(true)}
             onPointerLeave={() => setHovered(false)}
+            onClick={playLookCycle}
           >
             {(!up.md || !hiRes) && (
               <Outlines
@@ -148,4 +225,4 @@ export default function HumanModel(props: JSX.IntrinsicElements["group"]) {
   );
 }
 
-useGLTF.preload("/models/human.glb");
+useGLTF.preload("/models/looking-cycle.glb");
