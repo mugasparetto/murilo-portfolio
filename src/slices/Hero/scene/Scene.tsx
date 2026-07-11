@@ -21,6 +21,7 @@ import Steps from "./Steps";
 import Door from "./Door";
 import HumanModel from "./HumanModel";
 import Sky from "./Sky";
+import HumanDestruction from "./HumanModelDestruction";
 import { useFluidMaterials } from "@/app/components/FluidMaterial";
 import { useHeroPrimary } from "../hero-context";
 
@@ -164,7 +165,12 @@ export default function Experience({ scrollRef }: Props) {
             doorFluidTextureRef={fluidTextureRef}
             scrollWindow={{ startVh: 75, endVh: 150 }}
           >
-            <HumanModel />
+            {/* <HumanModel /> */}
+            <HumanDestruction
+              scale={80}
+              position={[-200, 50, -50]}
+              rotation={[0, Math.PI - Math.PI * 0.05, 0]}
+            />
           </Steps>
           <Door
             params={p}
