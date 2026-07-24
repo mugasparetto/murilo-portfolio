@@ -51,8 +51,9 @@ export default function Steps({
   const { up } = useBreakpoints(BREAKPOINTS);
 
   const stepWidth = 800;
-  const stepHeight = 100;
-  const stepDepth = 550;
+  const stepHeight = 60;
+  const stepDepth = 350;
+  const stepCount = 10;
 
   // Shared geometry (fill)
   const stepGeometry = useMemo(
@@ -270,63 +271,6 @@ export default function Steps({
     gl.localClippingEnabled = true;
   }, [gl]);
 
-  // OLD ANIMATION: one step at a time
-  // useFrame(() => {
-  //   const t = progressInWindow(
-  //     scrollProgress.current,
-  //     totalPagesCount,
-  //     scrollWindow
-  //   );
-
-  //   if (humanRef.current) humanRef.current.visible = t < 0.999;
-  //   if (stepsRoot.current) stepsRoot.current.visible = t < 0.999;
-
-  //   // 5 equal segments: Z, Y, Z, Y, Z
-  //   const segments = 5;
-  //   const segLen = 1 / segments;
-
-  //   // progress inside segment k (0..1)
-  //   const segP = (k: number) => {
-  //     const local = (t - k * segLen) / segLen;
-  //     return easeCos(THREE.MathUtils.clamp(local, 0, 1));
-  //   };
-
-  //   // Accumulate offsets:
-  //   // Each completed segment contributes 1 full step (Z or Y),
-  //   // and the current active segment contributes partial progress.
-  //   let zSteps = 0;
-  //   let ySteps = 0;
-
-  //   // Segment 0: Z (0..1 step)
-  //   zSteps += segP(0);
-
-  //   // Segment 1: Y (0..1 step)
-  //   ySteps += segP(1);
-
-  //   // Segment 2: Z
-  //   zSteps += segP(2);
-
-  //   // Segment 3: Y
-  //   ySteps += segP(3);
-
-  //   // Segment 4: Z
-  //   zSteps += segP(4);
-
-  //   // Convert "steps" to world distances
-  //   const offsetZ = -zSteps * stepDepth;
-  //   const offsetY = ySteps * stepHeight;
-
-  //   for (let i = 0; i < stepCount; i++) {
-  //     const group = stepGroups.current[i];
-  //     if (!group) continue;
-
-  //     const baseY = i * stepHeight;
-  //     const baseZ = -i * stepDepth;
-
-  //     group.position.set(0, baseY + offsetY, baseZ + offsetZ);
-  //   }
-  // });
-
   useFrame(() => {
     const t = progressInVhWindow(scrollVh.current, scrollWindow);
 
@@ -335,7 +279,7 @@ export default function Steps({
 
     // ---- GLOBAL MOTION ----
     // how far the staircase travels overall
-    const totalSteps = 3;
+    const totalSteps = stepCount;
     const travel = t * totalSteps;
 
     const offsetY = travel * stepHeight;
@@ -375,17 +319,17 @@ export default function Steps({
     fillMat.uniforms.uClipPlaneSide.value = -1.0; // or -1.0
   });
 
-  useEffect(() => {
-    stepLineMat.clippingPlanes = [clipPlane];
-    stepLineMat.clipIntersection = false;
-    stepLineMat.clipShadows = true;
-    stepLineMat.needsUpdate = true;
-  }, [stepLineMat, clipPlane]);
+  // useEffect(() => {
+  //   stepLineMat.clippingPlanes = [clipPlane];
+  //   stepLineMat.clipIntersection = false;
+  //   stepLineMat.clipShadows = true;
+  //   stepLineMat.needsUpdate = true;
+  // }, [stepLineMat, clipPlane]);
 
   useEffect(() => {
     if (!clipRef.current) return;
-    clipRef.current.position.set(0, 0, -1378);
-    clipRef.current.rotation.set(0, 0, 0);
+    // clipRef.current.position.set(0, 0, -1378);
+    // clipRef.current.rotation.set(0, 0, 0);
   }, []);
 
   return (
@@ -406,20 +350,27 @@ export default function Steps({
             />
             <group ref={humanRef}>{children}</group>
           </group>
-          <group ref={registerStepGroup} position={[0, stepHeight, -stepDepth]}>
-            <OutlinedSolid
-              geometry={stepGeometry}
-              lineMaterial={stepLineMat}
-              position={[0, 0, 0]}
-              wireScale={1.002}
-              polygonOffset
-              polygonOffsetFactor={1}
-              polygonOffsetUnits={1}
-              fillMaterial={fillMat}
-              scale={[1, 1, 0.98]}
-            />
-          </group>
-          <group
+          {Array.from({ length: stepCount - 1 }).map((_, i) => (
+            <group
+              key={i}
+              ref={registerStepGroup}
+              position={[0, (i + 1) * stepHeight, -(i + 1) * stepDepth]}
+            >
+              <OutlinedSolid
+                geometry={stepGeometry}
+                lineMaterial={stepLineMat}
+                position={[0, 0, 0]}
+                wireScale={1.002}
+                polygonOffset
+                polygonOffsetFactor={1}
+                polygonOffsetUnits={1}
+                fillMaterial={fillMat}
+                scale={[1, 1, 0.98]}
+              />
+            </group>
+          ))}
+
+          {/* <group
             ref={registerStepGroup}
             position={[0, 2 * stepHeight, -2 * stepDepth]}
           >
@@ -435,8 +386,40 @@ export default function Steps({
               scale={[1, 1, 0.98]}
             />
           </group>
-          <group ref={clipRef} position={[0, 0, 0]} rotation={[0, 0, 0]}>
-            {/* <mesh renderOrder={9999}>
+          <group
+            ref={registerStepGroup}
+            position={[0, 3 * stepHeight, -3 * stepDepth]}
+          >
+            <OutlinedSolid
+              geometry={stepGeometry}
+              lineMaterial={stepLineMat}
+              position={[0, 0, 0]}
+              wireScale={1.002}
+              polygonOffset
+              polygonOffsetFactor={1}
+              polygonOffsetUnits={1}
+              fillMaterial={fillMat}
+              scale={[1, 1, 0.98]}
+            />
+          </group>
+          <group
+            ref={registerStepGroup}
+            position={[0, 4 * stepHeight, -4 * stepDepth]}
+          >
+            <OutlinedSolid
+              geometry={stepGeometry}
+              lineMaterial={stepLineMat}
+              position={[0, 0, 0]}
+              wireScale={1.002}
+              polygonOffset
+              polygonOffsetFactor={1}
+              polygonOffsetUnits={1}
+              fillMaterial={fillMat}
+              scale={[1, 1, 0.98]}
+            />
+          </group> */}
+          {/* <group ref={clipRef} position={[0, 0, 0]} rotation={[0, 0, 0]}> */}
+          {/* <mesh renderOrder={9999}>
               <planeGeometry args={[2000, 2000]} />
               <meshBasicMaterial
                 transparent
@@ -446,7 +429,7 @@ export default function Steps({
                 color={"yellow"}
               />
             </mesh> */}
-          </group>
+          {/* </group> */}
         </group>
       </group>
     </group>

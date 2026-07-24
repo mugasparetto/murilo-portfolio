@@ -17,6 +17,7 @@ import { defaultParams, type SceneParams } from "../scene-core/params";
 import { useLilGui } from "../scene-core/useLilGui";
 
 import Terrain from "./Terrain";
+import Mountains from "./Mountains";
 import Steps from "./Steps";
 import Door from "./Door";
 import HumanModel from "./HumanModel";
@@ -28,6 +29,7 @@ import { useHeroPrimary } from "../hero-context";
 import Name from "./Name";
 import Headline from "./Headline";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
+import PortalScene from "./PortalScene";
 
 type Props = {
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -117,6 +119,9 @@ export default function Experience({ scrollRef }: Props) {
     onFluidChange: () => {
       forceRender();
     },
+    onRebuildMountain: () => {
+      forceRender();
+    },
   });
 
   const p = paramsRef.current;
@@ -156,21 +161,20 @@ export default function Experience({ scrollRef }: Props) {
     <>
       <color attach="background" args={[0x000000]} />
 
+      {/* <PortalScene scale={60} /> */}
+
       {/* <OrbitControls ref={controlsRef} /> */}
       <group ref={sceneRef}>
         <group position={groupPosition}>
           <Terrain params={p} tiles={3} />
+          <Mountains params={p} />
           <Steps
             params={p}
             doorFluidTextureRef={fluidTextureRef}
             scrollWindow={{ startVh: 75, endVh: 150 }}
           >
             {/* <HumanModel /> */}
-            <HumanDestruction
-              scale={80}
-              position={[-200, 50, -50]}
-              rotation={[0, Math.PI - Math.PI * 0.05, 0]}
-            />
+            <HumanDestruction scale={80} position={[0, 25, -50]} />
           </Steps>
           <Door
             params={p}
@@ -183,7 +187,7 @@ export default function Experience({ scrollRef }: Props) {
 
         <Sky />
 
-        <Suspense fallback={null}>
+        {/* <Suspense fallback={null}>
           <Name
             firstName={first_name}
             lastName={last_name}
@@ -195,7 +199,7 @@ export default function Experience({ scrollRef }: Props) {
           tagline={tag_line}
           description={description}
           scrollWindow={{ startVh: 5, endVh: 75 }}
-        />
+        /> */}
       </group>
     </>
   );

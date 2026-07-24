@@ -114,7 +114,7 @@ export default function Sky() {
       {up.md && (
         <>
           {/* Cube */}
-          <group ref={cubeGroup} position={cubePos}>
+          {/* <group ref={cubeGroup} position={cubePos}>
             <OutlinedSolid
               geometry={cubeGeometry}
               fillMaterial={blackMat}
@@ -125,10 +125,10 @@ export default function Sky() {
               polygonOffsetUnits={2}
               wireScale={1.002}
             />
-          </group>
+          </group> */}
 
           {/* Pyramid (square base) */}
-          <group ref={pyramidGroup} position={pyramidPos}>
+          {/* <group ref={pyramidGroup} position={pyramidPos}>
             <OutlinedSolid
               geometry={pyramidGeometry}
               fillMaterial={blackMat}
@@ -138,7 +138,7 @@ export default function Sky() {
               polygonOffsetUnits={2}
               wireScale={1.002}
             />
-          </group>
+          </group> */}
         </>
       )}
 

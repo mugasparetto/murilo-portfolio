@@ -17,6 +17,11 @@ export const terrainVertex = /* glsl */ `
   uniform float uNoiseEdgeEnd;
   uniform float uNoiseEdgePower;
 
+  // fbm / domain-warp controls
+  uniform float uLacunarity;
+  uniform float uGain;
+  uniform float uWarpStrength;
+
   vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
   vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
   vec3 permute(vec3 x) { return mod289(((x * 34.0) + 1.0) * x); }
@@ -61,6 +66,34 @@ export const terrainVertex = /* glsl */ `
     return 130.0 * dot(m, g);
   }
 
+  // Sum of 4 octaves (gain 0.5, lacunarity 2) is layered, low-frequency-
+  // dominant noise -- this alone is already much smoother than a single
+  // raw snoise() call, which is what was producing the chaotic spikes.
+  float fbm(vec2 p) {
+    float sum = 0.0;
+    float amp = 0.5;
+    float freq = 1.0;
+    for (int i = 0; i < 4; i++) {
+      sum += amp * snoise(p * freq);
+      freq *= uLacunarity;
+      amp *= uGain;
+    }
+    return sum;
+  }
+
+  // Domain warping: use noise to offset the *input* of another noise call.
+  // This is what turns generic bumps into the smooth, flowing, dune-like
+  // ridges you see in the reference -- the ridge lines curve and drift
+  // instead of looking like random scattered peaks.
+  float warpedFbm(vec2 p) {
+    vec2 q = vec2(
+      fbm(p + vec2(0.0, 0.0)),
+      fbm(p + vec2(5.2, 1.3))
+    );
+    vec2 r = p + uWarpStrength * q;
+    return fbm(r);
+  }
+
   float normX(float x) {
     return clamp(abs(x) / (uWidth * 0.5), 0.0, 1.0);
   }
@@ -85,8 +118,8 @@ export const terrainVertex = /* glsl */ `
     float t = uTime * uScrollSpeed * uSpeedMul;
     vec2 samplePos = vec2(world.x, world.z - t) * uXYScale;
 
-    float n = snoise(samplePos);
-    float nn = n * 0.5 + 0.5;
+    float n = warpedFbm(samplePos);
+    float nn = clamp(n * 0.5 + 0.5, 0.0, 1.0);
 
     float x01 = normX(pos.x);
 

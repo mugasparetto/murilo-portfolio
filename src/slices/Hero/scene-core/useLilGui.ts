@@ -11,6 +11,7 @@ type Callbacks = {
   onDoorChange: () => void;
   onGroupChange: () => void;
   onFluidChange: () => void;
+  onRebuildMountain: () => void;
 };
 
 export function useLilGui(params: SceneParams, cb: Callbacks) {
@@ -69,6 +70,14 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
       .name("noise power");
 
     terrainFolder
+      .add(params, "noiseLacunarity", 1.2, 4.0, 0.01)
+      .name("fbm lacunarity");
+    terrainFolder.add(params, "noiseGain", 0.1, 0.9, 0.01).name("fbm gain");
+    terrainFolder
+      .add(params, "noiseWarpStrength", 0, 3, 0.01)
+      .name("fbm warp");
+
+    terrainFolder
       .add(params, "maskNearZ", -10000, 1000, 10)
       .name("mask near z");
     terrainFolder.add(params, "maskFarZ", -15000, 1000, 10).name("mask far z");
@@ -100,6 +109,39 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
     groupFolder
       .add(params, "groupY", -2000, 2000, 50)
       .onChange(cb.onGroupChange);
+
+    const mountainFolder = gui.addFolder("mountains");
+    mountainFolder
+      .add(params, "mountainW", 2000, 30000, 100)
+      .onFinishChange(cb.onRebuildMountain);
+    mountainFolder
+      .add(params, "mountainD", 500, 10000, 100)
+      .onFinishChange(cb.onRebuildMountain);
+    mountainFolder
+      .add(params, "mountainSegX", 20, 300, 1)
+      .onFinishChange(cb.onRebuildMountain);
+    mountainFolder
+      .add(params, "mountainSegZ", 10, 200, 1)
+      .onFinishChange(cb.onRebuildMountain);
+    mountainFolder
+      .add(params, "mountainHeight", 0, 6000, 10)
+      .onFinishChange(cb.onRebuildMountain);
+    mountainFolder
+      .add(params, "mountainFalloffPower", 0.3, 6, 0.01)
+      .name("edge falloff")
+      .onFinishChange(cb.onRebuildMountain);
+    mountainFolder
+      .add(params, "mountainNoiseScale", 0.0001, 0.005, 0.0001)
+      .onFinishChange(cb.onRebuildMountain);
+    mountainFolder.add(params, "mountainPosY", -3000, 3000, 10);
+    mountainFolder.add(params, "mountainPosZ", -20000, 0, 10);
+    mountainFolder.add(params, "mountainOpacity", 0, 1, 0.01);
+    mountainFolder.addColor(params, "mountainColor");
+    mountainFolder.add(params, "mountainAdditive", 0, 1, 1).name("additive");
+    mountainFolder.add(params, "mountainFadeHeight", 0, 3000, 10);
+    mountainFolder.add(params, "mountainFadeNearZ", -20000, 0, 10);
+    mountainFolder.add(params, "mountainFadeFarZ", -20000, 0, 10);
+    mountainFolder.close();
 
     const fluidFolder = gui.addFolder("fluid");
     fluidFolder.addColor(params, "color1").onChange(cb.onFluidChange);

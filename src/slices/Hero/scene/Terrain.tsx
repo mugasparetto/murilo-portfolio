@@ -57,6 +57,10 @@ export default function Terrain({ params, tiles = 3 }: Props) {
         uNoiseEdgeEnd: { value: 1.0 },
         uNoiseEdgePower: { value: params.noiseEdgePower },
 
+        uLacunarity: { value: params.noiseLacunarity },
+        uGain: { value: params.noiseGain },
+        uWarpStrength: { value: params.noiseWarpStrength },
+
         uMaskNearZ: { value: params.maskNearZ },
         uMaskFarZ: { value: params.maskFarZ },
         uMaskPower: { value: params.maskPower },
@@ -111,6 +115,10 @@ export default function Terrain({ params, tiles = 3 }: Props) {
     material.uniforms.uBowlPower.value = params.bowlPower;
     material.uniforms.uNoiseEdgeStart.value = params.noiseEdgeStart;
     material.uniforms.uNoiseEdgePower.value = params.noiseEdgePower;
+
+    material.uniforms.uLacunarity.value = params.noiseLacunarity;
+    material.uniforms.uGain.value = params.noiseGain;
+    material.uniforms.uWarpStrength.value = params.noiseWarpStrength;
 
     material.uniforms.uMaskNearZ.value = params.maskNearZ;
     material.uniforms.uMaskFarZ.value = params.maskFarZ;

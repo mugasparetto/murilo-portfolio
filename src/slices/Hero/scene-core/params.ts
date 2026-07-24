@@ -29,10 +29,31 @@ export type SceneParams = {
   noiseEdgeStart: number;
   noiseEdgePower: number;
 
+  noiseLacunarity: number;
+  noiseGain: number;
+  noiseWarpStrength: number;
+
   maskNearZ: number;
   maskFarZ: number;
   maskPower: number;
   useHardClip: number;
+
+  // wireframe mountains
+  mountainW: number;
+  mountainD: number;
+  mountainSegX: number;
+  mountainSegZ: number;
+  mountainHeight: number;
+  mountainFalloffPower: number;
+  mountainNoiseScale: number;
+  mountainPosY: number;
+  mountainPosZ: number;
+  mountainOpacity: number;
+  mountainColor: string;
+  mountainAdditive: number;
+  mountainFadeHeight: number;
+  mountainFadeNearZ: number;
+  mountainFadeFarZ: number;
 
   // steps
   stepX: number;
@@ -92,21 +113,41 @@ export const defaultParams: SceneParams = {
   noiseEdgeStart: 0.17,
   noiseEdgePower: 1,
 
+  noiseLacunarity: 2.0,
+  noiseGain: 0.5,
+  noiseWarpStrength: 0.4,
+
   maskNearZ: -800,
-  maskFarZ: -4700,
+  maskFarZ: -20000,
   maskPower: 4,
-  useHardClip: 0,
+  useHardClip: 1,
 
-  stepX: -280,
-  stepY: 335,
+  mountainW: 30000,
+  mountainD: 10000,
+  mountainSegX: 65,
+  mountainSegZ: 16,
+  mountainHeight: 1630,
+  mountainFalloffPower: 1.5,
+  mountainNoiseScale: 0.0044,
+  mountainPosY: 150,
+  mountainPosZ: -12200,
+  mountainOpacity: 0.5,
+  mountainColor: "#e8e8f0",
+  mountainAdditive: 0,
+  mountainFadeHeight: 0,
+  mountainFadeNearZ: -6900,
+  mountainFadeFarZ: -10000,
+
+  stepX: 0,
+  stepY: 350,
   stepZ: -3530,
-  rotY: -0.257,
-  rotZ: 0.15,
+  rotY: 0,
+  rotZ: 0.05,
 
-  doorX: 60,
-  doorY: 2260,
+  doorX: 0,
+  doorY: 2400,
   doorZ: -5400,
-  doorScaleX: 1.625,
+  doorScaleX: 1.33,
   doorScaleY: 1.71,
 
   groupY: -50,
