@@ -557,7 +557,7 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
       if (eyeGroup) {
         const worldPos = new THREE.Vector3();
         eyeGroup.getWorldPosition(worldPos);
-        abductTarget = [worldPos.x + 8, worldPos.y, worldPos.z];
+        abductTarget = [worldPos.x + 8, worldPos.y, 2560];
       }
 
       ufoRef.current?.trigger(abductTarget);

@@ -44,6 +44,10 @@ interface SharedUniforms {
   uBeamTopY: { value: number };
   uBeamBottomY: { value: number };
 
+  uBeamCenterX: { value: number };
+  uBeamCenterZ: { value: number };
+  uBeamWorldInverse: { value: THREE.Matrix4 };
+
   [uniform: string]: { value: unknown };
 }
 
@@ -177,6 +181,10 @@ const BEAM_HALF_WIDTH = BEAM_WIDTH / 2;
 // Initial beam height — will be overridden dynamically each frame
 const INITIAL_BEAM_HEIGHT = 6;
 
+// Local units/sec the victim drifts along Y after the beam triggers.
+// Positive = rises toward the UFO (local y=0 is the belly).
+const VICTIM_RISE_SPEED = 0.4;
+
 function makeSharedUniforms(): SharedUniforms {
   return {
     uTime: { value: 0 },
@@ -205,6 +213,10 @@ function makeSharedUniforms(): SharedUniforms {
     uBeamHalfW: { value: BEAM_HALF_WIDTH },
     uBeamTopY: { value: 0 },
     uBeamBottomY: { value: -INITIAL_BEAM_HEIGHT },
+
+    uBeamCenterX: { value: 0 },
+    uBeamCenterZ: { value: 0 },
+    uBeamWorldInverse: { value: new THREE.Matrix4() },
   };
 }
 
@@ -291,6 +303,10 @@ function patchMaterial(
          uniform float uBeamTopY;
          uniform float uBeamBottomY;
 
+         uniform float uBeamCenterX;
+         uniform float uBeamCenterZ;
+          uniform mat4 uBeamWorldInverse;
+
          ${HOLO_FIELD_GLSL}
         `,
       )
@@ -298,39 +314,47 @@ function patchMaterial(
         "#include <output_fragment>",
         `
         {
-          float y01 = clamp((uBeamTopY - vWorldPos.y) / (uBeamTopY - uBeamBottomY), 0.0, 1.0);
-          float halfW = mix(uTopWidth, uBottomWidth, y01) * uBeamHalfW;
-          float dx = vWorldPos.x / max(halfW, 1e-4);
-          float edgeDist = abs(dx);
-        
-          vec2 beamUV = vec2(clamp(dx, -1.0, 1.0), y01);
-          vec3 holo = holoField(beamUV, uTime * uTimeScale, uSeed, uIterations,
-                                uSoftness, uColor1, uColor2, uColor3, uColor4);
-          holo *= uColorIntensity;
-        
-          float radial = smoothstep(1.2, 0.0, edgeDist);
-          float topA   = smoothstep(0.0, uTopFade, y01);
-          float botA   = smoothstep(1.0, 1.0 - uBottomFade, y01);
-        
-          float wavefrontPresence = 1.0 - smoothstep(0.98, 1.08, uReveal);
-        
-          float frontW  = 0.08;
-          float revealA = smoothstep(uReveal + frontW, uReveal - frontW, y01);
-          float frontBump = exp(-pow((y01 - uReveal) / frontW, 2.0))
-                          * uFrontGlow
-                          * wavefrontPresence;
-        
-          float topBias = mix(1.0, 0.3, y01);
-        
-          float strength = radial * topA * botA * revealA * topBias;
-        
-          vec3 add = (holo + frontBump) * strength * uBodyGlow;
-          gl_FragColor.rgb += add * (0.5 + 0.5 * diffuseColor.rgb);
-        
-          float rim = frontBump * radial * uBodyGlow * 0.5;
-          gl_FragColor.rgb += vec3(rim);
-        }
-        #include <output_fragment>
+  {
+  // Convert this fragment into the beam mesh's OWN local space. The inverse
+  // world matrix undoes every parent transform — GROUP_SCALE, the beam
+  // group's Y-stretch, the position offset — so from here the math is
+  // identical to a unit-scale scene at the origin (your working demo).
+  vec3 bp = (uBeamWorldInverse * vec4(vWorldPos, 1.0)).xyz;
+
+  // Plane spans x,z in [-1.5, 1.5], y in [-0.5, 0.5]: +0.5 = UFO, -0.5 = target.
+  float y01   = clamp(0.5 - bp.y, 0.0, 1.0);          // 0 at UFO, 1 at target
+  float halfW = mix(uTopWidth, uBottomWidth, y01) * uBeamHalfW;
+
+  // Radial distance from the beam AXIS using x AND z, so a body lying flat
+  // gets a round pool of light instead of a one-dimensional slab.
+  float radialDist = length(vec2(bp.x, bp.z)) / max(halfW, 1e-4);
+  float radial     = smoothstep(1.2, 0.0, radialDist);
+
+  vec2 beamUV = vec2(clamp(bp.x / max(halfW, 1e-4), -1.0, 1.0), y01);
+  vec3 holo = holoField(beamUV, uTime * uTimeScale, uSeed, uIterations,
+                        uSoftness, uColor1, uColor2, uColor3, uColor4);
+  holo *= uColorIntensity;
+
+  float topA = smoothstep(0.0, uTopFade, y01);
+
+  // A belly-up body sits at a roughly constant depth (y01 ~= 1). Rather than
+  // a wavefront that sweeps past and leaves it dark, latch the glow on once
+  // the reveal front has descended to this depth, and keep it on.
+  float reached = smoothstep(y01 - 0.12, y01 + 0.02, uReveal);
+
+  // Brief flash as the wavefront actually crosses the body.
+  float frontW    = 0.08;
+  float frontBump = exp(-pow((y01 - uReveal) / frontW, 2.0)) * uFrontGlow;
+
+  float strength = radial * topA * reached;
+
+  vec3 add = (holo + frontBump * radial) * strength * uBodyGlow;
+  gl_FragColor.rgb += add * (0.5 + 0.5 * diffuseColor.rgb);
+
+  float rim = frontBump * radial * reached * uBodyGlow * 0.5;
+  gl_FragColor.rgb += vec3(rim);
+}
+#include <output_fragment>
         `,
       );
   };
@@ -375,8 +399,8 @@ const Victim = React.forwardRef<THREE.Group, VictimProps>(function Victim(
       // Local offset so the model's feet sit at y=0 of this group.
       // Tune these values to match your GLB's pivot point.
       position={[0, 0, 0]}
-      scale={0.01}
-      rotation={[-Math.PI / 2, 0, Math.PI / 2]}
+      scale={1}
+      rotation={[0, 0, 0]}
     />
   );
 });
@@ -491,11 +515,12 @@ export default forwardRef<UfoSceneHandle, UfoSceneProps>(function UfoScene(
     // "Local space" = the coordinate space inside the <group scale={GROUP_SCALE}>.
     // UFO belly is always at local (0, 0, 0).
     // target world → subtract group world origin → divide by scale.
-    const [tx, ty] = targetRef.current;
+    const [tx, ty, tz] = targetRef.current;
 
     // How far the target is from the UFO belly, in local units
     const beamLocalX = (tx - position[0]) / GROUP_SCALE;
     const targetLocalY = (ty - position[1]) / GROUP_SCALE; // negative = below UFO
+    const targetLocalZ = (tz - position[2]) / GROUP_SCALE; // negative = below UFO
 
     // Height: distance from UFO belly (local y=0) down to the target.
     // Minimum of 0.5 local units to avoid a degenerate beam.
@@ -513,31 +538,47 @@ export default forwardRef<UfoSceneHandle, UfoSceneProps>(function UfoScene(
       beamGroupRef.current.scale.set(1, beamLocalHeight, 1);
     }
 
-    // ── Reposition victim group to sit at the target world position ────────
+    // ── Time since trigger (0 if not yet triggered) ─────────────────────────
+    // Latching startTimeRef here (instead of inside the reveal block below)
+    // means this value is available before we set the victim's position.
+    let elapsed = 0;
+    if (startTimeRef.current !== null) {
+      if (startTimeRef.current === 0) {
+        startTimeRef.current = clock.getElapsedTime();
+      }
+      elapsed = clock.getElapsedTime() - startTimeRef.current;
+    }
+
+    // Linear drift along Y, starts accumulating the instant trigger() fires.
+    const victimYOffset = elapsed * VICTIM_RISE_SPEED;
+
+    // ── Reposition victim group to sit at the target, plus the Y drift ─────
     if (victimGroupRef.current) {
-      victimGroupRef.current.position.set(beamLocalX, targetLocalY, 0);
+      victimGroupRef.current.position.set(
+        beamLocalX,
+        targetLocalY + victimYOffset,
+        targetLocalZ,
+      );
     }
 
     // ── Update uniforms that the shaders use for world-space gradient ──────
     if (beamRef.current) {
       beamRef.current.updateWorldMatrix(true, false);
       const center = tmpVec.setFromMatrixPosition(beamRef.current.matrixWorld);
-      // The beam mesh (scale applied by parent group) sits centred at center.
-      // Its top edge is half the world-height above center, bottom half below.
       const halfH = beamHeightWorldRef.current / 2;
       u.uBeamTopY.value = center.y + halfH;
       u.uBeamBottomY.value = center.y - halfH;
+
+      // u.uBeamCenterX.value = center.x;
+      // u.uBeamCenterZ.value = center.z;
+      // u.uBeamHalfW.value = BEAM_HALF_WIDTH * GROUP_SCALE;
+
+      u.uBeamWorldInverse.value.copy(beamRef.current.matrixWorld).invert();
     }
 
     // ── Reveal animation ──────────────────────────────────────────────────
     if (startTimeRef.current === null) return;
 
-    // First frame after trigger() — latch the clock
-    if (startTimeRef.current === 0) {
-      startTimeRef.current = clock.getElapsedTime();
-    }
-
-    const elapsed = clock.getElapsedTime() - startTimeRef.current;
     const revealDuration = 0.75;
     const tNorm = Math.min(1, elapsed / revealDuration);
     const eased =
@@ -575,10 +616,10 @@ export default forwardRef<UfoSceneHandle, UfoSceneProps>(function UfoScene(
       */}
       <group ref={victimGroupRef}>
         <React.Suspense fallback={null}>
-          <Victim
+          {/* <Victim
             sharedUniforms={sharedUniformsRef}
             revealProgress={revealProgress}
-          />
+          /> */}
         </React.Suspense>
       </group>
     </group>
