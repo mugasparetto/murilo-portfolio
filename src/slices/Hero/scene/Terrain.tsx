@@ -16,6 +16,9 @@ type Props = {
   tiles?: number;
 };
 
+/** grid cells across one tile, on both axes */
+const GRID = 40;
+
 export default function Terrain({
   params,
   doorMat,
@@ -26,13 +29,16 @@ export default function Terrain({
   const { gl } = useThree();
 
   // geometry rebuild when w/h/scl changes
-  const geometry = useMemo(() => {
+  const { geometry, rowStep } = useMemo(() => {
     const cols = Math.max(2, Math.floor(params.w / params.scl));
     const rows = Math.max(2, Math.floor(params.h / params.scl));
 
     const geo = new THREE.PlaneGeometry(params.w, params.h, cols - 1, rows - 1);
     geo.rotateX(-Math.PI / 2);
-    return geo;
+
+    // spacing between two vertex rows — the only distance the tile ring can be
+    // shifted by and still land on its own lattice
+    return { geometry: geo, rowStep: params.h / (rows - 1) };
   }, [params.w, params.h, params.scl]);
 
   const materialRef = useRef<THREE.ShaderMaterial | null>(null);
@@ -43,14 +49,14 @@ export default function Terrain({
       depthWrite: false,
       side: THREE.DoubleSide,
       uniforms: {
-        uTime: { value: 0 },
         uClipZ: { value: 2200 },
 
         uDiff: { value: params.diff },
         uXYScale: { value: params.xyScale },
-        uScrollSpeed: { value: params.scrollSpeed },
-        uSpeedMul: { value: params.speedMul },
-        uGrid: { value: 40.0 },
+        uScroll: { value: 0 },
+        uGridScroll: { value: 0 },
+        uTileLength: { value: params.h },
+        uGrid: { value: GRID },
 
         uWidth: { value: params.w },
         uEdgePower: { value: params.edgePower },
@@ -152,19 +158,13 @@ export default function Terrain({
   const tileLength = params.h;
   const scrollZ = useRef(0);
 
-  useFrame((state, delta) => {
-    const t = state.clock.getElapsedTime();
-
+  useFrame((_, delta) => {
     const material = materialRef.current;
     if (!material) return;
 
     // update uniforms
-    material.uniforms.uTime.value = t;
-
     material.uniforms.uDiff.value = params.diff;
     material.uniforms.uXYScale.value = params.xyScale;
-    material.uniforms.uScrollSpeed.value = params.scrollSpeed;
-    material.uniforms.uSpeedMul.value = params.speedMul;
 
     material.uniforms.uWidth.value = params.w;
     material.uniforms.uEdgePower.value = params.edgePower;
@@ -229,18 +229,29 @@ export default function Terrain({
     u.uSpread.value = params.reflectSpread;
     u.uEdgeSoft.value = params.reflectEdgeSoft;
 
-    // scroll tiles
+    // ---- scroll ----
+    // One accumulator drives both the field in the shader and the tiles here,
+    // so changing scrollSpeed / speedMul at runtime can never make them disagree.
     const v = params.scrollSpeed * params.speedMul;
     scrollZ.current += v * delta;
+
+    u.uScroll.value = scrollZ.current;
+    u.uGridScroll.value = scrollZ.current % (tileLength / GRID);
+    u.uTileLength.value = tileLength;
 
     if (!group.current) return;
     const children = group.current.children;
 
+    // Recycle a vertex row at a time, not a tile at a time. The ring still
+    // travels a whole tile before it repeats, but every wrap lands the lattice
+    // exactly on top of where it already was — the visible surface is
+    // unchanged and only a single row enters at the far end, instead of a
+    // whole tile of terrain appearing in one frame.
+    const shift = scrollZ.current % rowStep;
+
     for (let i = 0; i < children.length; i++) {
       const m = children[i] as THREE.Mesh;
-      m.position.z = -i * tileLength + (scrollZ.current % tileLength);
-      if (m.position.z > tileLength)
-        m.position.z -= tileLength * children.length;
+      m.position.z = -i * tileLength + shift;
     }
   });
 

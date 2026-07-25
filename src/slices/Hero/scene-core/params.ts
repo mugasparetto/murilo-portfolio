@@ -132,7 +132,7 @@ export const defaultParams: SceneParams = {
 
   diff: 600,
   xyScale: 0.0012,
-  speedMul: 0.2,
+  speedMul: 0.3,
   scrollSpeed: 120,
   lineWidth: 0.8,
 

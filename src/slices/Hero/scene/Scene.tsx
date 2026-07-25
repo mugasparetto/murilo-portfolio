@@ -174,7 +174,7 @@ export default function Scene({ scrollRef }: Props) {
             params={p}
             doorMat={displayMat}
             doorProjectionRef={doorProjectionRef}
-            tiles={3}
+            tiles={8}
           />
           <Mountains params={p} />
           <Steps

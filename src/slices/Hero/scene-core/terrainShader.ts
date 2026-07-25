@@ -4,15 +4,22 @@ import {
 } from "./reflectionShader";
 
 export const terrainVertex = /* glsl */ `
-  varying vec2 vUv;
+  varying vec2 vGridUv;
   varying float vWorldZ;
   varying vec3 vWorldPos;
 
-  uniform float uTime;
   uniform float uDiff;
   uniform float uXYScale;
-  uniform float uScrollSpeed;
-  uniform float uSpeedMul;
+
+  // How far the field has travelled toward the camera, in world units. Fed by
+  // the same accumulator that positions the tiles, so the two can never drift
+  // apart -- deriving it from uTime * speed here would jump the whole terrain
+  // the moment either speed is tweaked in the GUI.
+  uniform float uScroll;
+  // uScroll wrapped to one grid cell: the line pattern repeats every cell, so
+  // dropping whole cells is invisible and keeps the coordinate small.
+  uniform float uGridScroll;
+  uniform float uTileLength;
 
   uniform float uWidth;
   uniform float uEdgeStrength;
@@ -148,15 +155,27 @@ export const terrainVertex = /* glsl */ `
   }
 
   void main() {
-    vUv = uv;
-
     vec3 pos = position;
 
     vec4 world = modelMatrix * vec4(pos, 1.0);
     vWorldZ = world.z;
 
-    float t = uTime * uScrollSpeed * uSpeedMul;
-    vec2 samplePos = vec2(world.x, world.z - t) * uXYScale;
+    // Field space. The terrain is one infinite field sliding toward the camera;
+    // a tile is only a window onto it. Height *and* grid are functions of this
+    // coordinate and never of the tile's own uv, so a tile carries no identity:
+    // drop it anywhere on the field's vertex lattice and it draws exactly what
+    // was already there.
+    vec2 field = vec2(world.x, world.z - uScroll);
+
+    // Same cells as the old per-tile uv (uGrid across uWidth by uTileLength),
+    // but anchored to the field instead of to the mesh, so the lines survive a
+    // tile being repositioned.
+    vGridUv = vec2(
+      world.x / uWidth,
+      -(world.z - uGridScroll) / uTileLength
+    ) + 0.5;
+
+    vec2 samplePos = field * uXYScale;
 
     float n = warpedFbm(samplePos);
     float nn = clamp(n * 0.5 + 0.5, 0.0, 1.0);
@@ -167,7 +186,7 @@ export const terrainVertex = /* glsl */ `
     float ramp = noiseRamp(x01);
     ramp *= uEdgeStrength;
 
-    float clusters = clusterMask(vec2(world.x, world.z - t));
+    float clusters = clusterMask(field);
     ramp *= mix(1.0, clusters, uClusterStrength);
 
     float depthScale = heightFalloff(world.z);
@@ -183,7 +202,7 @@ export const terrainVertex = /* glsl */ `
 `;
 
 export const terrainFragment = /* glsl */ `
-  varying vec2 vUv;
+  varying vec2 vGridUv;
   varying float vWorldZ;
   varying vec3 vWorldPos;
   uniform float uClipZ;
@@ -229,7 +248,7 @@ ${doorReflectFunctions}
   void main() {
     if (vWorldZ > uClipZ) discard;
     
-    float grid = gridFactor(vUv, uGrid, uLineWidth);
+    float grid = gridFactor(vGridUv, uGrid, uLineWidth);
 
     // On lines => grid~0 => lineColor. Inside => grid~1 => fillColor.
     vec3 color = mix(uLineColor, uFillColor, grid);
