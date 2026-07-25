@@ -130,6 +130,30 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
     doorFolder.add(params, "doorScaleY", 1, 10).onChange(cb.onDoorChange);
     doorFolder.close();
 
+    // read every frame by <Steps />, so no callback needed
+    const reflectFolder = gui.addFolder("door reflection");
+    reflectFolder.add(params, "reflectIntensity", 0, 20, 0.1).name("intensity");
+    reflectFolder
+      .add(params, "reflectFalloff", 0, 0.003, 0.00005)
+      .name("distance fade");
+    reflectFolder.add(params, "reflectReach", 0.2, 4, 0.05).name("reach");
+    reflectFolder.add(params, "reflectSpread", 0.5, 6, 0.05).name("spread");
+    reflectFolder.add(params, "reflectEdgeSoft", 0.01, 0.5, 0.01).name("edge");
+    reflectFolder.add(params, "reflectRoughness", 0, 2, 0.01).name("roughness");
+    reflectFolder.add(params, "reflectFacing", 0, 1, 0.01).name("facing");
+    reflectFolder.add(params, "reflectTopBoost", 0, 8, 0.1).name("tread boost");
+    reflectFolder.close();
+
+    const floorFolder = gui.addFolder("floor pool");
+    floorFolder
+      .add(params, "reflectFloorStrength", 0, 5, 0.05)
+      .name("strength");
+    floorFolder.add(params, "reflectFloorX", -3000, 3000, 10).name("x");
+    floorFolder.add(params, "reflectFloorZ", -6000, 2000, 10).name("z");
+    floorFolder.add(params, "reflectFloorWidth", 200, 6000, 50).name("width");
+    floorFolder.add(params, "reflectFloorDepth", 200, 6000, 50).name("depth");
+    floorFolder.close();
+
     const groupFolder = gui.addFolder("group");
     groupFolder
       .add(params, "groupY", -2000, 2000, 50)

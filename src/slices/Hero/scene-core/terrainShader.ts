@@ -1,6 +1,12 @@
+import {
+  doorReflectFunctions,
+  doorReflectUniforms,
+} from "./reflectionShader";
+
 export const terrainVertex = /* glsl */ `
   varying vec2 vUv;
   varying float vWorldZ;
+  varying vec3 vWorldPos;
 
   uniform float uTime;
   uniform float uDiff;
@@ -169,6 +175,9 @@ export const terrainVertex = /* glsl */ `
     pos.y += bowl * depthScale;
     pos.y += nn * uDiff * ramp * depthScale;
 
+    // after displacement, so the door's light pool sits on the actual surface
+    vWorldPos = (modelMatrix * vec4(pos, 1.0)).xyz;
+
     gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
   }
 `;
@@ -176,6 +185,7 @@ export const terrainVertex = /* glsl */ `
 export const terrainFragment = /* glsl */ `
   varying vec2 vUv;
   varying float vWorldZ;
+  varying vec3 vWorldPos;
   uniform float uClipZ;
 
   uniform float uLineWidth;
@@ -189,6 +199,14 @@ export const terrainFragment = /* glsl */ `
 
   // ✅ new: grid density (cells per 1.0 UV)
   uniform float uGrid;
+
+  // --- door light pool: the patch of ground just before the first step ---
+  uniform vec2 uPoolCenter;   // world XZ
+  uniform vec2 uPoolSize;     // world half extents
+  uniform float uPoolStrength;
+
+${doorReflectUniforms}
+${doorReflectFunctions}
 
   // Anti-aliased grid line factor:
   // returns 0 on lines, 1 in cell interiors (so it matches your mix())
@@ -215,6 +233,21 @@ export const terrainFragment = /* glsl */ `
 
     // On lines => grid~0 => lineColor. Inside => grid~1 => fillColor.
     vec3 color = mix(uLineColor, uFillColor, grid);
+
+    // ---- DOOR LIGHT POOL ----
+    // Soft blob in world XZ, so it stays put while the terrain tiles scroll
+    // through it. Placed to cover the ground right in front of the first step.
+    if (uPoolStrength > 0.001) {
+      vec2 q = (vWorldPos.xz - uPoolCenter) / max(uPoolSize, vec2(1.0));
+      float pool = 1.0 - smoothstep(0.35, 1.0, length(q));
+
+      if (pool > 0.001) {
+        // raw: the pool is placed and weighted by hand, so it skips the
+        // distance falloff that would otherwise crush it this far from the door
+        color += doorReflectionRaw(vWorldPos, vec3(0.0, 1.0, 0.0))
+               * (pool * uPoolStrength);
+      }
+    }
 
     float t = smoothstep(uMaskNearZ, uMaskFarZ, vWorldZ);
     float fade = pow(1.0 - t, uMaskPower);

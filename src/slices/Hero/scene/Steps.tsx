@@ -21,9 +21,14 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 
+import type { DoorProjection } from "../scene-core/doorProjection";
+
 type Props = {
   params: SceneParams;
-  doorFluidTextureRef: React.MutableRefObject<THREE.Texture | null>;
+  /** the door's display material — the steps reflect it */
+  doorMat: THREE.ShaderMaterial;
+  /** live door quad, written by <Door /> every frame */
+  doorProjectionRef: RefObject<DoorProjection>;
   children?: React.ReactNode;
   scrollWindow: VhWindow;
 
@@ -33,12 +38,13 @@ type Props = {
 
 export default function Steps({
   params,
-  doorFluidTextureRef,
+  doorMat,
+  doorProjectionRef,
   children,
   scrollWindow,
   scrollContainerRef,
 }: Props) {
-  const { size, gl, camera } = useThree();
+  const { size, gl } = useThree();
   const dpr = gl.getPixelRatio();
 
   const stepsRoot = useRef<THREE.Group>(null);
@@ -76,48 +82,55 @@ export default function Steps({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function hexToLinearVec3(hex: string) {
-    const c = new THREE.Color(hex);
-    c.convertSRGBToLinear();
-    return new THREE.Vector3(c.r, c.g, c.b);
-  }
-
   const fillMat = useMemo(() => {
+    const d = doorMat.uniforms;
+
     return new THREE.ShaderMaterial({
       uniforms: {
-        uClipPlanePoint: { value: new THREE.Vector3() },
-        uClipPlaneNormal: { value: new THREE.Vector3(0, 0, 1) },
-        uClipPlaneSide: { value: 1.0 },
+        // ⬇️ shared *objects* with the door material: same clock, same fluid
+        // texture, same colors. Whatever the door shows is what we reflect,
+        // and useFluidMaterials keeps updating both at once.
+        iTime: d.iTime,
+        iResolution: d.iResolution, // “pattern space”, not screen
+        uDoorFluid: d.iFluid,
+        uSeed: d.uSeed,
+        uDistortionAmount: d.uDistortionAmount,
+        uColor1: d.uColor1,
+        uColor2: d.uColor2,
+        uColor3: d.uColor3,
+        uColor4: d.uColor4,
+        uColorIntensity: d.uColorIntensity,
+        uSoftness: d.uSoftness,
 
-        iTime: { value: 0 },
-        iResolution: { value: new THREE.Vector2(512, 1024) }, // “pattern space”, not screen
-
-        uDoorFluid: { value: null as THREE.Texture | null },
-
-        uDistortionAmount: { value: params.distortionAmount },
-        uColor1: { value: hexToLinearVec3(params.color1) },
-        uColor2: { value: hexToLinearVec3(params.color2) },
-        uColor3: { value: hexToLinearVec3(params.color3) },
-        uColor4: { value: hexToLinearVec3(params.color4) },
-        uColorIntensity: { value: params.colorIntensity },
-        uSoftness: { value: params.softness },
-
+        // door quad in world space, published by <Door /> each frame
         uDoorPos: { value: new THREE.Vector3() },
         uDoorRight: { value: new THREE.Vector3(1, 0, 0) },
         uDoorUp: { value: new THREE.Vector3(0, 1, 0) },
         uDoorHalfSize: { value: new THREE.Vector2(400, 800) },
+        uDoorStrength: { value: 0 },
 
-        uIntensity: { value: 3.5 },
-        uFalloff: { value: 0.001 },
+        uIntensity: { value: params.reflectIntensity },
+        uFalloff: { value: params.reflectFalloff },
+        uRoughness: { value: params.reflectRoughness },
+        uFacing: { value: params.reflectFacing },
+        uTopBoost: { value: params.reflectTopBoost },
+        uReach: { value: params.reflectReach },
+        uSpread: { value: params.reflectSpread },
+        uEdgeSoft: { value: params.reflectEdgeSoft },
 
         uTopStart: { value: 0.25 },
         uTopEnd: { value: 1 },
+
+        // inactive until something drives clipRef (see below)
+        uClipPlanePoint: { value: new THREE.Vector3() },
+        uClipPlaneNormal: { value: new THREE.Vector3(0, 0, 1) },
+        uClipPlaneSide: { value: 0.0 },
       },
       vertexShader: stepReflectVertex,
       fragmentShader: stepReflectFragment,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [doorMat]);
 
   // keep resolution current (LineMaterial)
   useEffect(() => {
@@ -188,83 +201,29 @@ export default function Steps({
     if (el) stepGroups.current.push(el);
   };
 
-  // ✅ Update uniforms every frame (texture + door plane basis + sizes)
+  // Door look/time/colors ride along on the shared uniform objects, so all we
+  // have to push is where the door actually is and how it should read.
   useFrame(() => {
-    // door center
-    fillMat.uniforms.uDoorPos.value.set(
-      params.doorX,
-      params.doorY,
-      params.doorZ,
-    );
+    const u = fillMat.uniforms;
+    const door = doorProjectionRef.current;
 
-    // door basis: since door billboards to camera, use camera right/up
-    const q = camera.quaternion;
-    (fillMat.uniforms.uDoorRight.value as THREE.Vector3)
-      .set(1, 0, 0)
-      .applyQuaternion(q)
-      .normalize();
-    (fillMat.uniforms.uDoorUp.value as THREE.Vector3)
-      .set(0, 1, 0)
-      .applyQuaternion(q)
-      .normalize();
+    if (door) {
+      (u.uDoorPos.value as THREE.Vector3).copy(door.position);
+      (u.uDoorRight.value as THREE.Vector3).copy(door.right);
+      (u.uDoorUp.value as THREE.Vector3).copy(door.up);
+      (u.uDoorHalfSize.value as THREE.Vector2).copy(door.halfSize);
+      u.uDoorStrength.value = door.strength;
+    }
 
-    // door size in world units (your door is 800 x 1600 before scale)
-    const halfW = 800 * params.doorScaleX * 0.5;
-    const halfH = 1600 * params.doorScaleY * 0.5;
-    (fillMat.uniforms.uDoorHalfSize.value as THREE.Vector2).set(halfW, halfH);
-
-    // latest door texture
-    const tex = doorFluidTextureRef.current;
-    if (tex) fillMat.uniforms.uDoorFluid.value = tex;
-  });
-
-  useFrame((state) => {
-    fillMat.uniforms.iTime.value = state.clock.elapsedTime;
-
-    // keep in sync with door look (if these are GUI params)
-    fillMat.uniforms.uDistortionAmount.value = params.distortionAmount;
-    fillMat.uniforms.uColorIntensity.value = params.colorIntensity;
-    fillMat.uniforms.uSoftness.value = params.softness;
-
-    (fillMat.uniforms.uColor1.value as THREE.Vector3).copy(
-      hexToLinearVec3(params.color1),
-    );
-    (fillMat.uniforms.uColor2.value as THREE.Vector3).copy(
-      hexToLinearVec3(params.color2),
-    );
-    (fillMat.uniforms.uColor3.value as THREE.Vector3).copy(
-      hexToLinearVec3(params.color3),
-    );
-    (fillMat.uniforms.uColor4.value as THREE.Vector3).copy(
-      hexToLinearVec3(params.color4),
-    );
-
-    // door center
-    fillMat.uniforms.uDoorPos.value.set(
-      params.doorX,
-      params.doorY,
-      params.doorZ,
-    );
-
-    // door basis from camera because door is billboarded
-    const q = camera.quaternion;
-    (fillMat.uniforms.uDoorRight.value as THREE.Vector3)
-      .set(1, 0, 0)
-      .applyQuaternion(q)
-      .normalize();
-    (fillMat.uniforms.uDoorUp.value as THREE.Vector3)
-      .set(0, 1, 0)
-      .applyQuaternion(q)
-      .normalize();
-
-    // door size in world units (800 x 1600, scaled)
-    const halfW = 800 * params.doorScaleX * 0.5;
-    const halfH = 1600 * params.doorScaleY * 0.5;
-    (fillMat.uniforms.uDoorHalfSize.value as THREE.Vector2).set(halfW, halfH);
-
-    // latest fluid sim texture (distortion field)
-    const tex = doorFluidTextureRef.current;
-    if (tex) fillMat.uniforms.uDoorFluid.value = tex;
+    // GUI mutates params in place, so re-read them to keep the knobs live
+    u.uIntensity.value = params.reflectIntensity;
+    u.uFalloff.value = params.reflectFalloff;
+    u.uRoughness.value = params.reflectRoughness;
+    u.uFacing.value = params.reflectFacing;
+    u.uTopBoost.value = params.reflectTopBoost;
+    u.uReach.value = params.reflectReach;
+    u.uSpread.value = params.reflectSpread;
+    u.uEdgeSoft.value = params.reflectEdgeSoft;
   });
 
   useEffect(() => {

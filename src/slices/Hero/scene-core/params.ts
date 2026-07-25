@@ -84,6 +84,23 @@ export type SceneParams = {
   doorScaleX: number;
   doorScaleY: number;
 
+  // door reflection on the steps
+  reflectIntensity: number;
+  reflectFalloff: number;
+  reflectRoughness: number;
+  reflectFacing: number;
+  reflectTopBoost: number;
+  reflectReach: number;
+  reflectSpread: number;
+  reflectEdgeSoft: number;
+
+  // door light pool on the terrain, in front of the first step
+  reflectFloorStrength: number;
+  reflectFloorX: number;
+  reflectFloorZ: number;
+  reflectFloorWidth: number;
+  reflectFloorDepth: number;
+
   groupY: number;
 
   brushSize: number;
@@ -179,6 +196,21 @@ export const defaultParams: SceneParams = {
   doorZ: -5400,
   doorScaleX: 1.33,
   doorScaleY: 1.71,
+
+  reflectIntensity: 0.6,
+  reflectFalloff: 0.0005,
+  reflectRoughness: 1,
+  reflectFacing: 1,
+  reflectTopBoost: 0,
+  reflectReach: 2,
+  reflectSpread: 1.8,
+  reflectEdgeSoft: 0.35,
+
+  reflectFloorStrength: 0.45,
+  reflectFloorX: 0,
+  reflectFloorZ: -1850,
+  reflectFloorWidth: 1800,
+  reflectFloorDepth: 6000,
 
   groupY: -50,
 

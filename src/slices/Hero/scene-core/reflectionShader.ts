@@ -1,31 +1,28 @@
-export const stepReflectVertex = /* glsl */ `
-varying vec3 vWorldPos;
-varying vec3 vWorldNormal;
-
-void main() {
-  vec4 wp = modelMatrix * vec4(position, 1.0);
-  vWorldPos = wp.xyz;
-
-  // NOTE: this matches what you already had.
-  // If you ever apply non-uniform scale, use normalMatrix instead.
-  vWorldNormal = normalize(mat3(modelMatrix) * normal);
-
-  gl_Position = projectionMatrix * viewMatrix * wp;
-}
-`;
-
-// This reproduces the DOOR display shader’s color pattern,
-// but uses the fluid texture ONLY to distort UVs.
-// Also masks to top faces only.
-// + Adds oriented clip-plane masking in world space.
-export const stepReflectFragment = /* glsl */ `
+/**
+ * Reflection of the door onto other surfaces.
+ *
+ * The pattern is the *same* code as the door's displayShader, fed by the *same*
+ * uniform objects (time / fluid texture / colors are shared with the door
+ * material), so whatever the door shows is what gets reflected.
+ *
+ * Placement is a mirrored planar projection rather than a ray-traced mirror:
+ * the camera sits almost level with the treads, so a true `reflect()` bounces
+ * the door's image far in front of the staircase where nothing is there to
+ * catch it. Instead each fragment is expressed in the door's own frame and the
+ * image is flipped about the door's bottom edge -- the classic fake floor
+ * reflection -- then faded by distance, surface orientation and depth.
+ *
+ * `doorReflectUniforms` + `doorReflectFunctions` are meant to be pasted into
+ * any fragment shader that wants to catch the door (see the steps below and
+ * the light pool in terrainShader.ts). Materials that include them must share
+ * the door material's uniform objects -- see <Steps />.
+ */
+export const doorReflectUniforms = /* glsl */ `
+// --- shared with the door material ---
 uniform float iTime;
 uniform vec2 iResolution;
-
-// distortion field (the sim output)
-uniform sampler2D uDoorFluid;
-
-// door “display” params (same as your door shader)
+uniform sampler2D uDoorFluid;   // fluid sim output, used to distort the pattern
+uniform float uSeed;
 uniform float uDistortionAmount;
 uniform vec3 uColor1;
 uniform vec3 uColor2;
@@ -34,81 +31,51 @@ uniform vec3 uColor4;
 uniform float uColorIntensity;
 uniform float uSoftness;
 
-// door projection (so it lines up under the door)
+// --- door quad in world space (published by <Door />) ---
 uniform vec3 uDoorPos;
 uniform vec3 uDoorRight;
 uniform vec3 uDoorUp;
 uniform vec2 uDoorHalfSize;
+uniform float uDoorStrength;
 
-uniform float uIntensity;
-uniform float uFalloff;
+// --- look ---
+uniform float uIntensity;   // overall brightness of the reflection
+uniform float uFalloff;     // fade per world unit away from the door
+uniform float uRoughness;   // glossy blur, grows with depth below the door
+uniform float uFacing;      // 0 = flat wash, 1 = only faces turned to the door
+uniform float uTopBoost;    // extra brightness on up-facing surfaces
+uniform float uEdgeSoft;    // softness of the footprint edges
+uniform float uReach;       // how far down it stretches, in door heights
+uniform float uSpread;      // how far sideways it stretches, in door widths
 
-// top-face mask
+// up-facing mask
 uniform float uTopStart;
 uniform float uTopEnd;
+`;
 
-// --- CLIP PLANE (world space) ---
-uniform vec3 uClipPlanePoint;    // any point on the plane, world-space
-uniform vec3 uClipPlaneNormal;   // plane normal, world-space (should be normalized)
-uniform float uClipPlaneSide;    // +1.0 or -1.0 to flip which side is kept
+export const doorReflectFunctions = /* glsl */ `
+float sat(float x){ return clamp(x, 0.0, 1.0); }
 
-varying vec3 vWorldPos;
-varying vec3 vWorldNormal;
+// Exactly the door's displayShader, evaluated at an arbitrary door uv.
+vec3 doorColor(vec2 uv01) {
+  vec2 fluidVel = texture2D(uDoorFluid, clamp(uv01, 0.0, 1.0)).xy;
 
-float sat(float x){ return clamp(x,0.0,1.0); }
-
-void main() {
-  // ---- ORIENTED CLIP PLANE ----
-  // Signed distance from point to plane:
-  // d > 0 => in direction of normal
-  float dPlane = dot(normalize(uClipPlaneNormal), (vWorldPos - uClipPlanePoint));
-
-  // Keep one half-space, discard the other.
-  // If uClipPlaneSide = +1 => discard when dPlane > 0
-  // If uClipPlaneSide = -1 => discard when dPlane < 0
-  if (dPlane * uClipPlaneSide > 0.0) discard;
-
-  vec3 base = vec3(0.0);
-
-  // ---- TOP FACE MASK ----
-  float upDot = dot(normalize(vWorldNormal), vec3(0.0, 1.0, 0.0));
-  float topMask = smoothstep(uTopStart, uTopEnd, upDot);
-
-  // ---- Project world pos into door plane UV (0..1 over door rectangle) ----
-  vec3 p = vWorldPos - uDoorPos;
-  float x = dot(p, normalize(uDoorRight));
-  float y = dot(p, normalize(uDoorUp));
-
-  vec2 uv = vec2(
-    x / uDoorHalfSize.x * 0.5 + 0.5,
-    y / uDoorHalfSize.y * 0.5 + 0.5
-  );
-
-  // soft inside mask
-  float mx = smoothstep(0.0, 0.03, uv.x) * (1.0 - smoothstep(0.97, 1.0, uv.x));
-  float my = smoothstep(0.0, 0.03, uv.y) * (1.0 - smoothstep(0.97, 1.0, uv.y));
-  float inside = mx * 0.15;
-  // float inside = 0.15;
-
-  // ---- Distortion field (fluid) ----
-  vec2 fluidVel = texture2D(uDoorFluid, uv).xy;
-  vec2 uv2 = uv + fluidVel * (0.5 * uDistortionAmount);
-
-  // ---- Recreate the displayShader pattern (time-based, always present) ----
-  vec2 fragCoord = uv2 * iResolution;
+  vec2 fragCoord = uv01 * iResolution;
   float mr = min(iResolution.x, iResolution.y);
-  vec2 tuv = (fragCoord * 2.0 - iResolution.xy) / mr;
+  vec2 uv = (fragCoord * 2.0 - iResolution.xy) / mr;
 
-  float d = -iTime * 0.5;
-  float a = 0.0;
+  uv += fluidVel * (0.5 * uDistortionAmount);
+
+  float d = -iTime * 0.5 + uSeed * 3.7;
+  float a = uSeed * 1.3;
   for (float i = 0.0; i < 8.0; ++i) {
-    a += cos(i - d - a * tuv.x);
-    d += sin(tuv.y * i + a);
+    a += cos(i - d - a * uv.x);
+    d += sin(uv.y * i + a);
   }
   d += iTime * 0.5;
 
-  float mixer1 = cos(tuv.x * d) * 0.5 + 0.5;
-  float mixer2 = cos(tuv.y * a) * 0.5 + 0.5;
+  float mixer1 = cos(uv.x * d) * 0.5 + 0.5;
+  float mixer2 = cos(uv.y * a) * 0.5 + 0.5;
   float mixer3 = sin(d + a) * 0.5 + 0.5;
 
   float smoothAmount = clamp(uSoftness * 0.1, 0.0, 0.9);
@@ -119,13 +86,110 @@ void main() {
   vec3 col = mix(uColor1, uColor2, mixer1);
   col = mix(col, uColor3, mixer2);
   col = mix(col, uColor4, mixer3 * 0.4);
-  col *= uColorIntensity;
 
-  // distance fade
-  float dist = length(p);
-  float fade = exp(-dist * uFalloff) * 0.5;
+  return col * uColorIntensity;
+}
 
-  vec3 outCol = base + col * (uIntensity * inside * fade * topMask);
+/**
+ * Door image mirrored onto the surface at worldPos, shaped by the footprint,
+ * the surface orientation and the door's own open/closed state -- but *not*
+ * scaled by uIntensity or faded by distance. For surfaces that are placed and
+ * weighted by hand, like the terrain pool.
+ */
+vec3 doorReflectionRaw(vec3 worldPos, vec3 N) {
+  if (uDoorStrength <= 0.001) return vec3(0.0);
+
+  vec3 right = normalize(uDoorRight);
+  vec3 up = normalize(uDoorUp);
+
+  // ---- FRAGMENT IN DOOR SPACE ----
+  vec3 p = worldPos - uDoorPos;
+  float x = dot(p, right);
+  float y = dot(p, up);
+
+  // mirror the image about the door's bottom edge: a fragment sitting 'k'
+  // below the door samples the door 'k' above its own bottom edge
+  float below = -uDoorHalfSize.y - y;
+  float span = max(uDoorHalfSize.y * 2.0 * uReach, 1.0);
+  float width = max(uDoorHalfSize.x * 2.0 * uSpread, 1.0);
+
+  vec2 uvRef = vec2(x / width + 0.5, below / span);
+
+  // ---- FOOTPRINT MASK ----
+  float soft = max(uEdgeSoft, 0.001);
+  float mx = smoothstep(0.0, soft, uvRef.x) * (1.0 - smoothstep(1.0 - soft, 1.0, uvRef.x));
+  // ramps in just under the door, dies out further down
+  float my = smoothstep(-0.12, 0.02, uvRef.y) * (1.0 - smoothstep(0.4, 1.15, uvRef.y));
+  float footprint = mx * my;
+
+  if (footprint <= 0.001) return vec3(0.0);
+
+  // ---- GLOSSY BLUR (stretches the further it travels) ----
+  float blur = uRoughness * (0.08 + sat(uvRef.y)) * 0.5;
+  vec3 col = doorColor(uvRef);
+  col += doorColor(uvRef + vec2( blur * 0.35,  blur));
+  col += doorColor(uvRef + vec2(-blur * 0.35, -blur));
+  col /= 3.0;
+
+  // ---- SHAPING ----
+  // surfaces turned towards the door catch more of it, but never nothing:
+  // a wrapped lambert keeps the risers lit instead of going flat black
+  vec3 L = normalize(-p);
+  float wrap = dot(N, L) * 0.5 + 0.5;
+  float facing = mix(1.0, wrap, sat(uFacing));
+
+  // the treads are the surfaces that would actually mirror the door
+  float topMask = smoothstep(uTopStart, uTopEnd, dot(N, vec3(0.0, 1.0, 0.0)));
+  float boost = 1.0 + uTopBoost * topMask;
+
+  return col * (footprint * facing * boost * uDoorStrength);
+}
+
+/** doorReflectionRaw scaled by the global intensity and faded with distance. */
+vec3 doorReflection(vec3 worldPos, vec3 N) {
+  float atten = exp(-length(worldPos - uDoorPos) * uFalloff);
+  return doorReflectionRaw(worldPos, N) * (uIntensity * atten);
+}
+`;
+
+export const stepReflectVertex = /* glsl */ `
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+
+void main() {
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vWorldPos = wp.xyz;
+
+  // the step scale is axis aligned, so there is no shear to correct for
+  vWorldNormal = normalize(mat3(modelMatrix) * normal);
+
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}
+`;
+
+export const stepReflectFragment = /* glsl */ `
+${doorReflectUniforms}
+
+// --- optional oriented clip plane (inactive while uClipPlaneSide == 0) ---
+uniform vec3 uClipPlanePoint;
+uniform vec3 uClipPlaneNormal;
+uniform float uClipPlaneSide;
+
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+
+${doorReflectFunctions}
+
+void main() {
+  // ---- OPTIONAL CLIP PLANE ----
+  if (uClipPlaneSide != 0.0) {
+    float dPlane = dot(normalize(uClipPlaneNormal), vWorldPos - uClipPlanePoint);
+    if (dPlane * uClipPlaneSide > 0.0) discard;
+  }
+
+  vec3 base = vec3(0.0);
+  vec3 outCol = base + doorReflection(vWorldPos, normalize(vWorldNormal));
+
   gl_FragColor = vec4(outCol, 1.0);
 }
 `;

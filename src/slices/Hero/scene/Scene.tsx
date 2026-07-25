@@ -15,6 +15,10 @@ import {
 
 import { defaultParams, type SceneParams } from "../scene-core/params";
 import { useLilGui } from "../scene-core/useLilGui";
+import {
+  createDoorProjection,
+  type DoorProjection,
+} from "../scene-core/doorProjection";
 
 import Terrain from "./Terrain";
 import Mountains from "./Mountains";
@@ -128,7 +132,10 @@ export default function Scene({ scrollRef }: Props) {
   const pointerUvRef = useRef<THREE.Vector2 | null>(null);
   const pointerActiveRef = useRef(false);
 
-  const { displayMat, fluidTextureRef } = useFluidMaterials({
+  // <Door /> fills this in every frame, <Steps /> reflects it
+  const doorProjectionRef = useRef<DoorProjection>(createDoorProjection());
+
+  const { displayMat } = useFluidMaterials({
     config: {
       brushSize: p.brushSize,
       brushStrength: p.brushStrength,
@@ -163,11 +170,17 @@ export default function Scene({ scrollRef }: Props) {
       {/* <OrbitControls ref={controlsRef} /> */}
       <group ref={sceneRef}>
         <group position={groupPosition}>
-          <Terrain params={p} tiles={3} />
+          <Terrain
+            params={p}
+            doorMat={displayMat}
+            doorProjectionRef={doorProjectionRef}
+            tiles={3}
+          />
           <Mountains params={p} />
           <Steps
             params={p}
-            doorFluidTextureRef={fluidTextureRef}
+            doorMat={displayMat}
+            doorProjectionRef={doorProjectionRef}
             scrollWindow={{ startVh: 75, endVh: 150 }}
           >
             {/* <HumanModel /> */}
@@ -182,6 +195,7 @@ export default function Scene({ scrollRef }: Props) {
             displayMat={displayMat}
             pointerUvRef={pointerUvRef}
             pointerActiveRef={pointerActiveRef}
+            doorProjectionRef={doorProjectionRef}
             scrollWindow={{ startVh: 150, endVh: 200 }}
           />
         </group>

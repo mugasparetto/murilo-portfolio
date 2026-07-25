@@ -18,6 +18,8 @@ import {
   progressInVhWindow,
 } from "@/app/helpers/scroll"; // <- adjust path
 
+import type { DoorProjection } from "../scene-core/doorProjection";
+
 type Props = {
   params: SceneParams;
   displayMat: THREE.ShaderMaterial;
@@ -26,11 +28,17 @@ type Props = {
 
   scrollWindow: VhWindow;
 
+  /** written every frame so <Steps /> can reflect this door */
+  doorProjectionRef?: RefObject<DoorProjection>;
+
   /** optional: if you scroll inside an element */
   scrollContainerRef?: RefObject<HTMLElement | null>;
 };
 
 const BLOOM_LAYER = 1;
+
+const DOOR_WIDTH = 800;
+const DOOR_HEIGHT = 1600;
 
 export default function Door({
   params,
@@ -38,6 +46,7 @@ export default function Door({
   pointerUvRef,
   pointerActiveRef,
   scrollWindow,
+  doorProjectionRef,
   scrollContainerRef,
 }: Props) {
   const { size, camera, gl } = useThree();
@@ -47,10 +56,8 @@ export default function Door({
 
   const scrollVh = useScrollVhAbsolute(scrollContainerRef);
 
-  const stepWidth = 800;
-
   const doorGeometry = useMemo(
-    () => new THREE.BoxGeometry(stepWidth, 2 * stepWidth, 1),
+    () => new THREE.BoxGeometry(DOOR_WIDTH, DOOR_HEIGHT, 1),
     [],
   );
 
@@ -122,21 +129,45 @@ export default function Door({
     wire.scale.set(scale.x, scale.y, 1);
   }, [params.doorX, params.doorY, params.doorZ, wire, scale.x, scale.y, up.md]);
 
+  const tmpQuat = useMemo(() => new THREE.Quaternion(), []);
+  const tmpScale = useMemo(() => new THREE.Vector3(), []);
+
   useFrame(() => {
+    const mesh = doorRef.current;
+    if (!mesh) return;
+
+    // billboard to the camera
     const q = camera.quaternion;
-    doorRef.current?.quaternion.copy(q);
+    mesh.quaternion.copy(q);
     wire.quaternion.copy(q);
-  });
 
-  useFrame(() => {
+    // scroll squeezes the door shut
     const t = progressInVhWindow(scrollVh.current, scrollWindow); // 0..1 in this vh window
+    const openness = 1 - t;
+    const visible = t < 0.999;
 
-    if (doorRef.current) {
-      doorRef.current.scale.y = scale.y * (1 - t);
-      doorRef.current.visible = t < 0.999;
-    }
-    wire.scale.y = scale.y * (1 - t);
-    wire.visible = t < 0.999;
+    mesh.scale.set(scale.x, scale.y * openness, 1);
+    mesh.visible = visible;
+    wire.scale.set(scale.x, scale.y * openness, 1);
+    wire.visible = visible;
+
+    // publish the live quad so <Steps /> can reflect this material.
+    // taken from the world matrix, so the group offset, the mobile overrides
+    // and the shrink above are all baked in.
+    const proj = doorProjectionRef?.current;
+    if (!proj) return;
+
+    mesh.updateWorldMatrix(true, false);
+    mesh.matrixWorld.decompose(proj.position, tmpQuat, tmpScale);
+
+    proj.right.set(1, 0, 0).applyQuaternion(tmpQuat).normalize();
+    proj.up.set(0, 1, 0).applyQuaternion(tmpQuat).normalize();
+    proj.normal.set(0, 0, 1).applyQuaternion(tmpQuat).normalize();
+    proj.halfSize.set(
+      DOOR_WIDTH * Math.abs(tmpScale.x) * 0.5,
+      DOOR_HEIGHT * Math.abs(tmpScale.y) * 0.5,
+    );
+    proj.strength = visible ? openness : 0;
   });
 
   return (

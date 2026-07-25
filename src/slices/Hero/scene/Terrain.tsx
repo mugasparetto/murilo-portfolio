@@ -1,17 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { RefObject, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import type { SceneParams } from "../scene-core/params";
 import { terrainFragment, terrainVertex } from "../scene-core/terrainShader";
+import type { DoorProjection } from "../scene-core/doorProjection";
 
 type Props = {
   params: SceneParams;
+  /** the door's display material — the ground pool reflects it */
+  doorMat: THREE.ShaderMaterial;
+  /** live door quad, written by <Door /> every frame */
+  doorProjectionRef: RefObject<DoorProjection>;
   tiles?: number;
 };
 
-export default function Terrain({ params, tiles = 3 }: Props) {
+export default function Terrain({
+  params,
+  doorMat,
+  doorProjectionRef,
+  tiles = 3,
+}: Props) {
   const group = useRef<THREE.Group>(null);
   const { gl } = useThree();
 
@@ -75,6 +85,49 @@ export default function Terrain({ params, tiles = 3 }: Props) {
         uMaskFarZ: { value: params.maskFarZ },
         uMaskPower: { value: params.maskPower },
         uUseHardClip: { value: params.useHardClip },
+
+        // ---- door light pool ----
+        uPoolCenter: {
+          value: new THREE.Vector2(params.reflectFloorX, params.reflectFloorZ),
+        },
+        uPoolSize: {
+          value: new THREE.Vector2(
+            params.reflectFloorWidth * 0.5,
+            params.reflectFloorDepth * 0.5,
+          ),
+        },
+        uPoolStrength: { value: params.reflectFloorStrength },
+
+        // shared *objects* with the door material — see <Steps />
+        iTime: doorMat.uniforms.iTime,
+        iResolution: doorMat.uniforms.iResolution,
+        uDoorFluid: doorMat.uniforms.iFluid,
+        uSeed: doorMat.uniforms.uSeed,
+        uDistortionAmount: doorMat.uniforms.uDistortionAmount,
+        uColor1: doorMat.uniforms.uColor1,
+        uColor2: doorMat.uniforms.uColor2,
+        uColor3: doorMat.uniforms.uColor3,
+        uColor4: doorMat.uniforms.uColor4,
+        uColorIntensity: doorMat.uniforms.uColorIntensity,
+        uSoftness: doorMat.uniforms.uSoftness,
+
+        // door quad in world space, published by <Door /> each frame
+        uDoorPos: { value: new THREE.Vector3() },
+        uDoorRight: { value: new THREE.Vector3(1, 0, 0) },
+        uDoorUp: { value: new THREE.Vector3(0, 1, 0) },
+        uDoorHalfSize: { value: new THREE.Vector2(400, 800) },
+        uDoorStrength: { value: 0 },
+
+        uIntensity: { value: params.reflectIntensity },
+        uFalloff: { value: params.reflectFalloff },
+        uRoughness: { value: params.reflectRoughness },
+        uFacing: { value: params.reflectFacing },
+        uTopBoost: { value: params.reflectTopBoost },
+        uReach: { value: params.reflectReach },
+        uSpread: { value: params.reflectSpread },
+        uEdgeSoft: { value: params.reflectEdgeSoft },
+        uTopStart: { value: 0.25 },
+        uTopEnd: { value: 1 },
       },
       vertexShader: terrainVertex,
       fragmentShader: terrainFragment,
@@ -144,6 +197,37 @@ export default function Terrain({ params, tiles = 3 }: Props) {
     material.uniforms.uMaskFarZ.value = params.maskFarZ;
     material.uniforms.uMaskPower.value = params.maskPower;
     material.uniforms.uUseHardClip.value = params.useHardClip;
+
+    // ---- door light pool ----
+    const u = material.uniforms;
+    const door = doorProjectionRef.current;
+
+    if (door) {
+      (u.uDoorPos.value as THREE.Vector3).copy(door.position);
+      (u.uDoorRight.value as THREE.Vector3).copy(door.right);
+      (u.uDoorUp.value as THREE.Vector3).copy(door.up);
+      (u.uDoorHalfSize.value as THREE.Vector2).copy(door.halfSize);
+      u.uDoorStrength.value = door.strength;
+    }
+
+    (u.uPoolCenter.value as THREE.Vector2).set(
+      params.reflectFloorX,
+      params.reflectFloorZ,
+    );
+    (u.uPoolSize.value as THREE.Vector2).set(
+      params.reflectFloorWidth * 0.5,
+      params.reflectFloorDepth * 0.5,
+    );
+    u.uPoolStrength.value = params.reflectFloorStrength;
+
+    u.uIntensity.value = params.reflectIntensity;
+    u.uFalloff.value = params.reflectFalloff;
+    u.uRoughness.value = params.reflectRoughness;
+    u.uFacing.value = params.reflectFacing;
+    u.uTopBoost.value = params.reflectTopBoost;
+    u.uReach.value = params.reflectReach;
+    u.uSpread.value = params.reflectSpread;
+    u.uEdgeSoft.value = params.reflectEdgeSoft;
 
     // scroll tiles
     const v = params.scrollSpeed * params.speedMul;
