@@ -48,7 +48,7 @@ export default function Terrain({ params, tiles = 3 }: Props) {
         uEdgeStrength: { value: params.edgeStrength },
 
         uLineWidth: { value: params.lineWidth },
-        uLineColor: { value: new THREE.Color(0xffffff) },
+        uLineColor: { value: new THREE.Color(0xe8e8e0) },
         uFillColor: { value: new THREE.Color(0x000000) },
 
         uBowlStrength: { value: params.bowlStrength },
@@ -60,6 +60,16 @@ export default function Terrain({ params, tiles = 3 }: Props) {
         uLacunarity: { value: params.noiseLacunarity },
         uGain: { value: params.noiseGain },
         uWarpStrength: { value: params.noiseWarpStrength },
+
+        uClusterScale: { value: params.clusterScale },
+        uClusterThreshold: { value: params.clusterThreshold },
+        uClusterSoftness: { value: params.clusterSoftness },
+        uClusterStrength: { value: params.clusterStrength },
+
+        uHeightFalloffNearZ: { value: params.heightFalloffNearZ },
+        uHeightFalloffFarZ: { value: params.heightFalloffFarZ },
+        uHeightFalloffPower: { value: params.heightFalloffPower },
+        uHeightFalloffMin: { value: params.heightFalloffMin },
 
         uMaskNearZ: { value: params.maskNearZ },
         uMaskFarZ: { value: params.maskFarZ },
@@ -119,6 +129,16 @@ export default function Terrain({ params, tiles = 3 }: Props) {
     material.uniforms.uLacunarity.value = params.noiseLacunarity;
     material.uniforms.uGain.value = params.noiseGain;
     material.uniforms.uWarpStrength.value = params.noiseWarpStrength;
+
+    material.uniforms.uClusterScale.value = params.clusterScale;
+    material.uniforms.uClusterThreshold.value = params.clusterThreshold;
+    material.uniforms.uClusterSoftness.value = params.clusterSoftness;
+    material.uniforms.uClusterStrength.value = params.clusterStrength;
+
+    material.uniforms.uHeightFalloffNearZ.value = params.heightFalloffNearZ;
+    material.uniforms.uHeightFalloffFarZ.value = params.heightFalloffFarZ;
+    material.uniforms.uHeightFalloffPower.value = params.heightFalloffPower;
+    material.uniforms.uHeightFalloffMin.value = params.heightFalloffMin;
 
     material.uniforms.uMaskNearZ.value = params.maskNearZ;
     material.uniforms.uMaskFarZ.value = params.maskFarZ;

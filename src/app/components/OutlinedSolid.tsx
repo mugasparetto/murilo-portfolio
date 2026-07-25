@@ -38,7 +38,7 @@ const OutlinedSolid = forwardRef<THREE.Group, Props>(function OutlinedSolid(
     fillMaterial,
     lineGeometry,
     lineMaterial,
-    lineColor = 0xffffff,
+    lineColor = 0xe8e8e0,
     lineWidth = 2,
 
     polygonOffset = true,
@@ -54,7 +54,7 @@ const OutlinedSolid = forwardRef<THREE.Group, Props>(function OutlinedSolid(
 
     renderOrder,
   },
-  forwardedRef
+  forwardedRef,
 ) {
   const localGroupRef = useRef<THREE.Group>(null);
   const wireRef = useRef<LineSegments2>(null);
@@ -75,7 +75,7 @@ const OutlinedSolid = forwardRef<THREE.Group, Props>(function OutlinedSolid(
   // ---------- fill material ----------
   const internalFill = useMemo(
     () => new THREE.MeshBasicMaterial({ color: "black" }),
-    []
+    [],
   );
   const finalFill = fillMaterial ?? internalFill;
 

@@ -29,13 +29,12 @@ import { useHeroPrimary } from "../hero-context";
 import Name from "./Name";
 import Headline from "./Headline";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
-import PortalScene from "./PortalScene";
 
 type Props = {
   scrollRef: RefObject<HTMLDivElement | null>;
 };
 
-export default function Experience({ scrollRef }: Props) {
+export default function Scene({ scrollRef }: Props) {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
   const { first_name, last_name, tag_line, description } = useHeroPrimary();
@@ -161,8 +160,6 @@ export default function Experience({ scrollRef }: Props) {
     <>
       <color attach="background" args={[0x000000]} />
 
-      {/* <PortalScene scale={60} /> */}
-
       {/* <OrbitControls ref={controlsRef} /> */}
       <group ref={sceneRef}>
         <group position={groupPosition}>
@@ -174,7 +171,11 @@ export default function Experience({ scrollRef }: Props) {
             scrollWindow={{ startVh: 75, endVh: 150 }}
           >
             {/* <HumanModel /> */}
-            <HumanDestruction scale={80} position={[0, 25, -50]} />
+            <HumanDestruction
+              scale={80}
+              position={[0, 25, -50]}
+              rotation={[0, Math.PI, 0]}
+            />
           </Steps>
           <Door
             params={p}

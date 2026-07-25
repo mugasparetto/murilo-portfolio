@@ -22,6 +22,18 @@ export const terrainVertex = /* glsl */ `
   uniform float uGain;
   uniform float uWarpStrength;
 
+  // low-frequency mask that breaks the border ridge into separate clusters
+  uniform float uClusterScale;
+  uniform float uClusterThreshold;
+  uniform float uClusterSoftness;
+  uniform float uClusterStrength;
+
+  // depth-based height falloff: taller near the camera, lower far away
+  uniform float uHeightFalloffNearZ;
+  uniform float uHeightFalloffFarZ;
+  uniform float uHeightFalloffPower;
+  uniform float uHeightFalloffMin;
+
   vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
   vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
   vec3 permute(vec3 x) { return mod289(((x * 34.0) + 1.0) * x); }
@@ -107,6 +119,28 @@ export const terrainVertex = /* glsl */ `
     return pow(r, uNoiseEdgePower);
   }
 
+  // Low-frequency 2D noise gating the border ramp into distinct blobs
+  // instead of one unbroken wall. Sampling on signed world.x (not the
+  // symmetric x01 used above) means the left and right sides land on
+  // unrelated parts of the noise field, so their clusters don't mirror
+  // each other -- each side gets its own independent layout.
+  float clusterMask(vec2 worldXZ) {
+    float c = snoise(worldXZ * uClusterScale);
+    return smoothstep(
+      uClusterThreshold - uClusterSoftness,
+      uClusterThreshold + uClusterSoftness,
+      c
+    );
+  }
+
+  // 1 near uHeightFalloffNearZ (close to camera), fading to
+  // uHeightFalloffMin by uHeightFalloffFarZ (far into the distance).
+  float heightFalloff(float worldZ) {
+    float t = smoothstep(uHeightFalloffNearZ, uHeightFalloffFarZ, worldZ);
+    float f = pow(1.0 - t, uHeightFalloffPower);
+    return mix(uHeightFalloffMin, 1.0, f);
+  }
+
   void main() {
     vUv = uv;
 
@@ -127,8 +161,13 @@ export const terrainVertex = /* glsl */ `
     float ramp = noiseRamp(x01);
     ramp *= uEdgeStrength;
 
-    pos.y += bowl;
-    pos.y += nn * uDiff * ramp;
+    float clusters = clusterMask(vec2(world.x, world.z - t));
+    ramp *= mix(1.0, clusters, uClusterStrength);
+
+    float depthScale = heightFalloff(world.z);
+
+    pos.y += bowl * depthScale;
+    pos.y += nn * uDiff * ramp * depthScale;
 
     gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
   }

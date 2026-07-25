@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { SimplexNoise } from "three/examples/jsm/math/SimplexNoise.js";
 import type { SceneParams } from "../scene-core/params";
 import { mountainFragment, mountainVertex } from "../scene-core/mountainShader";
@@ -11,29 +11,24 @@ type Props = {
   params: SceneParams;
 };
 
-// Ridged fbm: folds noise around 0 so ridgelines form where octaves agree,
-// producing the sharp, irregular peaks/valleys of a mountain range instead
-// of the smooth rolling bumps a plain fbm gives.
-function ridgedFbm(
+// Plain fbm: octaves are summed as they come, so the field stays smooth and
+// rolling. The ridged variant this replaced folded noise around 0, which is
+// exactly what produced the sharp creased peaks.
+function fbm(
   noise: SimplexNoise,
   x: number,
   z: number,
   octaves = 4,
-  lacunarity = 2.1,
+  lacunarity = 2,
   gain = 0.5,
 ) {
   let sum = 0;
   let amp = 0.5;
   let freq = 1;
-  let prev = 1;
   let norm = 0;
 
   for (let i = 0; i < octaves; i++) {
-    let n = noise.noise(x * freq, z * freq);
-    n = 1 - Math.abs(n);
-    n *= n;
-    sum += n * amp * prev;
-    prev = n;
+    sum += noise.noise(x * freq, z * freq) * amp;
     norm += amp;
     freq *= lacunarity;
     amp *= gain;
@@ -42,25 +37,93 @@ function ridgedFbm(
   return norm > 0 ? sum / norm : 0;
 }
 
+// Domain warping, the same trick the terrain shader uses: offset the sample
+// position with noise so ridgelines flow and curve instead of reading as
+// scattered spikes.
+function warpedFbm(
+  noise: SimplexNoise,
+  x: number,
+  z: number,
+  warpStrength: number,
+) {
+  const qx = fbm(noise, x, z);
+  const qz = fbm(noise, x + 5.2, z + 1.3);
+  return fbm(noise, x + warpStrength * qx, z + warpStrength * qz);
+}
+
+// Neighbour averaging over the height grid. Removes the single-vertex spikes
+// the noise shaping leaves behind, so the silhouette reads as rounded ridges
+// rather than a row of needles.
+function smoothHeights(
+  heights: Float32Array,
+  cols: number,
+  rows: number,
+  strength: number,
+  passes = 2,
+) {
+  if (strength <= 0) return;
+
+  const buf = new Float32Array(heights.length);
+
+  for (let p = 0; p < passes; p++) {
+    buf.set(heights);
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        let sum = 0;
+        let count = 0;
+
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const rr = r + dr;
+            const cc = c + dc;
+            if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
+            sum += buf[rr * cols + cc];
+            count++;
+          }
+        }
+
+        const i = r * cols + c;
+        heights[i] = buf[i] + (sum / count - buf[i]) * strength;
+      }
+    }
+  }
+}
+
 export default function Mountains({ params }: Props) {
   const noiseRef = useRef<SimplexNoise | null>(null);
   if (!noiseRef.current) noiseRef.current = new SimplexNoise();
 
-  const geometry = useMemo(() => {
-    const segX = Math.max(2, Math.floor(params.mountainSegX));
-    const segZ = Math.max(2, Math.floor(params.mountainSegZ));
+  const { gl } = useThree();
 
+  // One cell size for both axes (like the terrain's `scl`) so the quads come
+  // out square instead of stretched.
+  const segments = useMemo(() => {
+    const scl = Math.max(20, params.mountainScl);
+    return {
+      x: Math.max(2, Math.round(params.mountainW / scl)),
+      z: Math.max(2, Math.round(params.mountainD / scl)),
+    };
+  }, [params.mountainW, params.mountainD, params.mountainScl]);
+
+  const geometry = useMemo(() => {
     const geo = new THREE.PlaneGeometry(
       params.mountainW,
       params.mountainD,
-      segX,
-      segZ,
+      segments.x,
+      segments.z,
     );
     geo.rotateX(-Math.PI / 2);
 
     const noise = noiseRef.current!;
     const posAttr = geo.attributes.position as THREE.BufferAttribute;
     const halfW = params.mountainW * 0.5;
+
+    // PlaneGeometry lays vertices out row-major, so index i maps straight
+    // onto the (cols x rows) height grid the smoothing pass walks.
+    const cols = segments.x + 1;
+    const rows = segments.z + 1;
+    const heights = new Float32Array(cols * rows);
 
     for (let i = 0; i < posAttr.count; i++) {
       const x = posAttr.getX(i);
@@ -70,13 +133,26 @@ export default function Mountains({ params }: Props) {
       const x01 = Math.min(Math.abs(x) / halfW, 1);
       const envelope = Math.pow(1 - x01, params.mountainFalloffPower);
 
-      const n = ridgedFbm(
+      const n = warpedFbm(
         noise,
         x * params.mountainNoiseScale,
         z * params.mountainNoiseScale,
+        params.mountainWarp,
       );
 
-      posAttr.setY(i, n * envelope * params.mountainHeight);
+      let n01 = Math.min(Math.max(n * 0.5 + 0.5, 0), 1);
+      // smoothstep: flattens the extremes so tops round off instead of
+      // coming to a point
+      n01 = n01 * n01 * (3 - 2 * n01);
+      n01 = Math.pow(n01, params.mountainShape);
+
+      heights[i] = n01 * envelope * params.mountainHeight;
+    }
+
+    smoothHeights(heights, cols, rows, params.mountainSmooth);
+
+    for (let i = 0; i < posAttr.count; i++) {
+      posAttr.setY(i, heights[i]);
     }
 
     posAttr.needsUpdate = true;
@@ -84,11 +160,13 @@ export default function Mountains({ params }: Props) {
   }, [
     params.mountainW,
     params.mountainD,
-    params.mountainSegX,
-    params.mountainSegZ,
+    segments,
     params.mountainHeight,
     params.mountainFalloffPower,
     params.mountainNoiseScale,
+    params.mountainWarp,
+    params.mountainShape,
+    params.mountainSmooth,
   ]);
 
   useEffect(() => {
@@ -103,10 +181,14 @@ export default function Mountains({ params }: Props) {
     const mat = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
-      wireframe: true,
+      side: THREE.DoubleSide,
       uniforms: {
         uColor: { value: new THREE.Color(params.mountainColor) },
+        uFillColor: { value: new THREE.Color(params.mountainFillColor) },
         uOpacity: { value: params.mountainOpacity },
+        uFillOpacity: { value: params.mountainFillOpacity },
+        uGrid: { value: new THREE.Vector2(segments.x, segments.z) },
+        uLineWidth: { value: params.mountainLineWidth },
         uFadeHeight: { value: params.mountainFadeHeight },
         uFadeNearZ: { value: params.mountainFadeNearZ },
         uFadeFarZ: { value: params.mountainFadeFarZ },
@@ -121,6 +203,8 @@ export default function Mountains({ params }: Props) {
       materialRef.current = null;
       mat.dispose();
     };
+    // create once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const groupRef = useRef<THREE.Group>(null);
@@ -132,7 +216,18 @@ export default function Mountains({ params }: Props) {
     (material.uniforms.uColor.value as THREE.Color).set(
       params.mountainColor,
     );
+    (material.uniforms.uFillColor.value as THREE.Color).set(
+      params.mountainFillColor,
+    );
     material.uniforms.uOpacity.value = params.mountainOpacity;
+    material.uniforms.uFillOpacity.value = params.mountainFillOpacity;
+    // keeps the drawn grid locked to the mesh rows/columns
+    (material.uniforms.uGrid.value as THREE.Vector2).set(
+      segments.x,
+      segments.z,
+    );
+    material.uniforms.uLineWidth.value =
+      params.mountainLineWidth * gl.getPixelRatio();
     material.uniforms.uFadeHeight.value = params.mountainFadeHeight;
     material.uniforms.uFadeNearZ.value = params.mountainFadeNearZ;
     material.uniforms.uFadeFarZ.value = params.mountainFadeFarZ;

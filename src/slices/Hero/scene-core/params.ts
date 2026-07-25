@@ -33,6 +33,16 @@ export type SceneParams = {
   noiseGain: number;
   noiseWarpStrength: number;
 
+  clusterScale: number;
+  clusterThreshold: number;
+  clusterSoftness: number;
+  clusterStrength: number;
+
+  heightFalloffNearZ: number;
+  heightFalloffFarZ: number;
+  heightFalloffPower: number;
+  heightFalloffMin: number;
+
   maskNearZ: number;
   maskFarZ: number;
   maskPower: number;
@@ -41,15 +51,20 @@ export type SceneParams = {
   // wireframe mountains
   mountainW: number;
   mountainD: number;
-  mountainSegX: number;
-  mountainSegZ: number;
+  mountainScl: number;
   mountainHeight: number;
   mountainFalloffPower: number;
   mountainNoiseScale: number;
+  mountainWarp: number;
+  mountainShape: number;
+  mountainSmooth: number;
+  mountainLineWidth: number;
+  mountainFillOpacity: number;
   mountainPosY: number;
   mountainPosZ: number;
   mountainOpacity: number;
   mountainColor: string;
+  mountainFillColor: string;
   mountainAdditive: number;
   mountainFadeHeight: number;
   mountainFadeNearZ: number;
@@ -96,9 +111,9 @@ export const defaultParams: SceneParams = {
 
   w: 8000,
   h: 6000,
-  scl: 160,
+  scl: 180,
 
-  diff: 250,
+  diff: 600,
   xyScale: 0.0012,
   speedMul: 0.2,
   scrollSpeed: 120,
@@ -117,6 +132,16 @@ export const defaultParams: SceneParams = {
   noiseGain: 0.5,
   noiseWarpStrength: 0.4,
 
+  clusterScale: 0.0005,
+  clusterThreshold: 0.05,
+  clusterSoftness: 0.7,
+  clusterStrength: 1,
+
+  heightFalloffNearZ: 200,
+  heightFalloffFarZ: -12000,
+  heightFalloffPower: 1.5,
+  heightFalloffMin: 0.4,
+
   maskNearZ: -800,
   maskFarZ: -20000,
   maskPower: 4,
@@ -124,19 +149,24 @@ export const defaultParams: SceneParams = {
 
   mountainW: 30000,
   mountainD: 10000,
-  mountainSegX: 65,
-  mountainSegZ: 16,
-  mountainHeight: 1630,
-  mountainFalloffPower: 1.5,
-  mountainNoiseScale: 0.0044,
-  mountainPosY: 150,
-  mountainPosZ: -12200,
-  mountainOpacity: 0.5,
-  mountainColor: "#e8e8f0",
+  mountainScl: 120,
+  mountainHeight: 1900,
+  mountainFalloffPower: 5,
+  mountainNoiseScale: 0.002,
+  mountainWarp: 0.4,
+  mountainShape: 1,
+  mountainSmooth: 0.35,
+  mountainLineWidth: 0.5,
+  mountainFillOpacity: 1,
+  mountainPosY: -50,
+  mountainPosZ: -12500,
+  mountainOpacity: 1,
+  mountainColor: "#c2c2c2",
+  mountainFillColor: "#000000",
   mountainAdditive: 0,
   mountainFadeHeight: 0,
-  mountainFadeNearZ: -6900,
-  mountainFadeFarZ: -10000,
+  mountainFadeNearZ: -1500,
+  mountainFadeFarZ: 0,
 
   stepX: 0,
   stepY: 350,
@@ -145,7 +175,7 @@ export const defaultParams: SceneParams = {
   rotZ: 0.05,
 
   doorX: 0,
-  doorY: 2400,
+  doorY: 2430,
   doorZ: -5400,
   doorScaleX: 1.33,
   doorScaleY: 1.71,

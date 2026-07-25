@@ -64,7 +64,7 @@ export default function Steps({
   // Shared fat-line material for all steps
   const stepLineMat = useMemo(() => {
     const m = new LineMaterial({
-      color: 0xffffff,
+      color: 0xe8e8e0,
       linewidth: 2,
       resolution: new THREE.Vector2(size.width * dpr, size.height * dpr),
     });

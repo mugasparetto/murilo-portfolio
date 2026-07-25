@@ -73,9 +73,33 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
       .add(params, "noiseLacunarity", 1.2, 4.0, 0.01)
       .name("fbm lacunarity");
     terrainFolder.add(params, "noiseGain", 0.1, 0.9, 0.01).name("fbm gain");
+    terrainFolder.add(params, "noiseWarpStrength", 0, 3, 0.01).name("fbm warp");
+
     terrainFolder
-      .add(params, "noiseWarpStrength", 0, 3, 0.01)
-      .name("fbm warp");
+      .add(params, "clusterScale", 0.00005, 0.001, 0.00001)
+      .name("cluster scale");
+    terrainFolder
+      .add(params, "clusterThreshold", -1, 1, 0.01)
+      .name("cluster threshold");
+    terrainFolder
+      .add(params, "clusterSoftness", 0.01, 1, 0.01)
+      .name("cluster softness");
+    terrainFolder
+      .add(params, "clusterStrength", 0, 1, 0.01)
+      .name("cluster strength");
+
+    terrainFolder
+      .add(params, "heightFalloffNearZ", -2000, 3000, 10)
+      .name("height falloff near z");
+    terrainFolder
+      .add(params, "heightFalloffFarZ", -20000, 0, 10)
+      .name("height falloff far z");
+    terrainFolder
+      .add(params, "heightFalloffPower", 0.2, 6.0, 0.01)
+      .name("height falloff power");
+    terrainFolder
+      .add(params, "heightFalloffMin", 0, 1, 0.01)
+      .name("height falloff min");
 
     terrainFolder
       .add(params, "maskNearZ", -10000, 1000, 10)
@@ -96,7 +120,7 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
     stepFolder
       .add(params, "rotZ", -Math.PI, Math.PI)
       .onChange(cb.onStepsChange);
-    stepFolder.open();
+    stepFolder.close();
 
     const doorFolder = gui.addFolder("door");
     doorFolder.add(params, "doorX", -2000, 2000).onChange(cb.onDoorChange);
@@ -104,11 +128,13 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
     doorFolder.add(params, "doorZ", -6000, 6000, 5).onChange(cb.onDoorChange);
     doorFolder.add(params, "doorScaleX", 1, 10).onChange(cb.onDoorChange);
     doorFolder.add(params, "doorScaleY", 1, 10).onChange(cb.onDoorChange);
+    doorFolder.close();
 
     const groupFolder = gui.addFolder("group");
     groupFolder
       .add(params, "groupY", -2000, 2000, 50)
       .onChange(cb.onGroupChange);
+    groupFolder.close();
 
     const mountainFolder = gui.addFolder("mountains");
     mountainFolder
@@ -118,10 +144,8 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
       .add(params, "mountainD", 500, 10000, 100)
       .onFinishChange(cb.onRebuildMountain);
     mountainFolder
-      .add(params, "mountainSegX", 20, 300, 1)
-      .onFinishChange(cb.onRebuildMountain);
-    mountainFolder
-      .add(params, "mountainSegZ", 10, 200, 1)
+      .add(params, "mountainScl", 60, 1500, 10)
+      .name("grid size")
       .onFinishChange(cb.onRebuildMountain);
     mountainFolder
       .add(params, "mountainHeight", 0, 6000, 10)
@@ -133,10 +157,29 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
     mountainFolder
       .add(params, "mountainNoiseScale", 0.0001, 0.005, 0.0001)
       .onFinishChange(cb.onRebuildMountain);
+    mountainFolder
+      .add(params, "mountainWarp", 0, 3, 0.01)
+      .name("fbm warp")
+      .onFinishChange(cb.onRebuildMountain);
+    mountainFolder
+      .add(params, "mountainShape", 0.4, 4, 0.01)
+      .name("peak shape")
+      .onFinishChange(cb.onRebuildMountain);
+    mountainFolder
+      .add(params, "mountainSmooth", 0, 1, 0.01)
+      .name("smoothing")
+      .onFinishChange(cb.onRebuildMountain);
+    mountainFolder
+      .add(params, "mountainLineWidth", 0.5, 8, 0.01)
+      .name("line width");
+    mountainFolder
+      .add(params, "mountainFillOpacity", 0, 1, 0.01)
+      .name("fill opacity");
     mountainFolder.add(params, "mountainPosY", -3000, 3000, 10);
     mountainFolder.add(params, "mountainPosZ", -20000, 0, 10);
     mountainFolder.add(params, "mountainOpacity", 0, 1, 0.01);
-    mountainFolder.addColor(params, "mountainColor");
+    mountainFolder.addColor(params, "mountainColor").name("line color");
+    mountainFolder.addColor(params, "mountainFillColor").name("fill color");
     mountainFolder.add(params, "mountainAdditive", 0, 1, 1).name("additive");
     mountainFolder.add(params, "mountainFadeHeight", 0, 3000, 10);
     mountainFolder.add(params, "mountainFadeNearZ", -20000, 0, 10);
@@ -148,6 +191,7 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
     fluidFolder.addColor(params, "color2").onChange(cb.onFluidChange);
     fluidFolder.addColor(params, "color3").onChange(cb.onFluidChange);
     fluidFolder.addColor(params, "color4").onChange(cb.onFluidChange);
+    fluidFolder.close();
 
     return () => {
       gui.destroy();
