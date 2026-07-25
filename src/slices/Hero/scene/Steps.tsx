@@ -10,6 +10,7 @@ import {
   stepReflectFragment,
   stepReflectVertex,
 } from "../scene-core/reflectionShader";
+import { TERRAIN_GRID } from "../scene-core/gridShader";
 
 import {
   VhWindow,
@@ -57,9 +58,11 @@ export default function Steps({
   const { up } = useBreakpoints(BREAKPOINTS);
 
   const stepWidth = 800;
-  const stepHeight = 60;
+  const stepHeight = 40;
   const stepDepth = 350;
-  const stepCount = 10;
+  const stepCount = 12;
+
+  const stepScale = !up.md ? 1.12 : 1.6;
 
   // Shared geometry (fill)
   const stepGeometry = useMemo(
@@ -120,6 +123,14 @@ export default function Steps({
 
         uTopStart: { value: 0.25 },
         uTopEnd: { value: 1 },
+
+        // ---- grid: same columns as the terrain, same width, same colour ----
+        uGridWidth: { value: params.w },
+        uGrid: { value: TERRAIN_GRID },
+        uGridOffset: { value: params.stepGridOffset },
+        uGridLineWidth: { value: params.lineWidth * dpr },
+        uGridLineColor: { value: new THREE.Color(0xe8e8e0) },
+        uFillColor: { value: new THREE.Color(0x000000) },
 
         // inactive until something drives clipRef (see below)
         uClipPlanePoint: { value: new THREE.Vector3() },
@@ -185,7 +196,7 @@ export default function Steps({
     );
     stepsPivot.current.rotation.y = params.rotY;
     stepsPivot.current.rotation.x = !up.md ? 0.11 : params.rotZ;
-    stepsPivot.current.scale.setScalar(!up.md ? 1.12 : 1.6);
+    stepsPivot.current.scale.setScalar(stepScale);
   }, [
     params.stepX,
     params.stepY,
@@ -193,6 +204,7 @@ export default function Steps({
     params.rotY,
     params.rotZ,
     up.md,
+    stepScale,
   ]);
 
   const stepGroups = useRef<THREE.Group[]>([]);
@@ -224,6 +236,11 @@ export default function Steps({
     u.uReach.value = params.reflectReach;
     u.uSpread.value = params.reflectSpread;
     u.uEdgeSoft.value = params.reflectEdgeSoft;
+
+    // same sources as the terrain's grid, so the two can never drift apart
+    u.uGridLineWidth.value = params.lineWidth * gl.getPixelRatio();
+    u.uGridWidth.value = params.w;
+    u.uGridOffset.value = params.stepGridOffset;
   });
 
   useEffect(() => {

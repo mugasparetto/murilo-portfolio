@@ -2,6 +2,7 @@ import {
   doorReflectFunctions,
   doorReflectUniforms,
 } from "./reflectionShader";
+import { gridFunctions } from "./gridShader";
 
 export const terrainVertex = /* glsl */ `
   varying vec2 vGridUv;
@@ -226,29 +227,12 @@ export const terrainFragment = /* glsl */ `
 
 ${doorReflectUniforms}
 ${doorReflectFunctions}
-
-  // Anti-aliased grid line factor:
-  // returns 0 on lines, 1 in cell interiors (so it matches your mix())
-  float gridFactor(vec2 uv, float grid, float lineWidth) {
-    vec2 g = uv * grid;
-
-    // distance to nearest grid line in each axis (0 at lines)
-    vec2 f = abs(fract(g) - 0.5);
-
-    // derivative for AA
-    vec2 df = fwidth(g);
-
-    // line thickness in "grid space"
-    vec2 a = smoothstep(vec2(0.0), df * lineWidth, f);
-
-    // min => lines on either axis become lines
-    return min(a.x, a.y);
-  }
+${gridFunctions}
 
   void main() {
     if (vWorldZ > uClipZ) discard;
-    
-    float grid = gridFactor(vGridUv, uGrid, uLineWidth);
+
+    float grid = gridFactor(vGridUv, vec2(uGrid), uLineWidth);
 
     // On lines => grid~0 => lineColor. Inside => grid~1 => fillColor.
     vec3 color = mix(uLineColor, uFillColor, grid);

@@ -1,3 +1,5 @@
+import { gridFunctions } from "./gridShader";
+
 export const mountainVertex = /* glsl */ `
   varying vec2 vUv;
   varying float vHeight;
@@ -31,26 +33,13 @@ export const mountainFragment = /* glsl */ `
   uniform float uFadeNearZ;
   uniform float uFadeFarZ;
 
-  // Same anti-aliased grid the terrain uses. Cells come from the UVs rather
-  // than the triangulation, so the surface reads as a square grid instead of
-  // the diagonal-crossed quads a wireframe draws. uGrid is fed the mesh
-  // segment counts, so every line lands exactly on a row/column of vertices.
-  float gridFactor(vec2 uv, vec2 grid, float lineWidth) {
-    vec2 g = uv * grid;
-
-    // distance to the nearest grid line on each axis (0 at lines)
-    vec2 f = abs(fract(g) - 0.5);
-
-    // derivative for AA
-    vec2 df = fwidth(g);
-
-    vec2 a = smoothstep(vec2(0.0), df * lineWidth, f);
-
-    // min => a line on either axis wins
-    return min(a.x, a.y);
-  }
+${gridFunctions}
 
   void main() {
+    // Same anti-aliased grid the terrain uses. Cells come from the UVs rather
+    // than the triangulation, so the surface reads as a square grid instead of
+    // the diagonal-crossed quads a wireframe draws. uGrid is fed the mesh
+    // segment counts, so every line lands exactly on a row/column of vertices.
     // 1 on the lines, 0 inside the cells
     float line = 1.0 - gridFactor(vUv, uGrid, uLineWidth);
 

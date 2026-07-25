@@ -1,3 +1,5 @@
+import { gridColumnCoord, gridFunctions } from "./gridShader";
+
 /**
  * Reflection of the door onto other surfaces.
  *
@@ -155,6 +157,9 @@ vec3 doorReflection(vec3 worldPos, vec3 N) {
 export const stepReflectVertex = /* glsl */ `
 varying vec3 vWorldPos;
 varying vec3 vWorldNormal;
+// which face we are on, in box space, so the answer survives the staircase
+// being rotated
+varying vec3 vLocalNormal;
 
 void main() {
   vec4 wp = modelMatrix * vec4(position, 1.0);
@@ -162,6 +167,8 @@ void main() {
 
   // the step scale is axis aligned, so there is no shear to correct for
   vWorldNormal = normalize(mat3(modelMatrix) * normal);
+
+  vLocalNormal = normal;
 
   gl_Position = projectionMatrix * viewMatrix * wp;
 }
@@ -175,10 +182,18 @@ uniform vec3 uClipPlanePoint;
 uniform vec3 uClipPlaneNormal;
 uniform float uClipPlaneSide;
 
+// --- grid, matching the terrain's (see gridShader.ts) ---
+uniform float uGridLineWidth;
+uniform vec3 uGridLineColor;
+uniform vec3 uFillColor;
+
 varying vec3 vWorldPos;
 varying vec3 vWorldNormal;
+varying vec3 vLocalNormal;
 
 ${doorReflectFunctions}
+${gridColumnCoord}
+${gridFunctions}
 
 void main() {
   // ---- OPTIONAL CLIP PLANE ----
@@ -187,7 +202,21 @@ void main() {
     if (dPlane * uClipPlaneSide > 0.0) discard;
   }
 
-  vec3 base = vec3(0.0);
+  // ---- GRID ----
+  // Columns only: planes of constant world x, so the lines run straight up the
+  // risers and away over the treads, and are the *same* planes the terrain draws
+  // -- built from gridColumn(), not from the step's own width, which is what
+  // makes them continue the ground's lattice instead of merely resembling it.
+  float grid = 1.0;   // 1 => no line
+
+  // The outer sides lie in a plane of constant x, so a column either misses
+  // them or floods the whole face. Skip them; their outline carries the edge.
+  if (abs(vLocalNormal.x) < 0.5) {
+    grid = gridLineFactor(gridColumn(vWorldPos.x), uGridLineWidth);
+  }
+
+  // On lines => grid~0 => lineColor. Inside => grid~1 => fillColor.
+  vec3 base = mix(uGridLineColor, uFillColor, grid);
   vec3 outCol = base + doorReflection(vWorldPos, normalize(vWorldNormal));
 
   gl_FragColor = vec4(outCol, 1.0);

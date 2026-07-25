@@ -120,6 +120,9 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
     stepFolder
       .add(params, "rotZ", -Math.PI, Math.PI)
       .onChange(cb.onStepsChange);
+    // read every frame by <Steps />, so no callback needed. One terrain cell is
+    // params.w / 40 wide, so this range covers a couple of cells either way.
+    stepFolder.add(params, "stepGridOffset", -400, 400, 1).name("grid offset");
     stepFolder.close();
 
     const doorFolder = gui.addFolder("door");

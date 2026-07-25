@@ -76,6 +76,8 @@ export type SceneParams = {
   stepZ: number;
   rotY: number;
   rotZ: number;
+  /** nudges the steps' grid columns along x, in world units */
+  stepGridOffset: number;
 
   // door
   doorX: number;
@@ -186,14 +188,15 @@ export const defaultParams: SceneParams = {
   mountainFadeFarZ: 0,
 
   stepX: 0,
-  stepY: 350,
+  stepY: 320,
   stepZ: -3530,
   rotY: 0,
   rotZ: 0.05,
+  stepGridOffset: 0,
 
   doorX: 0,
-  doorY: 2838,
-  doorZ: -7880,
+  doorY: 2712,
+  doorZ: -8800,
   doorScaleX: 1.65,
   doorScaleY: 2,
 

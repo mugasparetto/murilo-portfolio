@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import type { SceneParams } from "../scene-core/params";
 import { terrainFragment, terrainVertex } from "../scene-core/terrainShader";
+import { TERRAIN_GRID } from "../scene-core/gridShader";
 import type { DoorProjection } from "../scene-core/doorProjection";
 
 type Props = {
@@ -16,8 +17,8 @@ type Props = {
   tiles?: number;
 };
 
-/** grid cells across one tile, on both axes */
-const GRID = 40;
+/** grid cells across one tile, on both axes — shared with <Steps /> */
+const GRID = TERRAIN_GRID;
 
 export default function Terrain({
   params,
