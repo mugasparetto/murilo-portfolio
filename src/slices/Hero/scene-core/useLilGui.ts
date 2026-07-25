@@ -125,7 +125,7 @@ export function useLilGui(params: SceneParams, cb: Callbacks) {
     const doorFolder = gui.addFolder("door");
     doorFolder.add(params, "doorX", -2000, 2000).onChange(cb.onDoorChange);
     doorFolder.add(params, "doorY", 0, 4000).onChange(cb.onDoorChange);
-    doorFolder.add(params, "doorZ", -6000, 6000, 5).onChange(cb.onDoorChange);
+    doorFolder.add(params, "doorZ", -10000, 6000, 5).onChange(cb.onDoorChange);
     doorFolder.add(params, "doorScaleX", 1, 10).onChange(cb.onDoorChange);
     doorFolder.add(params, "doorScaleY", 1, 10).onChange(cb.onDoorChange);
     doorFolder.close();

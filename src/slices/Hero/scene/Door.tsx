@@ -136,11 +136,6 @@ export default function Door({
     const mesh = doorRef.current;
     if (!mesh) return;
 
-    // billboard to the camera
-    const q = camera.quaternion;
-    mesh.quaternion.copy(q);
-    wire.quaternion.copy(q);
-
     // scroll squeezes the door shut
     const t = progressInVhWindow(scrollVh.current, scrollWindow); // 0..1 in this vh window
     const openness = 1 - t;
