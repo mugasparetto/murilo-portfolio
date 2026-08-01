@@ -1,19 +1,30 @@
 @import "tailwindcss";
 
 @font-face {
-  font-family: "Morganite";
+  font-family: "Monument Normal";
   src:
-    url("/fonts/Morganite-Black.woff2") format("woff2"),
-    url("/fonts/Morganite-Black.woff") format("woff"),
-    url("/fonts/Morganite-Black.ttf") format("truetype");
-  font-weight: 900;
+    url("/fonts/PPMonumentNormal-Regular.woff2") format("woff2"),
+    url("/fonts/PPMonumentNormal-Regular.woff") format("woff"),
+    url("/fonts/PPMonumentNormal-Regular.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Monument Extended";
+  src:
+    url("/fonts/PPMonumentExtended-Black.woff2") format("woff2"),
+    url("/fonts/PPMonumentExtended-Black.woff") format("woff"),
+    url("/fonts/PPMonumentExtended-Black.ttf") format("truetype");
+  font-weight: 800;
   font-style: normal;
   font-display: swap;
 }
 
 @theme {
-  --font-sans: var(--font-inter), system-ui, sans-serif;
-  --font-display: "Morganite", sans-serif;
+  --font-sans: "Monument Normal", system-ui, sans-serif;
+  --font-display: "Monument Extended", sans-serif;
 }
 
 *,
@@ -32,82 +43,4 @@ body {
   background-color: black;
   color: white;
   font-family: var(--font-sans);
-}
-
-.with-star::after {
-  content: "";
-  position: absolute;
-  left: 5.7rem;
-  top: 50%;
-  width: 0.75rem;
-  height: 0.75rem;
-  background: url("/star.svg") center / contain no-repeat;
-  transform: translate(-50%, -50%);
-
-  @media screen and (width >= 48rem) {
-    left: 7rem;
-    width: 1.25rem;
-    height: 1.25rem;
-  }
-
-  @media screen and (width >= 80rem) {
-    left: 8rem;
-  }
-}
-.blind-shutter {
-  --open: 1; /* 1=open, 0=closed */
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 1) 0,
-    rgba(0, 0, 0, 1) calc(var(--open) * 100%),
-    rgba(0, 0, 0, 0) calc(var(--open) * 100%)
-  );
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-size: 100% 100%;
-
-  mask-image: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 1) 0,
-    rgba(0, 0, 0, 1) calc(var(--open) * 100%),
-    rgba(0, 0, 0, 0) calc(var(--open) * 100%)
-  );
-  mask-repeat: no-repeat;
-  mask-size: 100% 100%;
-
-  will-change:
-    mask-image,
-    -webkit-mask-image;
-}
-
-.reveal {
-  --open: 1; /* how much is revealed */
-  --shift: 0%; /* how far the text slides under the mask */
-
-  display: inline-block;
-  overflow: visible;
-
-  /* fixed mask on the container */
-  -webkit-mask-image: linear-gradient(
-    to right,
-    rgba(0, 0, 0, 1) 0,
-    rgba(0, 0, 0, 1) calc(var(--open) * 100%),
-    rgba(0, 0, 0, 0) calc(var(--open) * 100%)
-  );
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-size: 100% 100%;
-
-  mask-image: linear-gradient(
-    to right,
-    rgba(0, 0, 0, 1) 0,
-    rgba(0, 0, 0, 1) calc(var(--open) * 100%),
-    rgba(0, 0, 0, 0) calc(var(--open) * 100%)
-  );
-  mask-repeat: no-repeat;
-  mask-size: 100% 100%;
-}
-
-.reveal__text {
-  display: inline-block;
-  transform: translateX(var(--shift));
-  will-change: transform;
 }

@@ -1,27 +1,28 @@
-import { useRef, useMemo, RefObject } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Text, useHelper, Html } from "@react-three/drei";
+import { Text, Html } from "@react-three/drei";
 import { KeyTextField } from "@prismicio/client";
 
-import { segmentProgress, makeRanges } from "@/app/helpers/scroll";
 import { useBreakpoints, BREAKPOINTS } from "@/app/hooks/breakpoints";
 
-import {
-  VhWindow,
-  useScrollVhAbsolute,
-  progressInVhWindow,
-} from "@/app/helpers/scroll"; // <- adjust path
+export const NAME_LAYER = 15;
 
 type Props = {
   firstName: KeyTextField;
   lastName: KeyTextField;
-
-  scrollWindow: VhWindow;
-  scrollContainerRef?: RefObject<HTMLElement | null>;
 };
 
 type Tier = keyof typeof BREAKPOINTS;
+
+type ReflectionProperties = {
+  // vertical offset from the main text's baseline, one entry per stacked copy
+  gap: number[];
+  strokeWidth: number;
+  // percentage (0-1) of the glyph height shown, measured up from the
+  // baseline, one entry per stacked copy
+  reveal: number[];
+};
 
 type NameProperties = {
   position: { x: number; y: number };
@@ -29,104 +30,96 @@ type NameProperties = {
   fontSize: number;
   offset: number;
   planeConstant: number;
+  reflection: ReflectionProperties;
 };
 
-const RESPONSIVE: Record<
-  Tier,
-  {
-    firstName: NameProperties;
-    lastName: NameProperties;
-  }
-> = {
+const RESPONSIVE: Record<Tier, NameProperties> = {
   md: {
-    firstName: {
-      position: { x: -1310, y: 2600 },
-      fontSize: 1300,
-      offset: 2500,
-      planeConstant: -320,
-      portal: { x: -300, y: 3600, scaleY: 1850 },
-    },
-    lastName: {
-      position: { x: 1600, y: 600 },
-      fontSize: 1300,
-      offset: -3400,
-      planeConstant: 100,
-      portal: { x: -130, y: 1600, scaleY: 1400 },
+    position: { x: -1310, y: 2600 },
+    fontSize: 1300,
+    offset: 2500,
+    planeConstant: -320,
+    portal: { x: -300, y: 3600, scaleY: 1850 },
+    reflection: {
+      gap: [600, 1200, 1800],
+      strokeWidth: 4,
+      reveal: [0.75, 0.5, 0.25],
     },
   },
   lg: {
-    firstName: {
-      position: { x: -1660, y: 2500 },
-      fontSize: 1650,
-      offset: 2550,
-      planeConstant: -380,
-      portal: { x: -360, y: 3650, scaleY: 1850 },
-    },
-    lastName: {
-      position: { x: 2100, y: 750 },
-      fontSize: 1650,
-      offset: -4350,
-      planeConstant: 100,
-      portal: { x: -130, y: 1750, scaleY: 1550 },
+    position: { x: -1660, y: 2500 },
+    fontSize: 1650,
+    offset: 2550,
+    planeConstant: -380,
+    portal: { x: -360, y: 3650, scaleY: 1850 },
+    reflection: {
+      gap: [750, 1500, 2250],
+      strokeWidth: 5,
+      reveal: [0.75, 0.5, 0.25],
     },
   },
   xl: {
-    firstName: {
-      position: { x: -1900, y: 2450 },
-      fontSize: 2000,
-      offset: 3250,
-      planeConstant: -200,
-      portal: { x: -180, y: 3750, scaleY: 1850 },
-    },
-    lastName: {
-      position: { x: 2450, y: 820 },
-      fontSize: 2000,
-      offset: -5100,
-      planeConstant: 100,
-      portal: { x: -130, y: 1850, scaleY: 1850 },
+    position: { x: -1900, y: 2450 },
+    fontSize: 2000,
+    offset: 3250,
+    planeConstant: -200,
+    portal: { x: -180, y: 3750, scaleY: 1850 },
+    reflection: {
+      gap: [900, 1800, 2700],
+      strokeWidth: 6,
+      reveal: [0.75, 0.5, 0.25],
     },
   },
   "2xl": {
-    firstName: {
-      position: { x: -1900, y: 2450 },
-      fontSize: 2000,
-      offset: 3250,
-      planeConstant: -200,
-      portal: { x: -180, y: 3750, scaleY: 1850 },
-    },
-    lastName: {
-      position: { x: 2450, y: 820 },
-      fontSize: 2000,
-      offset: -5100,
-      planeConstant: 100,
-      portal: { x: -130, y: 1850, scaleY: 1850 },
+    position: { x: 0, y: 4650 },
+    fontSize: 1150,
+    offset: 3250,
+    planeConstant: -200,
+    portal: { x: -180, y: 3750, scaleY: 1850 },
+    reflection: {
+      gap: [740, 1240, 1510],
+      strokeWidth: 40,
+      reveal: [0.75, 0.5, 0.22],
     },
   },
 };
 
-export default function Name({
-  firstName = "",
-  lastName = "",
-  scrollWindow,
-  scrollContainerRef,
-}: Props) {
-  const { camera } = useThree();
+const REFLECTION_MAX = Math.max(
+  ...Object.values(RESPONSIVE).map((r) => r.reflection.reveal.length),
+);
 
-  const scrollVh = useScrollVhAbsolute(scrollContainerRef);
+export default function Name({ firstName = "", lastName = "" }: Props) {
+  const { camera, gl } = useThree();
 
   const textRef = useRef<THREE.Mesh | null>(null);
-  const firstNameRef = useRef<THREE.Mesh | null>(null);
-  const lastNameRef = useRef<THREE.Mesh | null>(null);
-  const portalFirstNameRef = useRef<THREE.Mesh | null>(null);
-  const portalLastNameRef = useRef<THREE.Mesh | null>(null);
-  const firstNameHtml = useRef<HTMLHeadingElement | null>(null);
-  const lastNameHtml = useRef<HTMLHeadingElement | null>(null);
-  const portalFirstNameHtml = useRef<HTMLDivElement | null>(null);
-  const portalLastNameHtml = useRef<HTMLDivElement | null>(null);
+  const anchorRefs = useRef<(THREE.Object3D | null)[]>([]);
+
+  const clipPlanes = useMemo(
+    () => Array.from({ length: REFLECTION_MAX }, () => new THREE.Plane()),
+    [],
+  );
+
+  useEffect(() => {
+    gl.localClippingEnabled = true;
+  }, [gl]);
 
   useFrame(() => {
     const q = camera.quaternion;
     textRef.current?.quaternion.copy(q);
+    textRef.current?.traverse((obj) => obj.layers.set(NAME_LAYER));
+
+    anchorRefs.current.forEach((anchor, i) => {
+      if (!anchor) return;
+      const point = new THREE.Vector3();
+      // points below the anchor (in -Y) keep a positive distance and stay
+      // visible; points above it (toward the real text) get clipped away
+      const normal = new THREE.Vector3(0, -1, 0);
+      const rotation = new THREE.Quaternion();
+      anchor.getWorldPosition(point);
+      anchor.getWorldQuaternion(rotation);
+      normal.applyQuaternion(rotation);
+      clipPlanes[i]?.setFromNormalAndCoplanarPoint(normal, point);
+    });
   });
 
   const { up, tier } = useBreakpoints(
@@ -134,69 +127,8 @@ export default function Name({
     { defaultTier: "xl" },
   );
 
-  const PHASE_WEIGHTS = [0.2, 0.6, 0.2];
-  const PHASES = makeRanges(PHASE_WEIGHTS);
-
-  useFrame(() => {
-    const t = progressInVhWindow(scrollVh.current, scrollWindow);
-
-    const pIn = segmentProgress(t, PHASES, 0);
-    const pText = segmentProgress(t, PHASES, 1);
-    const pOut = segmentProgress(t, PHASES, 2);
-
-    const portalY =
-      t < PHASES[1].start ? pIn : t < PHASES[2].start ? 1 : 1 - pOut;
-
-    if (portalFirstNameRef.current)
-      portalFirstNameRef.current.scale.y = portalY;
-    if (portalLastNameRef.current) portalLastNameRef.current.scale.y = portalY;
-
-    if (firstNameRef.current)
-      firstNameRef.current.position.x =
-        RESPONSIVE[tier]?.firstName.position.x +
-        pText * RESPONSIVE[tier]?.firstName.offset;
-
-    if (lastNameRef.current)
-      lastNameRef.current.position.x =
-        RESPONSIVE[tier]?.lastName.position.x +
-        pText * RESPONSIVE[tier]?.lastName.offset;
-
-    const open = 1 - THREE.MathUtils.clamp(pText, 0, 1);
-
-    const fN = firstNameHtml.current;
-    if (fN) fN.style.setProperty("--shift", `${(1 - open) * 100}%`);
-
-    const lN = lastNameHtml.current;
-    if (lN) lN.style.setProperty("--shift", `${(1 - open) * 100}%`);
-
-    if (portalFirstNameHtml.current)
-      portalFirstNameHtml.current.style.scale = `100% ${portalY * 100}%`;
-
-    if (portalLastNameHtml.current)
-      portalLastNameHtml.current.style.scale = `100% ${portalY * 100}%`;
-  });
-
-  const firstNameClipPlane = useMemo(() => {
-    return new THREE.Plane(
-      new THREE.Vector3(-1, 0, 0),
-      RESPONSIVE[tier]?.firstName.planeConstant,
-    );
-  }, [tier]);
-
-  const lastNameClipPlane = useMemo(
-    () =>
-      new THREE.Plane(
-        new THREE.Vector3(1, 0, 0),
-        RESPONSIVE[tier]?.lastName.planeConstant,
-      ),
-    [tier],
-  );
-
-  function ClippingPlaneDebug({ plane }) {
-    const planeRef = useRef(plane);
-    useHelper(planeRef, THREE.PlaneHelper, 5000, "hotpink");
-    return null;
-  }
+  const props = RESPONSIVE[tier] ?? RESPONSIVE.xl;
+  const { reflection } = props;
 
   return (
     <>
@@ -207,89 +139,71 @@ export default function Name({
           position={[0, !up.xs ? 650 : 570, 0]}
           className="px-5! lg:px-0! font-display text-8xl relative leading-22 max-w-100 left-[50%]! translate-x-[-50%]"
         >
-          <div
-            className="bg-white absolute w-1 h-19 left-39.25 -top-3 z-50"
-            ref={portalFirstNameHtml}
-          />
-          <div
-            className="bg-white absolute w-1 h-19 left-64 top-16 z-50"
-            ref={portalLastNameHtml}
-          />
+          <div className="bg-white absolute w-1 h-19 left-39.25 -top-3 z-50" />
+          <div className="bg-white absolute w-1 h-19 left-64 top-16 z-50" />
           <div className="reveal absolute -top-4 left-5">
-            <h1 className="reveal__text" ref={firstNameHtml}>
-              {firstName}
-            </h1>
+            <h1 className="reveal__text">{firstName}</h1>
           </div>
 
           <div className="reveal absolute top-15 left-5">
-            <h1 className="reveal__text" ref={lastNameHtml}>
-              {lastName}
-            </h1>
+            <h1 className="reveal__text">{lastName}</h1>
           </div>
         </Html>
       ) : (
         <>
-          <mesh
-            ref={portalFirstNameRef}
-            position={[
-              RESPONSIVE[tier]?.firstName.portal.x,
-              RESPONSIVE[tier]?.firstName.portal.y,
-              -5750,
-            ]}
-          >
-            <planeGeometry args={[30, 1850]} />
-            <meshBasicMaterial color={"white"} />
-          </mesh>
-
-          <mesh
-            ref={portalLastNameRef}
-            position={[
-              RESPONSIVE[tier]?.lastName.portal.x,
-              RESPONSIVE[tier]?.lastName.portal.y,
-              -5100,
-            ]}
-          >
-            <planeGeometry
-              args={[30, RESPONSIVE[tier]?.lastName.portal.scaleY]}
-            />
-            <meshBasicMaterial color={"white"} />
-          </mesh>
-
           <group ref={textRef}>
-            {/* <ClippingPlaneDebug plane={firstNameClipPlane} />
-            <ClippingPlaneDebug plane={lastNameClipPlane} /> */}
-
             <Text
-              ref={firstNameRef}
               position={[
-                RESPONSIVE[tier]?.firstName.position.x,
-                RESPONSIVE[tier]?.firstName.position.y,
-                -5750,
+                RESPONSIVE[tier]?.position.x,
+                RESPONSIVE[tier]?.position.y,
+                -9700,
               ]}
-              font="/fonts/Morganite-Black.ttf"
-              fontSize={RESPONSIVE[tier]?.firstName.fontSize}
+              font="/fonts/PPMonumentExtended-Black.ttf"
+              fontSize={RESPONSIVE[tier]?.fontSize}
               color="white"
-              material-clippingPlanes={[firstNameClipPlane]}
               material-clipIntersection={true}
             >
-              {firstName}
+              {firstName} {lastName}
             </Text>
 
-            <Text
-              ref={lastNameRef}
-              position={[
-                RESPONSIVE[tier]?.lastName.position.x,
-                RESPONSIVE[tier]?.lastName.position.y,
-                -5650,
-              ]}
-              font="/fonts/Morganite-Black.ttf"
-              fontSize={RESPONSIVE[tier]?.lastName.fontSize}
-              color="white"
-              material-clippingPlanes={[lastNameClipPlane]}
-              material-clipIntersection={true}
-            >
-              {lastName}
-            </Text>
+            {reflection.reveal.map((percent, i) => {
+              const y = props.position.y - reflection.gap[i];
+
+              return (
+                <group key={i} position={[props.position.x, y, -9700]}>
+                  <Text
+                    font="/fonts/PPMonumentExtended-Black.ttf"
+                    fontSize={props.fontSize}
+                    fillOpacity={0}
+                    strokeWidth={reflection.strokeWidth}
+                    strokeColor="white"
+                    material-clippingPlanes={[clipPlanes[i]]}
+                    material-clipIntersection={false}
+                    onSync={(troikaMesh) => {
+                      // measure the actual glyph bounds so `percent` maps to
+                      // the real letter height, not a guessed offset
+                      const bounds = (
+                        troikaMesh as unknown as {
+                          textRenderInfo?: { visibleBounds: number[] };
+                        }
+                      ).textRenderInfo?.visibleBounds;
+                      const anchor = anchorRefs.current[i];
+                      if (!bounds || !anchor) return;
+
+                      const [, minY, , maxY] = bounds;
+                      anchor.position.y = minY + percent * (maxY - minY);
+                    }}
+                  >
+                    {firstName} {lastName}
+                  </Text>
+                  <object3D
+                    ref={(el) => {
+                      anchorRefs.current[i] = el;
+                    }}
+                  />
+                </group>
+              );
+            })}
           </group>
         </>
       )}

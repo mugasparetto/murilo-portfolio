@@ -359,7 +359,7 @@ export default function Scene({ scrollWindow, content }: Props) {
       <Suspense fallback={null}>
         <Text
           position={[0, -800, 2210]}
-          font="/fonts/Morganite-Black.ttf"
+          font="/fonts/PPMonumentExtended-Black.ttf"
           fontSize={680}
           color="white"
           fillOpacity={0.2}

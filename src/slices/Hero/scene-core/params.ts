@@ -195,10 +195,10 @@ export const defaultParams: SceneParams = {
   stepGridOffset: 0,
 
   doorX: 0,
-  doorY: 2712,
+  doorY: 2960,
   doorZ: -8800,
   doorScaleX: 1.65,
-  doorScaleY: 2,
+  doorScaleY: 2.3,
 
   reflectIntensity: 1.6,
   reflectFalloff: 0.00035,
