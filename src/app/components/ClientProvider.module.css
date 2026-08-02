@@ -1,0 +1,124 @@
+.root {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  overflow: hidden;
+
+  /* frame-wrap: --frame-radius (cqi) resolves against this container */
+  container-type: inline-size;
+
+  --frame-pad: clamp(10px, 1.1vw, 22px);
+  --frame-inset: max(var(--frame-pad), env(safe-area-inset-top))
+    max(var(--frame-pad), env(safe-area-inset-right))
+    max(var(--frame-pad), env(safe-area-inset-bottom))
+    max(var(--frame-pad), env(safe-area-inset-left));
+}
+
+/* ==========================================================================
+   .frame — rounded rectangle with a raised, chamfered bottom-left section
+   --------------------------------------------------------------------------
+   Every value is a fraction of the element, so the shape holds at any size.
+   Geometry fitted to the source reference (1512 x 731 outer box) at 0.55px RMS.
+
+   Do not replace the clip-path with border-radius: the four main corners are
+   rounded, but the bottom-left one sits 7.1% above the base edge, which
+   border-radius cannot express.
+   ========================================================================== */
+
+.frame {
+  /* ---- geometry ---- */
+  --frame-radius: clamp(
+    12px,
+    1.98cqi,
+    40px
+  ); /* the four main corners  (30 / 1512) */
+  --frame-step: 7.1%; /* how far the left bottom sits above the base */
+  --frame-notch-start: 30.4%; /* x where the chamfer begins (upper end) */
+  --frame-notch-end: 36.1%; /* x where the chamfer meets the base */
+  --frame-drop: 0.82%; /* base edge rises slightly toward the right */
+  --frame-joint: 0.6%; /* fillet length on the two chamfer joints */
+  --frame-bevel: 0.12; /* fillet length along the chamfer, 0–0.5 */
+
+  /* ---- paint ---- */
+  --frame-fill: #000;
+
+  box-sizing: border-box;
+  background: var(--frame-fill);
+}
+
+@supports (clip-path: shape(from 0 0, line to 100% 100%, close)) {
+  .frame {
+    clip-path: shape(
+      /* top-left */ from 0 var(--frame-radius),
+      arc to var(--frame-radius) 0 of var(--frame-radius) cw,
+      hline to calc(100% - var(--frame-radius)),
+      /* top-right */ arc to 100% var(--frame-radius) of var(--frame-radius) cw,
+      vline to calc(100% - var(--frame-drop) - var(--frame-radius)),
+      /* bottom-right */ arc to calc(100% - var(--frame-radius))
+        calc(100% - var(--frame-drop)) of var(--frame-radius) cw,
+      /* base edge leftward to the foot of the chamfer */ line to
+        calc(var(--frame-notch-end) + var(--frame-joint)) 100%,
+      curve to
+        calc(
+          var(--frame-notch-end) - var(--frame-bevel) *
+            (var(--frame-notch-end) - var(--frame-notch-start))
+        )
+        calc(100% - var(--frame-bevel) * var(--frame-step)) with
+        var(--frame-notch-end) 100%,
+      /* the chamfer */ line to
+        calc(
+          var(--frame-notch-start) + var(--frame-bevel) *
+            (var(--frame-notch-end) - var(--frame-notch-start))
+        )
+        calc(100% - var(--frame-step) + var(--frame-bevel) * var(--frame-step)),
+      curve to calc(var(--frame-notch-start) - var(--frame-joint))
+        calc(100% - var(--frame-step)) with var(--frame-notch-start)
+        calc(100% - var(--frame-step)),
+      /* raised left section */ hline to var(--frame-radius),
+      /* bottom-left */ arc to 0
+        calc(100% - var(--frame-step) - var(--frame-radius)) of
+        var(--frame-radius) cw,
+      close
+    );
+  }
+}
+
+/* Older browsers: correct silhouette, but square joints and a square
+   bottom-left corner. shape() is Baseline since February 2026. */
+@supports not (clip-path: shape(from 0 0, line to 100% 100%, close)) {
+  .frame {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% calc(100% - var(--frame-drop)),
+      var(--frame-notch-end) 100%,
+      var(--frame-notch-start) calc(100% - var(--frame-step)),
+      0 calc(100% - var(--frame-step))
+    );
+    border-radius: var(--frame-radius) var(--frame-radius) var(--frame-radius) 0;
+  }
+}
+
+/* Wrapper that sits inset from .root: the outer shape (the 2px stroke),
+   painted white. Optional 2px stroke: outer element is the stroke, inner
+   is fill. */
+.frameOutline {
+  --frame-fill: #fff;
+  position: absolute;
+  inset: var(--frame-inset);
+  padding: 2px;
+  pointer-events: none;
+}
+
+/* The inner shape, inset by the outline's padding — holds the canvas
+   instead of a flat fill, so it stays transparent and re-enables pointer
+   events for scene interaction. */
+.frame.stage {
+  --frame-fill: transparent;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  pointer-events: auto;
+}
