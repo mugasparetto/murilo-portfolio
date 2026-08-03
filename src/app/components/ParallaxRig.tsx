@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 
@@ -8,6 +8,36 @@ export type CameraPose = {
   position: THREE.Vector3;
   target: THREE.Vector3;
 };
+
+// world transform that maps the base (un-parallaxed) camera frame onto the
+// live one: `cam.matrixWorld * baseCam.matrixWorld⁻¹`
+const cancel = new THREE.Matrix4();
+const baseQuaternion = new THREE.Quaternion();
+let active = false;
+
+/**
+ * Pins a billboard group to the screen position it would have if the pointer
+ * parallax weren't running — no drift, no sway, as if it were a static HTML
+ * overlay. It still faces the camera and still follows the scroll pose, so it
+ * scrolls away and gets occluded like any other geometry.
+ *
+ * Children keep their usual camera-space offsets (x/y on screen, -z depth).
+ */
+export function lockToScreen(obj: THREE.Object3D, camera: THREE.Camera) {
+  obj.position.set(0, 0, 0);
+  obj.scale.set(1, 1, 1);
+
+  // no rig mounted (mobile) — nothing to undo, just billboard
+  if (!active) {
+    obj.quaternion.copy(camera.quaternion);
+    return;
+  }
+
+  obj.quaternion.copy(baseQuaternion);
+  obj.updateMatrix();
+  obj.matrix.premultiply(cancel);
+  obj.matrix.decompose(obj.position, obj.quaternion, obj.scale);
+}
 
 type Props = {
   poseRef: React.RefObject<CameraPose | null>;
@@ -37,6 +67,17 @@ export default function CameraParallaxRig({
   const camRight = useMemo(() => new THREE.Vector3(), []);
   const camUp = useMemo(() => new THREE.Vector3(), []);
   const worldUp = useMemo(() => new THREE.Vector3(0, 1, 0), []);
+  // stand-in for the camera at the base pose; THREE.Camera so `lookAt` uses
+  // the -Z convention the real camera does
+  const baseCam = useMemo(() => new THREE.Camera(), []);
+
+  useEffect(() => {
+    active = true;
+    return () => {
+      active = false;
+      cancel.identity();
+    };
+  }, []);
 
   useFrame((_, delta) => {
     const pose = poseRef.current;
@@ -72,6 +113,15 @@ export default function CameraParallaxRig({
     cam.position.copy(finalPos.current);
     cam.lookAt(finalTgt.current);
     cam.updateMatrixWorld();
+
+    // same pose without the offset, so `lockToScreen` can undo the difference
+    baseCam.up.copy(cam.up);
+    baseCam.position.copy(pose.position);
+    baseCam.lookAt(pose.target);
+    baseCam.updateMatrixWorld();
+
+    baseQuaternion.copy(baseCam.quaternion);
+    cancel.copy(baseCam.matrixWorld).invert().premultiply(cam.matrixWorld);
   }, priority);
 
   return null;

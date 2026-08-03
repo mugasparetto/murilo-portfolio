@@ -81,7 +81,20 @@ export default function Door({
   useEffect(() => {
     if (!doorRef.current) return;
     doorRef.current.layers.enable(BLOOM_LAYER);
+    // draw before anything that should be maskable by the door's silhouette
+    doorRef.current.renderOrder = -1;
   }, []);
+
+  // stamp the door's on-screen shape into the stencil buffer so other
+  // objects (eg. <Name />) can be clipped by it regardless of their own Z
+  useEffect(() => {
+    displayMat.stencilWrite = true;
+    displayMat.stencilRef = 1;
+    displayMat.stencilFunc = THREE.AlwaysStencilFunc;
+    displayMat.stencilFail = THREE.KeepStencilOp;
+    displayMat.stencilZFail = THREE.KeepStencilOp;
+    displayMat.stencilZPass = THREE.ReplaceStencilOp;
+  }, [displayMat]);
 
   const lineGeo = useMemo(() => {
     const edges = new THREE.EdgesGeometry(doorGeometry);

@@ -5,6 +5,7 @@ import { Text, Html } from "@react-three/drei";
 import { KeyTextField } from "@prismicio/client";
 
 import { useBreakpoints, BREAKPOINTS } from "@/app/hooks/breakpoints";
+import { lockToScreen } from "@/app/components/ParallaxRig";
 
 export const NAME_LAYER = 15;
 
@@ -71,14 +72,14 @@ const RESPONSIVE: Record<Tier, NameProperties> = {
     },
   },
   "2xl": {
-    position: { x: 0, y: 4650 },
-    fontSize: 1150,
+    position: { x: 0, y: 2250 },
+    fontSize: 430,
     offset: 3250,
     planeConstant: -200,
     portal: { x: -180, y: 3750, scaleY: 1850 },
     reflection: {
-      gap: [740, 1240, 1510],
-      strokeWidth: 40,
+      gap: [280, 490, 610],
+      strokeWidth: 12,
       reveal: [0.75, 0.5, 0.22],
     },
   },
@@ -104,8 +105,7 @@ export default function Name({ firstName = "", lastName = "" }: Props) {
   }, [gl]);
 
   useFrame(() => {
-    const q = camera.quaternion;
-    textRef.current?.quaternion.copy(q);
+    if (textRef.current) lockToScreen(textRef.current, camera);
     textRef.current?.traverse((obj) => obj.layers.set(NAME_LAYER));
 
     anchorRefs.current.forEach((anchor, i) => {
@@ -153,15 +153,22 @@ export default function Name({ firstName = "", lastName = "" }: Props) {
         <>
           <group ref={textRef}>
             <Text
+              renderOrder={1}
               position={[
                 RESPONSIVE[tier]?.position.x,
                 RESPONSIVE[tier]?.position.y,
-                -9700,
+                -1500,
               ]}
               font="/fonts/PPMonumentExtended-Black.ttf"
               fontSize={RESPONSIVE[tier]?.fontSize}
               color="white"
               material-clipIntersection={true}
+              material-stencilWrite={true}
+              material-stencilRef={1}
+              material-stencilFunc={THREE.NotEqualStencilFunc}
+              material-stencilFail={THREE.KeepStencilOp}
+              material-stencilZFail={THREE.KeepStencilOp}
+              material-stencilZPass={THREE.KeepStencilOp}
             >
               {firstName} {lastName}
             </Text>
@@ -170,8 +177,9 @@ export default function Name({ firstName = "", lastName = "" }: Props) {
               const y = props.position.y - reflection.gap[i];
 
               return (
-                <group key={i} position={[props.position.x, y, -9700]}>
+                <group key={i} position={[props.position.x, y, -1500]}>
                   <Text
+                    renderOrder={1}
                     font="/fonts/PPMonumentExtended-Black.ttf"
                     fontSize={props.fontSize}
                     fillOpacity={0}
@@ -179,6 +187,12 @@ export default function Name({ firstName = "", lastName = "" }: Props) {
                     strokeColor="white"
                     material-clippingPlanes={[clipPlanes[i]]}
                     material-clipIntersection={false}
+                    material-stencilWrite={true}
+                    material-stencilRef={1}
+                    material-stencilFunc={THREE.NotEqualStencilFunc}
+                    material-stencilFail={THREE.KeepStencilOp}
+                    material-stencilZFail={THREE.KeepStencilOp}
+                    material-stencilZPass={THREE.KeepStencilOp}
                     onSync={(troikaMesh) => {
                       // measure the actual glyph bounds so `percent` maps to
                       // the real letter height, not a guessed offset

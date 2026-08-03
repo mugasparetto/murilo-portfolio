@@ -28,7 +28,7 @@ export default function ClientProvider({
       <SceneRegistryProvider>
         <Canvas
           dpr={[1, 1.5]}
-          gl={{ antialias: true, alpha: false }}
+          gl={{ antialias: true, alpha: false, stencil: true }}
           eventSource={eventSourceRef}
           eventPrefix="client"
           camera={{

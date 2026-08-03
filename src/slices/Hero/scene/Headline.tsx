@@ -4,6 +4,7 @@ import { Html, Text } from "@react-three/drei";
 import * as THREE from "three";
 import { KeyTextField } from "@prismicio/client";
 import { useBreakpoints, BREAKPOINTS } from "@/app/hooks/breakpoints";
+import { lockToScreen } from "@/app/components/ParallaxRig";
 import { NAME_LAYER } from "./Name";
 
 type Props = {
@@ -33,8 +34,8 @@ const RESPONSIVE: Record<
     fontSize: 200,
   },
   "2xl": {
-    position: { x: -6180, y: 2150 },
-    fontSize: 350,
+    position: { x: -2400, y: 1270 },
+    fontSize: 120,
   },
 };
 
@@ -44,8 +45,7 @@ export default function Headline({ tagline = "", description = "" }: Props) {
   const textRef = useRef<THREE.Mesh | null>(null);
 
   useFrame(() => {
-    const q = camera.quaternion;
-    textRef.current?.quaternion.copy(q);
+    if (textRef.current) lockToScreen(textRef.current, camera);
     textRef.current?.traverse((obj) => obj.layers.set(NAME_LAYER));
   });
 
@@ -82,7 +82,7 @@ export default function Headline({ tagline = "", description = "" }: Props) {
         position={[
           RESPONSIVE[tier]?.position.x,
           RESPONSIVE[tier]?.position.y,
-          -9700,
+          -1500,
         ]}
         font="/fonts/PPMonumentExtended-Black.ttf"
         fontSize={RESPONSIVE[tier]?.fontSize}
@@ -93,12 +93,12 @@ export default function Headline({ tagline = "", description = "" }: Props) {
       </Text>
       <Text
         position={[
-          RESPONSIVE[tier]?.position.x + 750,
-          RESPONSIVE[tier]?.position.y - 580,
-          -9700,
+          RESPONSIVE[tier]?.position.x + 270,
+          RESPONSIVE[tier]?.position.y - 200,
+          -1500,
         ]}
         font="/fonts/PPMonumentNormal-Regular.ttf"
-        fontSize={RESPONSIVE[tier]?.fontSize - 130}
+        fontSize={RESPONSIVE[tier]?.fontSize - 50}
         color="white"
         maxWidth={RESPONSIVE[tier]?.fontSize * 20}
         textAlign="left"
