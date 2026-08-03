@@ -33,6 +33,7 @@ import { useHeroPrimary } from "../hero-context";
 import Name from "./Name";
 import Headline from "./Headline";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
+import CircularText from "./CircularText";
 
 type Props = {
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -208,6 +209,15 @@ export default function Scene({ scrollRef }: Props) {
 
         <Suspense fallback={null}>
           <Headline tagline={tag_line} description={description} />
+        </Suspense>
+
+        <Suspense fallback={null}>
+          <CircularText
+            position={[1200, 1000, -1500]}
+            fontSize={55}
+            radius={270}
+            text="AVAILABLE FOR * NEW PROJECTS * "
+          />
         </Suspense>
       </group>
     </>
