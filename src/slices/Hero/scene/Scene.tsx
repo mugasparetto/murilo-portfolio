@@ -206,11 +206,9 @@ export default function Scene({ scrollRef }: Props) {
           <Name firstName={first_name} lastName={last_name} />
         </Suspense>
 
-        {/* <Headline
-          tagline={tag_line}
-          description={description}
-          scrollWindow={{ startVh: 5, endVh: 75 }}
-        /> */}
+        <Suspense fallback={null}>
+          <Headline tagline={tag_line} description={description} />
+        </Suspense>
       </group>
     </>
   );
