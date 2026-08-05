@@ -28,10 +28,9 @@ import HumanModel from "./HumanModel";
 import Sky from "./Sky";
 import HumanDestruction from "./HumanModelDestruction";
 import { useFluidMaterials } from "@/app/components/FluidMaterial";
-import { useHeroPrimary } from "../hero-context";
 
 import { NameDriver } from "./Name";
-import Headline from "./Headline";
+import { HeadlineDriver } from "./Headline";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import CircularText from "./CircularText";
 
@@ -42,7 +41,6 @@ type Props = {
 export default function Scene({ scrollRef }: Props) {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
-  const { tag_line, description } = useHeroPrimary();
   const { up } = useBreakpoints(BREAKPOINTS);
 
   // ✅ single stable params object that GUI mutates
@@ -205,12 +203,10 @@ export default function Scene({ scrollRef }: Props) {
 
         <Sky />
 
-        {/* the name itself is a DOM overlay in <Hero />; this only drives it */}
+        {/* the name and headline are DOM overlays in <Hero />; these only
+            drive them */}
         <NameDriver doorProjectionRef={doorProjectionRef} />
-
-        <Suspense fallback={null}>
-          <Headline tagline={tag_line} description={description} />
-        </Suspense>
+        <HeadlineDriver />
 
         <Suspense fallback={null}>
           <CircularText

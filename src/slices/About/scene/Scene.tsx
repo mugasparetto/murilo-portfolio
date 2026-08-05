@@ -20,6 +20,7 @@ import {
   VhWindow,
 } from "@/app/helpers/scroll";
 import TeleportingBillboard, { type Quad } from "./TeleportingBillboard";
+import { publishBackdrop } from "@/app/helpers/backdrop";
 
 type LinePosition = {
   x: number;
@@ -76,7 +77,13 @@ function Lines({
   );
 }
 // --- NEW: curved plane geometry (U-curve along TOP edge) ---
-function useUCurvePlaneGeometry(
+/**
+ * Returns the mesh geometry *and* the shape's outline, both off the same
+ * `THREE.Shape`. The hero's DOM overlays clip themselves against that outline,
+ * so taking it from here rather than rebuilding it from the numbers is what
+ * keeps the mask and the plane from drifting apart.
+ */
+function useUCurvePlane(
   width: number,
   height: number,
   curveDepth: number, // how far down the U dips at center
@@ -128,7 +135,14 @@ function useUCurvePlaneGeometry(
     }
     geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
 
-    return geometry;
+    // `closePath` leaves the start point repeated at the end; drop it, the
+    // consumers close the loop themselves
+    const outline = shape.getPoints(24);
+    if (outline.length > 1 && outline[outline.length - 1].equals(outline[0])) {
+      outline.pop();
+    }
+
+    return { geometry, outline };
   }, [width, height, curveDepth, segments]);
 }
 
@@ -216,14 +230,35 @@ export default function Scene({ scrollWindow, content }: Props) {
     { x: 0, y: -280 },
   ];
 
-  const planeGeo = useUCurvePlaneGeometry(
+  const { geometry: planeGeo, outline: planeOutline } = useUCurvePlane(
     2000,
     2000,
     60, // 👈 increase/decrease this for a deeper/shallower U
     96, // 👈 smoothness
   );
 
-  const planePos: [number, number, number] = [0, !up.md ? -1205 : -1005, 2200];
+  const planePos = useMemo<[number, number, number]>(
+    () => [0, !up.md ? -1205 : -1005, 2200],
+    [up.md],
+  );
+
+  // the plane is the only thing in the page that can occlude the hero's DOM
+  // overlays, so publish where it is; it never moves again, so once is enough
+  const plane = useRef<THREE.Mesh>(null);
+
+  useLayoutEffect(() => {
+    const mesh = plane.current;
+    if (!mesh) return;
+
+    mesh.updateWorldMatrix(true, false);
+    publishBackdrop(
+      planeOutline.map((p) =>
+        new THREE.Vector3(p.x, p.y, 0).applyMatrix4(mesh.matrixWorld),
+      ),
+    );
+
+    return () => publishBackdrop(null);
+  }, [planeOutline, planePos]);
 
   const scrollVh = useScrollVhAbsolute();
   const PHASE_WEIGHTS = [0.2, 0.1333, 0.2, 0.1333, 0.2, 0.1333]; // head content, head connector, eyes content, eyes connector, mouth content, mouth connector
@@ -340,7 +375,7 @@ export default function Scene({ scrollWindow, content }: Props) {
 
   return (
     <group>
-      <mesh position={planePos}>
+      <mesh ref={plane} position={planePos}>
         <primitive object={planeGeo} attach="geometry" />
         <meshBasicMaterial color="black" side={THREE.DoubleSide} />
       </mesh>

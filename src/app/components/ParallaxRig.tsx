@@ -12,32 +12,7 @@ export type CameraPose = {
 // world transform that maps the base (un-parallaxed) camera frame onto the
 // live one: `cam.matrixWorld * baseCam.matrixWorld⁻¹`
 const cancel = new THREE.Matrix4();
-const baseQuaternion = new THREE.Quaternion();
 let active = false;
-
-/**
- * Pins a billboard group to the screen position it would have if the pointer
- * parallax weren't running — no drift, no sway, as if it were a static HTML
- * overlay. It still faces the camera and still follows the scroll pose, so it
- * scrolls away and gets occluded like any other geometry.
- *
- * Children keep their usual camera-space offsets (x/y on screen, -z depth).
- */
-export function lockToScreen(obj: THREE.Object3D, camera: THREE.Camera) {
-  obj.position.set(0, 0, 0);
-  obj.scale.set(1, 1, 1);
-
-  // no rig mounted (mobile) — nothing to undo, just billboard
-  if (!active) {
-    obj.quaternion.copy(camera.quaternion);
-    return;
-  }
-
-  obj.quaternion.copy(baseQuaternion);
-  obj.updateMatrix();
-  obj.matrix.premultiply(cancel);
-  obj.matrix.decompose(obj.position, obj.quaternion, obj.scale);
-}
 
 /**
  * Moves a world point into the frame the base (un-parallaxed) camera would see
@@ -133,7 +108,6 @@ export default function CameraParallaxRig({
     baseCam.lookAt(pose.target);
     baseCam.updateMatrixWorld();
 
-    baseQuaternion.copy(baseCam.quaternion);
     cancel.copy(baseCam.matrixWorld).invert().premultiply(cam.matrixWorld);
   }, priority);
 

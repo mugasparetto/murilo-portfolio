@@ -6,7 +6,7 @@ import { SliceComponentProps } from "@prismicio/react";
 
 import Scene from "./scene/Scene";
 import NameOverlay from "./scene/Name";
-import { HeroPrimaryProvider } from "./hero-context";
+import HeadlineOverlay from "./scene/Headline";
 import { useSceneRegistry } from "@/app/hooks/SceneRegistry";
 
 /**
@@ -27,11 +27,7 @@ const Hero: FC<HeroProps> = ({ slice }) => {
     register({
       id,
       priority: 10,
-      node: (
-        <HeroPrimaryProvider primary={slice.primary}>
-          <Scene scrollRef={heroRef} />
-        </HeroPrimaryProvider>
-      ),
+      node: <Scene scrollRef={heroRef} />,
       active: true,
     });
 
@@ -61,10 +57,14 @@ const Hero: FC<HeroProps> = ({ slice }) => {
       style={{ width: "100%", height: "320vh" }}
     >
       {/* DOM, so the composer's vignette and the pointer parallax can't reach
-          it; <NameDriver /> inside the scene moves it with the camera */}
+          them; the drivers inside the scene move them with the camera */}
       <NameOverlay
         firstName={slice.primary.first_name}
         lastName={slice.primary.last_name}
+      />
+      <HeadlineOverlay
+        tagline={slice.primary.tag_line}
+        description={slice.primary.description}
       />
     </section>
   );

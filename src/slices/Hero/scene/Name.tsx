@@ -78,8 +78,11 @@ const NOMINAL = 100;
 /** gap above the caps, as a share of the viewport height */
 const TOP = 0.05;
 
-/** share of the viewport width the widest line fills */
-const FILL = 0.95;
+/**
+ * Share of the viewport width the widest line fills. Exported because
+ * <HeadlineOverlay /> lines its left edge up with the block.
+ */
+export const FILL = 0.95;
 
 /** space between stacked lines, in cap heights */
 const LINE_GAP = 0.2;
@@ -128,6 +131,67 @@ const CORNERS = [
  */
 const quad = new Int32Array(8);
 const written = new Int32Array(8);
+
+/**
+ * NDC y of ANCHOR at the resting pose, worked out on first use. The camera's
+ * fov is vertical, so this is aspect-independent and depends on nothing but
+ * module constants.
+ */
+let restY = NaN;
+
+function anchorRestY() {
+  if (Number.isNaN(restY)) {
+    const p = defaultParams;
+    const cam = new THREE.PerspectiveCamera(p.fov, 1, 50, 100000);
+    cam.position.set(p.cameraX, p.cameraY, p.cameraZ);
+    cam.lookAt(p.targetX, p.targetY, p.targetZ);
+    cam.updateMatrixWorld();
+    restY = ANCHOR.clone().project(cam).y;
+  }
+
+  return restY;
+}
+
+const bandScratch = new THREE.Vector3();
+
+export type BandRect = { y: number; height: number };
+
+/**
+ * Where the name block sits this frame, in whole CSS px: `y` its top edge from
+ * the top of the viewport, `height` the laid-out height of the block. Written
+ * into `out` so the frame loop never allocates; null until the glyphs have been
+ * measured, which is also when the overlay has nothing to show.
+ *
+ * <HeadlineOverlay /> hangs off the bottom of the block and calls this too.
+ * Deriving both from the same numbers — rather than having this driver publish
+ * a rect for the other to read — is what stops them drifting a frame apart when
+ * the two useFrame callbacks happen to run in the other order.
+ */
+export function nameBand(
+  out: BandRect,
+  camera: THREE.Camera,
+  width: number,
+  height: number,
+): BandRect | null {
+  const layout = overlay.layout;
+  if (!layout) return null;
+
+  // how far ANCHOR has travelled since the rest pose, projected in the base
+  // frame so the pointer parallax is stripped out
+  bandScratch.copy(ANCHOR);
+  toBaseFrame(bandScratch);
+  bandScratch.project(camera);
+
+  // whole pixels: a fractional translate would resample the type every frame,
+  // which reads as shimmer on the stroked echoes
+  out.y = Math.round(
+    height * TOP + (anchorRestY() - bandScratch.y) * 0.5 * height,
+  );
+  // the svg's intrinsic ratio, so this matches its laid-out height exactly
+  out.height = Math.round((width * FILL * layout.depth) / layout.inkW);
+
+  return out;
+}
 
 function measure(lines: string[]): Layout | null {
   const ctx = document.createElement("canvas").getContext("2d");
@@ -332,19 +396,7 @@ export function NameDriver({
 }) {
   const { camera, size } = useThree();
 
-  /**
-   * NDC y of ANCHOR at the resting pose. The camera's fov is vertical, so this
-   * is aspect-independent and only has to be computed once.
-   */
-  const restY = useMemo(() => {
-    const p = defaultParams;
-    const cam = new THREE.PerspectiveCamera(p.fov, 1, 50, 100000);
-    cam.position.set(p.cameraX, p.cameraY, p.cameraZ);
-    cam.lookAt(p.targetX, p.targetY, p.targetZ);
-    cam.updateMatrixWorld();
-    return ANCHOR.clone().project(cam).y;
-  }, []);
-
+  const rect = useMemo<BandRect>(() => ({ y: 0, height: 0 }), []);
   const scratch = useMemo(() => new THREE.Vector3(), []);
   const lastY = useRef(NaN);
   const lastBandH = useRef(NaN);
@@ -352,22 +404,10 @@ export function NameDriver({
   const lastHidden = useRef<boolean | null>(null);
 
   useFrame(() => {
-    const { band, layout } = overlay;
-    if (!band || !layout) return;
+    const band = overlay.band;
+    if (!band || !nameBand(rect, camera, size.width, size.height)) return;
 
-    // --- vertical drift: how far ANCHOR has travelled since the rest pose.
-    // Projected in the base frame so the pointer parallax is stripped out.
-    scratch.copy(ANCHOR);
-    toBaseFrame(scratch);
-    scratch.project(camera);
-
-    // whole pixels: a fractional translate would resample the type every
-    // frame, which reads as shimmer on the stroked echoes
-    const y = Math.round(
-      size.height * TOP + (restY - scratch.y) * 0.5 * size.height,
-    );
-    // the svg's intrinsic ratio, so this matches its laid-out height exactly
-    const bandH = Math.round((size.width * FILL * layout.depth) / layout.inkW);
+    const { y, height: bandH } = rect;
 
     const hidden = y + bandH < 0;
     if (hidden !== lastHidden.current) {
