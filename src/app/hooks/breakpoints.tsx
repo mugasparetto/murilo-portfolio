@@ -26,6 +26,9 @@ export const BREAKPOINTS: Breakpoints = {
 } as const;
 
 function getRootFontSize(): number {
+  // the hook also runs during SSR now that consumers live outside the canvas
+  if (typeof document === "undefined") return 16;
+
   const fs = getComputedStyle(document.documentElement).fontSize;
   const n = Number.parseFloat(fs);
   return Number.isFinite(n) && n > 0 ? n : 16;

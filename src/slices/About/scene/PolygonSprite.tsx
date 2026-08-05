@@ -85,35 +85,45 @@ function pointInPolygon(px: number, py: number, polygon: UV[]): boolean {
   return inside;
 }
 
+// These run on every pointermove, so they reuse one set of instances rather
+// than building a Raycaster, a Plane and half a dozen vectors per event.
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+const spriteWorldPos = new THREE.Vector3();
+const planeNormal = new THREE.Vector3();
+const facingPlane = new THREE.Plane();
+const hitPoint = new THREE.Vector3();
+
+function aimAtPointer(
+  event: PointerEvent,
+  camera: THREE.Camera,
+  gl: THREE.WebGLRenderer,
+) {
+  const rect = gl.domElement.getBoundingClientRect();
+  ndc.set(
+    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+    -((event.clientY - rect.top) / rect.height) * 2 + 1,
+  );
+  raycaster.setFromCamera(ndc, camera);
+}
+
 function pointerToUV(
   event: PointerEvent,
   mesh: THREE.Mesh,
   camera: THREE.Camera,
   gl: THREE.WebGLRenderer,
 ): UV | null {
-  const rect = gl.domElement.getBoundingClientRect();
-  const ndcX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  const ndcY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  aimAtPointer(event, camera, gl);
 
-  const raycaster = new THREE.Raycaster();
-  raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
-
-  const spriteWorldPos = new THREE.Vector3();
   mesh.getWorldPosition(spriteWorldPos);
+  camera.getWorldDirection(planeNormal);
+  planeNormal.negate();
 
-  const normal = new THREE.Vector3();
-  camera.getWorldDirection(normal);
-  normal.negate();
+  facingPlane.setFromNormalAndCoplanarPoint(planeNormal, spriteWorldPos);
+  if (!raycaster.ray.intersectPlane(facingPlane, hitPoint)) return null;
 
-  const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
-    normal,
-    spriteWorldPos,
-  );
-  const hitPoint = new THREE.Vector3();
-  if (!raycaster.ray.intersectPlane(plane, hitPoint)) return null;
-
-  const localPoint = mesh.worldToLocal(hitPoint.clone());
-  return [localPoint.x + 0.5, localPoint.y + 0.5];
+  mesh.worldToLocal(hitPoint);
+  return [hitPoint.x + 0.5, hitPoint.y + 0.5];
 }
 
 function pointerToWorldPlane(
@@ -122,16 +132,11 @@ function pointerToWorldPlane(
   camera: THREE.Camera,
   gl: THREE.WebGLRenderer,
 ): THREE.Vector3 | null {
-  const rect = gl.domElement.getBoundingClientRect();
-  const ndcX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  const ndcY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  aimAtPointer(event, camera, gl);
 
-  const raycaster = new THREE.Raycaster();
-  raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
-
-  const target = new THREE.Vector3();
-  return raycaster.ray.intersectPlane(worldPlane, target)
-    ? target.clone()
+  // still cloned: callers keep the result past the current event
+  return raycaster.ray.intersectPlane(worldPlane, hitPoint)
+    ? hitPoint.clone()
     : null;
 }
 

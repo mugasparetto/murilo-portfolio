@@ -218,18 +218,6 @@ export function useFluidMaterials({
     displayMat.uniforms.uDistortionAmount.value = config.distortionAmount;
     displayMat.uniforms.uColorIntensity.value = config.colorIntensity;
     displayMat.uniforms.uSoftness.value = config.softness;
-    (displayMat.uniforms.uColor1.value as THREE.Vector3).copy(
-      hexToLinearVec3(config.color1),
-    );
-    (displayMat.uniforms.uColor2.value as THREE.Vector3).copy(
-      hexToLinearVec3(config.color2),
-    );
-    (displayMat.uniforms.uColor3.value as THREE.Vector3).copy(
-      hexToLinearVec3(config.color3),
-    );
-    (displayMat.uniforms.uColor4.value as THREE.Vector3).copy(
-      hexToLinearVec3(config.color4),
-    );
 
     // --- ping-pong render
     fluidMat.uniforms.iPreviousFrame.value = previousRT.current.texture;
@@ -252,6 +240,22 @@ export function useFluidMaterials({
 
     frameRef.current++;
   });
+
+  // The palette only moves when the GUI does, so converting it here instead of
+  // per frame drops eight Color/Vector3 allocations out of the render loop.
+  useEffect(() => {
+    const u = displayMat.uniforms;
+    (u.uColor1.value as THREE.Vector3).copy(hexToLinearVec3(config.color1));
+    (u.uColor2.value as THREE.Vector3).copy(hexToLinearVec3(config.color2));
+    (u.uColor3.value as THREE.Vector3).copy(hexToLinearVec3(config.color3));
+    (u.uColor4.value as THREE.Vector3).copy(hexToLinearVec3(config.color4));
+  }, [
+    displayMat,
+    config.color1,
+    config.color2,
+    config.color3,
+    config.color4,
+  ]);
 
   // Handle sim resolution change
   useEffect(() => {

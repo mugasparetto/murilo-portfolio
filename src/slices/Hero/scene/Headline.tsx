@@ -5,7 +5,6 @@ import * as THREE from "three";
 import { KeyTextField } from "@prismicio/client";
 import { useBreakpoints, BREAKPOINTS } from "@/app/hooks/breakpoints";
 import { lockToScreen } from "@/app/components/ParallaxRig";
-import { NAME_LAYER } from "./Name";
 
 type Props = {
   tagline: KeyTextField;
@@ -46,7 +45,6 @@ export default function Headline({ tagline = "", description = "" }: Props) {
 
   useFrame(() => {
     if (textRef.current) lockToScreen(textRef.current, camera);
-    textRef.current?.traverse((obj) => obj.layers.set(NAME_LAYER));
   });
 
   return (

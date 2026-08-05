@@ -5,6 +5,7 @@ import { Content } from "@prismicio/client";
 import { SliceComponentProps } from "@prismicio/react";
 
 import Scene from "./scene/Scene";
+import NameOverlay from "./scene/Name";
 import { HeroPrimaryProvider } from "./hero-context";
 import { useSceneRegistry } from "@/app/hooks/SceneRegistry";
 
@@ -58,7 +59,14 @@ const Hero: FC<HeroProps> = ({ slice }) => {
       data-slice-type={slice.slice_type}
       data-slice-variation={slice.variation}
       style={{ width: "100%", height: "320vh" }}
-    ></section>
+    >
+      {/* DOM, so the composer's vignette and the pointer parallax can't reach
+          it; <NameDriver /> inside the scene moves it with the camera */}
+      <NameOverlay
+        firstName={slice.primary.first_name}
+        lastName={slice.primary.last_name}
+      />
+    </section>
   );
 };
 

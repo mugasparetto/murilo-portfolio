@@ -49,7 +49,7 @@ export default function Door({
   doorProjectionRef,
   scrollContainerRef,
 }: Props) {
-  const { size, camera, gl } = useThree();
+  const { size, camera, gl, pointer } = useThree();
   const dpr = gl.getPixelRatio();
   const { up } = useBreakpoints(BREAKPOINTS);
   const doorRef = useRef<THREE.Mesh>(null);
@@ -84,17 +84,6 @@ export default function Door({
     // draw before anything that should be maskable by the door's silhouette
     doorRef.current.renderOrder = -1;
   }, []);
-
-  // stamp the door's on-screen shape into the stencil buffer so other
-  // objects (eg. <Name />) can be clipped by it regardless of their own Z
-  useEffect(() => {
-    displayMat.stencilWrite = true;
-    displayMat.stencilRef = 1;
-    displayMat.stencilFunc = THREE.AlwaysStencilFunc;
-    displayMat.stencilFail = THREE.KeepStencilOp;
-    displayMat.stencilZFail = THREE.KeepStencilOp;
-    displayMat.stencilZPass = THREE.ReplaceStencilOp;
-  }, [displayMat]);
 
   const lineGeo = useMemo(() => {
     const edges = new THREE.EdgesGeometry(doorGeometry);
@@ -144,6 +133,9 @@ export default function Door({
 
   const tmpQuat = useMemo(() => new THREE.Quaternion(), []);
   const tmpScale = useMemo(() => new THREE.Vector3(), []);
+  const rayOrigin = useMemo(() => new THREE.Vector3(), []);
+  const rayDir = useMemo(() => new THREE.Vector3(), []);
+  const hit = useMemo(() => new THREE.Vector3(), []);
 
   useFrame(() => {
     const mesh = doorRef.current;
@@ -176,27 +168,49 @@ export default function Door({
       DOOR_HEIGHT * Math.abs(tmpScale.y) * 0.5,
     );
     proj.strength = visible ? openness : 0;
+
+    // --- pointer -> door UV, solved rather than raycast.
+    //
+    // This used to be R3F pointer handlers on the mesh, which put the door in
+    // the interaction list and cost a raycast plus an event object on every
+    // pointermove. The door is a flat quad and we already have it in world
+    // space, so a ray/plane solve is exact, allocation-free, and runs once a
+    // frame instead of once an event.
+    const uv = pointerUvRef.current;
+    let inside = false;
+
+    if (uv && visible && proj.halfSize.x > 0 && proj.halfSize.y > 0) {
+      rayOrigin.setFromMatrixPosition(camera.matrixWorld);
+      rayDir
+        .set(pointer.x, pointer.y, 0.5)
+        .unproject(camera)
+        .sub(rayOrigin)
+        .normalize();
+
+      const facing = rayDir.dot(proj.normal);
+
+      if (Math.abs(facing) > 1e-6) {
+        const distance =
+          hit.copy(proj.position).sub(rayOrigin).dot(proj.normal) / facing;
+
+        if (distance > 0) {
+          hit.copy(rayOrigin).addScaledVector(rayDir, distance).sub(proj.position);
+
+          const u = hit.dot(proj.right) / (proj.halfSize.x * 2) + 0.5;
+          const v = hit.dot(proj.up) / (proj.halfSize.y * 2) + 0.5;
+
+          inside = u >= 0 && u <= 1 && v >= 0 && v <= 1;
+          if (inside) uv.set(u, v);
+        }
+      }
+    }
+
+    pointerActiveRef.current = inside;
   });
 
   return (
     <group>
-      <mesh
-        ref={doorRef}
-        geometry={doorGeometry}
-        material={displayMat}
-        onPointerMove={(e) => {
-          pointerActiveRef.current = true;
-          if (e.uv) pointerUvRef.current = e.uv.clone();
-        }}
-        onPointerOut={() => {
-          pointerActiveRef.current = false;
-          pointerUvRef.current = null;
-        }}
-        onPointerLeave={() => {
-          pointerActiveRef.current = false;
-          pointerUvRef.current = null;
-        }}
-      />
+      <mesh ref={doorRef} geometry={doorGeometry} material={displayMat} />
       <primitive object={wire} />
     </group>
   );

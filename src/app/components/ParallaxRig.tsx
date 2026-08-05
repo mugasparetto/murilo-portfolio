@@ -39,6 +39,19 @@ export function lockToScreen(obj: THREE.Object3D, camera: THREE.Camera) {
   obj.matrix.decompose(obj.position, obj.quaternion, obj.scale);
 }
 
+/**
+ * Moves a world point into the frame the base (un-parallaxed) camera would see
+ * it in, so `v.project(camera)` afterwards yields a screen position the pointer
+ * sway can't touch. No-op when no rig is mounted (mobile).
+ *
+ * Same trick `lockToScreen` uses, exposed for callers that only need the
+ * projected position — eg. a DOM overlay tracking the scroll.
+ */
+export function toBaseFrame(v: THREE.Vector3) {
+  if (active) v.applyMatrix4(cancel);
+  return v;
+}
+
 type Props = {
   poseRef: React.RefObject<CameraPose | null>;
   cameraRef?: React.RefObject<THREE.Camera | null>;

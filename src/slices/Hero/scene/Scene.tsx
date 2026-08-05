@@ -30,7 +30,7 @@ import HumanDestruction from "./HumanModelDestruction";
 import { useFluidMaterials } from "@/app/components/FluidMaterial";
 import { useHeroPrimary } from "../hero-context";
 
-import Name from "./Name";
+import { NameDriver } from "./Name";
 import Headline from "./Headline";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import CircularText from "./CircularText";
@@ -42,7 +42,7 @@ type Props = {
 export default function Scene({ scrollRef }: Props) {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
-  const { first_name, last_name, tag_line, description } = useHeroPrimary();
+  const { tag_line, description } = useHeroPrimary();
   const { up } = useBreakpoints(BREAKPOINTS);
 
   // ✅ single stable params object that GUI mutates
@@ -130,7 +130,9 @@ export default function Scene({ scrollRef }: Props) {
 
   const p = paramsRef.current;
 
-  const pointerUvRef = useRef<THREE.Vector2 | null>(null);
+  // <Door /> writes into this every frame rather than replacing it, so the
+  // fluid sim reads a stable object and nothing allocates per pointer event
+  const pointerUvRef = useRef<THREE.Vector2 | null>(new THREE.Vector2());
   const pointerActiveRef = useRef(false);
 
   // <Door /> fills this in every frame, <Steps /> reflects it
@@ -203,9 +205,8 @@ export default function Scene({ scrollRef }: Props) {
 
         <Sky />
 
-        <Suspense fallback={null}>
-          <Name firstName={first_name} lastName={last_name} />
-        </Suspense>
+        {/* the name itself is a DOM overlay in <Hero />; this only drives it */}
+        <NameDriver doorProjectionRef={doorProjectionRef} />
 
         <Suspense fallback={null}>
           <Headline tagline={tag_line} description={description} />
