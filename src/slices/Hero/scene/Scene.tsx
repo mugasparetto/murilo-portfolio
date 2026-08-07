@@ -101,30 +101,30 @@ export default function Scene({ scrollRef }: Props) {
   }, [applyCameraFromParams]);
 
   // GUI wiring
-  // useLilGui(paramsRef.current, {
-  //   onCameraChange: () => {
-  //     applyCameraFromParams();
-  //     forceRender();
-  //   },
-  //   onRebuildTerrain: () => {
-  //     forceRender();
-  //   },
-  //   onStepsChange: () => {
-  //     forceRender();
-  //   },
-  //   onDoorChange: () => {
-  //     forceRender();
-  //   },
-  //   onGroupChange: () => {
-  //     forceRender();
-  //   },
-  //   onFluidChange: () => {
-  //     forceRender();
-  //   },
-  //   onRebuildMountain: () => {
-  //     forceRender();
-  //   },
-  // });
+  useLilGui(paramsRef.current, {
+    onCameraChange: () => {
+      applyCameraFromParams();
+      forceRender();
+    },
+    onRebuildTerrain: () => {
+      forceRender();
+    },
+    onStepsChange: () => {
+      forceRender();
+    },
+    onDoorChange: () => {
+      forceRender();
+    },
+    onGroupChange: () => {
+      forceRender();
+    },
+    onFluidChange: () => {
+      forceRender();
+    },
+    onRebuildMountain: () => {
+      forceRender();
+    },
+  });
 
   const p = paramsRef.current;
 

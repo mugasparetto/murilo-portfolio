@@ -213,9 +213,7 @@ export default function Mountains({ params }: Props) {
     const material = materialRef.current;
     if (!material) return;
 
-    (material.uniforms.uColor.value as THREE.Color).set(
-      params.mountainColor,
-    );
+    (material.uniforms.uColor.value as THREE.Color).set(params.mountainColor);
     (material.uniforms.uFillColor.value as THREE.Color).set(
       params.mountainFillColor,
     );
@@ -240,6 +238,7 @@ export default function Mountains({ params }: Props) {
     <group
       ref={groupRef}
       position={[0, params.mountainPosY, params.mountainPosZ]}
+      scale={[2, 1, 1]}
     >
       <mesh geometry={geometry} material={materialRef.current ?? undefined} />
     </group>

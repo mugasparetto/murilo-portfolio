@@ -2,7 +2,6 @@ import * as THREE from "three";
 import { useRef, JSX, useEffect, useMemo, useState, useCallback } from "react";
 import { useGLTF, useAnimations, Outlines } from "@react-three/drei";
 import { GLTF } from "three-stdlib";
-import gsap from "gsap";
 
 import { useStore } from "@/app/hooks/store";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
