@@ -115,7 +115,7 @@ export default function Door({
 
   const scale = useMemo(() => {
     return !up.md
-      ? { x: 1.16, y: 1.1 }
+      ? { x: 1.5, y: 1.8 }
       : { x: params.doorScaleX, y: params.doorScaleY };
   }, [up.md, params.doorScaleX, params.doorScaleY]);
 
@@ -124,8 +124,8 @@ export default function Door({
     const py = params.doorY;
     const pz = params.doorZ;
 
-    doorRef.current?.position.set(!up.md ? 0 : px, !up.md ? 1510 : py, pz);
-    wire.position.set(!up.md ? 0 : px, !up.md ? 1510 : py, pz + 3);
+    doorRef.current?.position.set(!up.md ? 0 : px, !up.md ? py - 540 : py, pz);
+    wire.position.set(!up.md ? 0 : px, !up.md ? py - 540 : py, pz + 3);
 
     doorRef.current?.scale.set(scale.x, scale.y, 1);
     wire.scale.set(scale.x, scale.y, 1);
@@ -194,7 +194,10 @@ export default function Door({
           hit.copy(proj.position).sub(rayOrigin).dot(proj.normal) / facing;
 
         if (distance > 0) {
-          hit.copy(rayOrigin).addScaledVector(rayDir, distance).sub(proj.position);
+          hit
+            .copy(rayOrigin)
+            .addScaledVector(rayDir, distance)
+            .sub(proj.position);
 
           const u = hit.dot(proj.right) / (proj.halfSize.x * 2) + 0.5;
           const v = hit.dot(proj.up) / (proj.halfSize.y * 2) + 0.5;

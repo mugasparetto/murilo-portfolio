@@ -62,7 +62,7 @@ export default function Steps({
   const stepDepth = 350;
   const stepCount = 12;
 
-  const stepScale = !up.md ? 1.12 : 1.6;
+  const stepScale = !up.md ? 1.4 : 1.6;
 
   // Shared geometry (fill)
   const stepGeometry = useMemo(
@@ -190,12 +190,12 @@ export default function Steps({
     if (!stepsRoot.current || !stepsPivot.current) return;
 
     stepsRoot.current.position.set(
-      !up.md ? -240 : params.stepX,
-      !up.md ? 230 : params.stepY,
+      params.stepX,
+      !up.md ? params.stepY - 160 : params.stepY,
       params.stepZ,
     );
     stepsPivot.current.rotation.y = params.rotY;
-    stepsPivot.current.rotation.x = !up.md ? 0.11 : params.rotZ;
+    stepsPivot.current.rotation.x = params.rotZ;
     stepsPivot.current.scale.setScalar(stepScale);
   }, [
     params.stepX,

@@ -101,30 +101,30 @@ export default function Scene({ scrollRef }: Props) {
   }, [applyCameraFromParams]);
 
   // GUI wiring
-  useLilGui(paramsRef.current, {
-    onCameraChange: () => {
-      applyCameraFromParams();
-      forceRender();
-    },
-    onRebuildTerrain: () => {
-      forceRender();
-    },
-    onStepsChange: () => {
-      forceRender();
-    },
-    onDoorChange: () => {
-      forceRender();
-    },
-    onGroupChange: () => {
-      forceRender();
-    },
-    onFluidChange: () => {
-      forceRender();
-    },
-    onRebuildMountain: () => {
-      forceRender();
-    },
-  });
+  // useLilGui(paramsRef.current, {
+  //   onCameraChange: () => {
+  //     applyCameraFromParams();
+  //     forceRender();
+  //   },
+  //   onRebuildTerrain: () => {
+  //     forceRender();
+  //   },
+  //   onStepsChange: () => {
+  //     forceRender();
+  //   },
+  //   onDoorChange: () => {
+  //     forceRender();
+  //   },
+  //   onGroupChange: () => {
+  //     forceRender();
+  //   },
+  //   onFluidChange: () => {
+  //     forceRender();
+  //   },
+  //   onRebuildMountain: () => {
+  //     forceRender();
+  //   },
+  // });
 
   const p = paramsRef.current;
 
@@ -208,14 +208,16 @@ export default function Scene({ scrollRef }: Props) {
         <NameDriver doorProjectionRef={doorProjectionRef} />
         <HeadlineDriver />
 
-        <Suspense fallback={null}>
-          <CircularText
-            position={[1000, 840, -1500]}
-            fontSize={55}
-            radius={270}
-            text="AVAILABLE FOR * NEW PROJECTS * "
-          />
-        </Suspense>
+        {up.md && (
+          <Suspense fallback={null}>
+            <CircularText
+              position={[1000, 840, -1500]}
+              fontSize={55}
+              radius={270}
+              text="AVAILABLE FOR * NEW PROJECTS * "
+            />
+          </Suspense>
+        )}
       </group>
     </>
   );

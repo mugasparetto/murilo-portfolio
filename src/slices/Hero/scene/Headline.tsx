@@ -6,7 +6,8 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { KeyTextField } from "@prismicio/client";
 
 import { backdropOutline } from "@/app/helpers/backdrop";
-import { FILL, nameBand, type BandRect } from "./Name";
+import { blockFill, nameBand, type BandRect } from "./Name";
+import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 
 /**
  * The headline is the paragraph under the name — read the two as one block:
@@ -63,6 +64,8 @@ export default function HeadlineOverlay({
   tagline = "",
   description = "",
 }: Props) {
+  const { up } = useBreakpoints(BREAKPOINTS);
+
   const head = (tagline ?? "").trim();
   const body = (description ?? "").trim();
   const band = useRef<HTMLDivElement | null>(null);
@@ -102,10 +105,11 @@ export default function HeadlineOverlay({
       // resize, and the server renders what the client hydrates. The gap under
       // the name is padding, not a margin, so the band's box still starts
       // exactly at the name's bottom edge — which is what the clip counts on.
-      className="pointer-events-none fixed top-0 left-0 z-1 w-full pt-4 md:pt-5 lg:pt-6 xl:pt-7 2xl:pt-8"
+      className="pointer-events-none fixed top-0 left-0 z-1 w-full pt-4 md:pt-7 lg:pt-9 xl:pt-10 2xl:pt-11"
       style={{
-        // matches the centred name svg's left edge
-        paddingLeft: `${(1 - FILL) * 50}%`,
+        // matches the centred name svg's left edge, which pulls in below md
+        paddingLeft: `${(1 - blockFill(up.md)) * 50}%`,
+        paddingRight: `${(1 - blockFill(up.md)) * 50}%`,
         contain: "layout style",
         // moved every frame and never re-laid-out, so keep it on its own
         // compositor layer
@@ -115,14 +119,18 @@ export default function HeadlineOverlay({
         visibility: "hidden",
       }}
     >
+      {!up.md && <hr className="border-white/60 pb-3" />}
+
       {head && (
-        <h2 className="font-display m-0 text-base leading-tight font-extrabold text-white uppercase md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl">
-          {head}
+        <h2 className="flex items-center font-display m-0 text-base leading-tight font-extrabold text-white uppercase md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl">
+          <span>{head.split(" ")[0]}</span>
+          <span className="h-0.5 w-1 lg:w-12 xl:w-18 mx-1 md:mx-1 lg:mx-4 xl:mx-6 bg-white opacity-0 lg:opacity-100" />
+          <span>{head.split(" ")[1]}</span>
         </h2>
       )}
 
       {body && (
-        <p className="m-0 mt-2 max-w-76 text-xs leading-relaxed text-white/90 uppercase md:max-w-sm lg:mt-3 lg:max-w-md lg:text-sm xl:max-w-lg 2xl:max-w-140 2xl:text-base">
+        <p className="m-0 mt-1 max-w-full text-xs leading-relaxed text-white/80 uppercase md:max-w-76 lg:mt-1 lg:max-w-md lg:text-sm xl:max-w-lg 2xl:max-w-140 2xl:text-base">
           {body}
         </p>
       )}
@@ -151,7 +159,8 @@ export function HeadlineDriver() {
     const band = overlay.band;
     if (!band || !nameBand(rect, camera, size.width, size.height)) return;
 
-    // the name's bottom edge — the last echo's baseline — is the band's top
+    // the name's bottom edge — the last echo's baseline, or the type's own
+    // below md, where there are no echoes — is the band's top
     const y = rect.y + rect.height;
     const bandH = overlay.height;
 

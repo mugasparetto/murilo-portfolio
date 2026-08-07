@@ -84,7 +84,7 @@ export default function SceneManager() {
         />
       )}
 
-      <Stats />
+      {/* <Stats /> */}
     </>
   );
 }

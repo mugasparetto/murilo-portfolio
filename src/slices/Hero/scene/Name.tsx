@@ -70,7 +70,9 @@ type Layout = {
 const overlay: {
   band: HTMLDivElement | null;
   layout: Layout | null;
-} = { band: null, layout: null };
+  /** the fill in use this breakpoint — see `blockFill` */
+  fill: number;
+} = { band: null, layout: null, fill: 0 };
 
 /** size the glyphs are measured at; the viewBox scales them from here */
 const NOMINAL = 100;
@@ -79,10 +81,15 @@ const NOMINAL = 100;
 const TOP = 0.05;
 
 /**
- * Share of the viewport width the widest line fills. Exported because
- * <HeadlineOverlay /> lines its left edge up with the block.
+ * Share of the viewport width the widest line fills. Pulled in a little below
+ * md, where the name stacks and the shorter lines would otherwise run edge to
+ * edge with no air around them.
+ *
+ * Exported as a function of the breakpoint because <HeadlineOverlay /> lines
+ * its left edge up with the block, and the band height here is derived from the
+ * same number — both have to move together with the svg.
  */
-export const FILL = 0.95;
+export const blockFill = (upMd: boolean) => (upMd ? 0.95 : 0.9);
 
 /** space between stacked lines, in cap heights */
 const LINE_GAP = 0.2;
@@ -92,13 +99,19 @@ const LINE_GAP = 0.2;
  * the last line and `reveal` the share of the caps still shown, measured up
  * from the echo's own baseline. Both in cap heights, so they hold at any size.
  *
+ * Dropped below `md`, where the name stacks onto two lines and the echoes would
+ * push the headline off the fold. They're left out of the *measurement* there,
+ * not just the markup: `depth` is the viewBox height and so the band's height,
+ * so measuring echoes that never render would leave two cap heights of dead
+ * space under the type for the headline to hang off.
+ *
  * Keep `reveal` off exact halves: at 0.5 the cut lands on the crossbars of
  * A/E/R and the echo reads as a row of hairlines.
  */
 const ECHOES = [
-  { gap: 0.9, reveal: 0.75 },
-  { gap: 1.58, reveal: 0.44 },
-  { gap: 1.97, reveal: 0.22 },
+  { gap: 0.92, reveal: 0.75 },
+  { gap: 1.54, reveal: 0.44 },
+  { gap: 1.94, reveal: 0.22 },
 ];
 
 /** echo outline width, in cap heights */
@@ -188,12 +201,12 @@ export function nameBand(
     height * TOP + (anchorRestY() - bandScratch.y) * 0.5 * height,
   );
   // the svg's intrinsic ratio, so this matches its laid-out height exactly
-  out.height = Math.round((width * FILL * layout.depth) / layout.inkW);
+  out.height = Math.round((width * overlay.fill * layout.depth) / layout.inkW);
 
   return out;
 }
 
-function measure(lines: string[]): Layout | null {
+function measure(lines: string[], withEchoes: boolean): Layout | null {
   const ctx = document.createElement("canvas").getContext("2d");
   if (!ctx) return null;
 
@@ -216,15 +229,16 @@ function measure(lines: string[]): Layout | null {
   const step = cap * (1 + LINE_GAP);
   const baselines = measured.map((_, i) => cap + i * step);
   const last = baselines[baselines.length - 1];
-  const echoes = ECHOES.map((e) => ({
-    reveal: e.reveal,
-    baseline: last + e.gap * cap,
-  }));
+  const echoes = withEchoes
+    ? ECHOES.map((e) => ({ reveal: e.reveal, baseline: last + e.gap * cap }))
+    : [];
 
   return {
     cap,
     inkW: Math.max(...measured.map((m) => m.inkW)),
-    depth: echoes[echoes.length - 1].baseline,
+    // the bottommost drawn baseline: the faintest echo, or the type itself
+    // where there are none
+    depth: echoes.length ? echoes[echoes.length - 1].baseline : last,
     baselines,
     origins: measured.map((m) => m.x0),
     echoes,
@@ -258,31 +272,38 @@ export default function NameOverlay({
     return up.md ? [both.join(" ")].filter(Boolean) : both;
   }, [firstName, lastName, up.md]);
 
-  const lineKey = lines.join(" ");
+  // the block is measured per breakpoint, so the key has to separate the two
+  // arrangements — joined with a space they'd both read "MURILO GASPARETTO" and
+  // crossing md would keep the stale one-line layout
+  const lineKey = lines.join("\n");
+  const glyphs = lines.join(" ");
+  const fill = blockFill(up.md);
 
   useEffect(() => {
     if (!lineKey) return;
 
     let alive = true;
+    // published together, since the driver derives the band height from both
     const apply = () => {
       if (!alive) return;
-      const next = measure(lines);
+      const next = measure(lines, up.md);
       overlay.layout = next;
+      overlay.fill = fill;
       setLayout(next);
     };
     const face = `800 ${NOMINAL}px "Monument Extended"`;
 
     // measuring against the fallback font would size the block wrong, so wait
     // for the real face when it isn't ready yet
-    if (!document.fonts || document.fonts.check(face, lineKey)) apply();
-    else document.fonts.load(face, lineKey).then(apply, apply);
+    if (!document.fonts || document.fonts.check(face, glyphs)) apply();
+    else document.fonts.load(face, glyphs).then(apply, apply);
 
     return () => {
       alive = false;
       overlay.layout = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lineKey]);
+  }, [lineKey, up.md]);
 
   if (!lines.length) return null;
 
@@ -329,7 +350,7 @@ export default function NameOverlay({
           viewBox={`${-layout.inkW / 2} 0 ${layout.inkW} ${layout.depth}`}
           style={{
             display: "block",
-            width: `${FILL * 100}%`,
+            width: `${fill * 100}%`,
             height: "auto",
             margin: "0 auto",
             overflow: "visible",
@@ -364,6 +385,7 @@ export default function NameOverlay({
               </text>
             ))}
 
+            {/* empty below md, where the layout carries no echoes */}
             {layout.echoes.map((echo, i) => (
               <g key={i} clipPath={`url(#${clip}-echo-${i})`}>
                 <text
