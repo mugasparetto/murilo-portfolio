@@ -210,7 +210,7 @@ export default function Scene({ scrollRef }: Props) {
 
         <Suspense fallback={null}>
           <CircularText
-            position={[1200, 1000, -1500]}
+            position={[1000, 840, -1500]}
             fontSize={55}
             radius={270}
             text="AVAILABLE FOR * NEW PROJECTS * "
