@@ -16,6 +16,11 @@ interface CircularTextProps {
   centerImageSize?: number;
   /** Square canvas size the ring is baked into. Power of two. */
   resolution?: number;
+  /** How far outside the ring, in world units, the pointer still pulls it. */
+  magnetPadding?: number;
+  /** Pointer offset is divided by this — higher means a weaker pull. */
+  magnetStrength?: number;
+  magnetDisabled?: boolean;
 }
 
 /** How each hover mode maps onto the base spin. */
@@ -24,7 +29,7 @@ const HOVER_STATES: Record<
   { timeScale: number; scale: number }
 > = {
   slowDown: { timeScale: 0.5, scale: 1 },
-  speedUp: { timeScale: 4, scale: 1 },
+  speedUp: { timeScale: 5, scale: 1 },
   pause: { timeScale: 0, scale: 1 },
   goBonkers: { timeScale: 20, scale: 0.8 },
 };
@@ -33,6 +38,10 @@ const HOVER_STATES: Record<
 const SCALE_SPRING = { stiffness: 170, damping: 12 };
 /** Exponential decay rate for the timeScale ramp — ~95% of the way there in 0.6s, like power2.out. */
 const RAMP_LAMBDA = 5;
+
+/** Magnet follow/release rates, standing in for the DOM version's 0.3s ease-out / 0.5s ease-in-out. */
+const MAGNET_ATTRACT_LAMBDA = 10;
+const MAGNET_RELEASE_LAMBDA = 6;
 
 const FALLBACK_FAMILY = "sans-serif";
 
@@ -122,6 +131,9 @@ const CircularText: React.FC<CircularTextProps> = ({
   centerImage = "/textures/star.webp",
   centerImageSize = fontSize * 2,
   resolution = 1024,
+  magnetPadding = 20,
+  magnetStrength = 5,
+  magnetDisabled = false,
 }) => {
   const { gl } = useThree();
   const groupRef = useRef<THREE.Group>(null);
@@ -168,7 +180,28 @@ const CircularText: React.FC<CircularTextProps> = ({
   const targetScaleRef = useRef(1);
   const scaleVelocityRef = useRef(0);
 
-  useFrame((_, delta) => {
+  // Magnet: the group's untouched home in parent space, plus the live offset
+  // the pointer has pulled it by.
+  const basePosition = useMemo(
+    () => new THREE.Vector3(...position),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [position[0], position[1], position[2]],
+  );
+  const magnetOffsetRef = useRef(new THREE.Vector3());
+  // Scratch objects, so the pointer test allocates nothing per frame.
+  const magnet = useMemo(
+    () => ({
+      raycaster: new THREE.Raycaster(),
+      plane: new THREE.Plane(),
+      normal: new THREE.Vector3(),
+      hit: new THREE.Vector3(),
+      home: new THREE.Vector3(),
+      target: new THREE.Vector3(),
+    }),
+    [],
+  );
+
+  useFrame((state, delta) => {
     const group = groupRef.current;
     if (!group) return;
 
@@ -192,6 +225,45 @@ const CircularText: React.FC<CircularTextProps> = ({
     scaleVelocityRef.current += acceleration * delta;
     scaleRef.current += scaleVelocityRef.current * delta;
     group.scale.setScalar(scaleRef.current);
+
+    // --- magnet ---------------------------------------------------------
+    // Same rule as the DOM version, just measured in world units instead of
+    // pixels: while the pointer sits inside the ring's box grown by `padding`,
+    // the group chases a fraction of the pointer's offset from its home.
+    const parent = group.parent;
+    const { raycaster, plane, normal, hit, home, target } = magnet;
+    target.set(0, 0, 0);
+
+    if (!magnetDisabled && parent) {
+      // Cast the pointer at the plane the ring lives in, expressed in world
+      // space so any transform on the parent is accounted for.
+      home.copy(basePosition).applyMatrix4(parent.matrixWorld);
+      normal.set(0, 0, 1).transformDirection(parent.matrixWorld).normalize();
+      plane.setFromNormalAndCoplanarPoint(normal, home);
+
+      raycaster.setFromCamera(state.pointer, state.camera);
+
+      if (raycaster.ray.intersectPlane(plane, hit)) {
+        // Back into parent space, where `extent` and `position` are measured.
+        parent.worldToLocal(hit).sub(basePosition);
+
+        const reach = extent + magnetPadding;
+        if (Math.abs(hit.x) < reach && Math.abs(hit.y) < reach) {
+          target.copy(hit).divideScalar(magnetStrength);
+        }
+      }
+    }
+
+    // Snapping back is deliberately lazier than being pulled in.
+    const lambda = target.lengthSq()
+      ? MAGNET_ATTRACT_LAMBDA
+      : MAGNET_RELEASE_LAMBDA;
+    const offset = magnetOffsetRef.current;
+    offset.x = THREE.MathUtils.damp(offset.x, target.x, lambda, delta);
+    offset.y = THREE.MathUtils.damp(offset.y, target.y, lambda, delta);
+    offset.z = THREE.MathUtils.damp(offset.z, target.z, lambda, delta);
+
+    group.position.copy(basePosition).add(offset);
   });
 
   const applyState = useCallback((timeScale: number, scale: number) => {

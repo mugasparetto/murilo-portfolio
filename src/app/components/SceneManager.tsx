@@ -78,9 +78,9 @@ export default function SceneManager() {
       {up.md && (
         <ParallaxRig
           poseRef={poseRef}
-          strength={90}
-          damp={6}
-          targetStrength={0.2}
+          strength={100}
+          damp={4}
+          targetStrength={0.3}
         />
       )}
 
