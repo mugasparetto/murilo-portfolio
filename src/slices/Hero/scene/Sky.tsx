@@ -39,6 +39,19 @@ const DOME_RADIUS = 6000;
      sx -0.95..-0.25 / sy 0.05..0.30 and the circular text around sx 0.34 /
      sy -0.05. All of those are laid out against the viewport too, so they
      hold wherever the frame ends up.
+
+   A placement can also opt out entirely and give `position: [x, y, z]` in
+   world space instead of `sx`/`sy`/`z`. Nothing reframes it — it lands where
+   the numbers say on every screen, which is what you want when a solid has to
+   sit against a fixed piece of the world (tucked behind a specific ridge, say)
+   rather than against the frame.
+
+   Each solid carries its placements mobile-first, the same way the CSS reads:
+   `base` is what runs below md, `md` takes over from md up, and a solid with
+   no `md` just keeps its `base` everywhere. The two are independent — depth
+   included — so a solid can be NDC-framed on phones, where the frame is tall
+   and narrow and the field has to re-spread to stay visible, and pinned to
+   hand-tuned world coordinates on the wide layouts it was composed against.
    ------------------------------------------------------------------------- */
 
 type SolidKind =
@@ -48,24 +61,71 @@ type SolidKind =
   | "octahedron"
   | "tetrahedron";
 
-type SolidSpec = {
-  kind: SolidKind;
+/** Authored against the frame: resolved to world space for the current aspect. */
+type FramedPlacement = {
   /** NDC x at the resting pose: -1 is the left edge, 1 the right */
   sx: number;
   /** NDC y at the resting pose: the horizon sits at about -0.5 */
   sy: number;
   /** world depth */
   z: number;
+  position?: never;
+};
+
+/** Authored in world space: used verbatim, whatever shape the frame takes. */
+type PinnedPlacement = {
+  /** world [x, y, z] */
+  position: readonly [number, number, number];
+  sx?: never;
+  sy?: never;
+  z?: never;
+};
+
+type Placement = FramedPlacement | PinnedPlacement;
+
+type SolidSpec = {
+  kind: SolidKind;
   /** radius in world units — the base geometries are all built at radius 1 */
   size: number;
+  /** placement below md, and the fallback whenever `md` is absent */
+  base: Placement;
+  /** placement from md up */
+  md?: Placement;
 };
 
 const SOLIDS: SolidSpec[] = [
-  { kind: "cube", sx: 0.54, sy: 0.04, z: -12300, size: 400 },
-  { kind: "icosahedron", sx: -0.28, sy: 0.07, z: -9500, size: 370 },
-  { kind: "pyramid", sx: 0.25, sy: 0.24, z: -13000, size: 220 },
-  { kind: "octahedron", sx: -0.45, sy: -0.37, z: -27000, size: 2420 },
+  {
+    kind: "cube",
+    size: 400,
+    base: { sx: 0.54, sy: -0.12, z: -12300 },
+    md: { position: [5800, 3200, -12300] },
+  },
+  {
+    kind: "icosahedron",
+    size: 370,
+    base: { sx: -0.5, sy: 0.12, z: -15500 },
+    md: { position: [-2400, 2600, -9500] },
+  },
+  {
+    kind: "pyramid",
+    size: 220,
+    base: { sx: 0.35, sy: 0.34, z: -13000 },
+    md: { position: [3000, 4700, -13000] },
+  },
+  {
+    kind: "octahedron",
+    size: 2420,
+    base: { sx: -0.55, sy: -0.45, z: -27000 },
+    md: { position: [-8600, 1800, -27000] },
+  },
 ];
+
+/** The placement in force at the current width. */
+const placementOf = (s: SolidSpec, mdUp: boolean) =>
+  mdUp && s.md ? s.md : s.base;
+
+/** Depth of a placement however it was authored — the tiers key off this. */
+const depthOf = (p: Placement) => (p.position ? p.position[2] : p.z);
 
 /**
  * Outline weight and brightness by depth. `LineMaterial.linewidth` is in
@@ -114,6 +174,13 @@ function skyPosition(sx: number, sy: number, z: number, aspect: number) {
     .addScaledVector(VIEW_UP, sy * TAN_V);
 
   return BASE_EYE.clone().addScaledVector(dir, (z - BASE_EYE.z) / dir.z);
+}
+
+/** Resting world position of a placement, whichever frame it was authored in. */
+function placementPosition(p: Placement, aspect: number) {
+  return p.position
+    ? new THREE.Vector3(...p.position)
+    : skyPosition(p.sx, p.sy, p.z, aspect);
 }
 
 // deterministic per-solid jitter, same trick as <InstancedStars />: hand-tuning
@@ -207,12 +274,18 @@ export default function Sky() {
     };
   }, [geometries, lineGeometries, blackMat, lineMats]);
 
-  // resting world position of each solid, re-resolved when the frame changes
-  // shape so the field keeps spanning the sky
+  // the placement in force at this width, and its resting world position —
+  // re-resolved when the frame changes shape (so a framed placement keeps
+  // spanning the sky) or when the layout crosses md
+  const placements = useMemo(
+    () => SOLIDS.map((s) => placementOf(s, up.md)),
+    [up.md],
+  );
+
   const layout = useMemo(() => {
     const aspect = size.height > 0 ? size.width / size.height : 1;
-    return SOLIDS.map((s) => skyPosition(s.sx, s.sy, s.z, aspect));
-  }, [size.width, size.height]);
+    return placements.map((p) => placementPosition(p, aspect));
+  }, [placements, size.width, size.height]);
 
   const motion = useMemo(
     () =>
@@ -277,35 +350,34 @@ export default function Sky() {
 
   return (
     <group>
-      {up.md &&
-        SOLIDS.map((s, i) => (
-          <group
-            key={`${s.kind}-${i}`}
-            ref={(el) => {
-              groupRefs.current[i] = el;
-            }}
-          >
-            <OutlinedSolid
-              geometry={geometries[s.kind]}
-              lineGeometry={lineGeometries[s.kind]}
-              fillMaterial={blackMat}
-              lineMaterial={lineMats[tierOf(s.z)]}
-              scale={s.size}
-              // The terrain and the mountains are transparent with
-              // depthWrite off, so they can only hide what was drawn before
-              // them — and the transparent sort weighs renderOrder ahead of
-              // distance. At the default 0 the outline (fill + 1) lands after
-              // the terrain and paints over a ridge that is thousands of units
-              // in front of it. -2 puts fill and outline both behind it.
-              renderOrder={-2}
-              // z-fighting + distance stability
-              polygonOffset
-              polygonOffsetFactor={2}
-              polygonOffsetUnits={2}
-              wireScale={1.002}
-            />
-          </group>
-        ))}
+      {SOLIDS.map((s, i) => (
+        <group
+          key={`${s.kind}-${i}`}
+          ref={(el) => {
+            groupRefs.current[i] = el;
+          }}
+        >
+          <OutlinedSolid
+            geometry={geometries[s.kind]}
+            lineGeometry={lineGeometries[s.kind]}
+            fillMaterial={blackMat}
+            lineMaterial={lineMats[tierOf(depthOf(placements[i]))]}
+            scale={s.size}
+            // The terrain and the mountains are transparent with
+            // depthWrite off, so they can only hide what was drawn before
+            // them — and the transparent sort weighs renderOrder ahead of
+            // distance. At the default 0 the outline (fill + 1) lands after
+            // the terrain and paints over a ridge that is thousands of units
+            // in front of it. -2 puts fill and outline both behind it.
+            renderOrder={-2}
+            // z-fighting + distance stability
+            polygonOffset
+            polygonOffsetFactor={2}
+            polygonOffsetUnits={2}
+            wireScale={1.002}
+          />
+        </group>
+      ))}
 
       <Stars
         radius={1500}
