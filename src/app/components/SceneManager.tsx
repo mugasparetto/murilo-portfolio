@@ -54,8 +54,8 @@ export default function SceneManager() {
         windows={[
           {
             window: {
-              startVh: 190,
-              endVh: 320,
+              startVh: 115,
+              endVh: 250,
             },
             from: {
               position: [0, 200, 3380], // pose A

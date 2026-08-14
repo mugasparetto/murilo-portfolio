@@ -77,7 +77,7 @@ const About: FC<AboutProps> = ({ slice }) => {
       ref={aboutRef}
       data-slice-type={slice.slice_type}
       data-slice-variation={slice.variation}
-      className="h-[310vh] relative"
+      className="h-[350vh] relative"
     ></section>
   );
 };

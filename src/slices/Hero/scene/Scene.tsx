@@ -182,7 +182,7 @@ export default function Scene({ scrollRef }: Props) {
             params={p}
             doorMat={displayMat}
             doorProjectionRef={doorProjectionRef}
-            scrollWindow={{ startVh: 75, endVh: 150 }}
+            scrollWindow={{ startVh: 0, endVh: 75 }}
           >
             {/* <HumanModel /> */}
             <HumanDestruction
@@ -197,7 +197,7 @@ export default function Scene({ scrollRef }: Props) {
             pointerUvRef={pointerUvRef}
             pointerActiveRef={pointerActiveRef}
             doorProjectionRef={doorProjectionRef}
-            scrollWindow={{ startVh: 150, endVh: 200 }}
+            scrollWindow={{ startVh: 75, endVh: 125 }}
           />
         </group>
 

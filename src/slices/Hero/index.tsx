@@ -54,7 +54,7 @@ const Hero: FC<HeroProps> = ({ slice }) => {
       ref={heroRef}
       data-slice-type={slice.slice_type}
       data-slice-variation={slice.variation}
-      style={{ width: "100%", height: "320vh" }}
+      className="h-[250vh]"
     >
       {/* DOM, so the composer's vignette and the pointer parallax can't reach
           them; the drivers inside the scene move them with the camera */}
