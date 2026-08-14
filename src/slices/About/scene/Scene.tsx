@@ -182,7 +182,7 @@ const MOUTH_AREA: Quad = {
 };
 
 export default function Scene({ scrollWindow, content }: Props) {
-  const { up } = useBreakpoints(BREAKPOINTS);
+  const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
   const head = useRef<THREE.Group | null>(null);
 
   const headContentRef = useRef<HTMLDivElement>(null);

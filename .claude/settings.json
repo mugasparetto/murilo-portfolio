@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__c0d99181._.css\" -o nav.css --max-time 60)",
+      "Bash(\"/c/Program Files/Google/Chrome/Application/chrome.exe\" --headless=new --disable-gpu --hide-scrollbars --virtual-time-budget=8000 --window-size=1440,900 --screenshot=desktop.png \"http://localhost:3000/\")",
+      "Bash(\"/c/Program Files/Google/Chrome/Application/chrome.exe\" --headless=new --disable-gpu --hide-scrollbars --virtual-time-budget=8000 --window-size=1440,900 \"--screenshot=C:\\\\Users\\\\mugas\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-mugas-www-murilo-portfolio\\\\19ceb157-e8ca-4ca5-8b0c-e6fe1769986d\\\\scratchpad\\\\desktop.png\" \"http://localhost:3000/\")",
+      "Bash(\"/c/Program Files/Google/Chrome/Application/chrome.exe\" --headless=new --disable-gpu --hide-scrollbars --virtual-time-budget=8000 --window-size=390,844 \"--screenshot=C:\\\\Users\\\\mugas\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-mugas-www-murilo-portfolio\\\\19ceb157-e8ca-4ca5-8b0c-e6fe1769986d\\\\scratchpad\\\\mobile.png\" \"http://localhost:3000/\")",
+      "Bash('/c/Program Files/Google/Chrome/Application/chrome.exe' --headless=new --disable-gpu --hide-scrollbars --virtual-time-budget=3000 --window-size=760,400 '--screenshot=C:\\\\Users\\\\mugas\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-mugas-www-murilo-portfolio\\\\19ceb157-e8ca-4ca5-8b0c-e6fe1769986d\\\\scratchpad\\\\par-test.png' 'file:///C:\\\\Users\\\\mugas\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-mugas-www-murilo-portfolio\\\\19ceb157-e8ca-4ca5-8b0c-e6fe1769986d\\\\scratchpad\\\\par-test.html')",
+      "Bash('/c/Program Files/Google/Chrome/Application/chrome.exe' --headless=new --disable-gpu --remote-debugging-port=9333 --user-data-dir=C:/Users/mugas/AppData/Local/Temp/claude/c--Users-mugas-www-murilo-portfolio/19ceb157-e8ca-4ca5-8b0c-e6fe1769986d/scratchpad/cdp-profile about:blank)",
+      "Bash(curl -s --max-time 2 http://127.0.0.1:9333/json/version)",
+      "Bash(node C:/Users/mugas/AppData/Local/Temp/claude/c--Users-mugas-www-murilo-portfolio/19ceb157-e8ca-4ca5-8b0c-e6fe1769986d/scratchpad/measure.mjs http://127.0.0.1:9333 http://localhost:3000/ 390 844)"
+    ]
+  }
+}

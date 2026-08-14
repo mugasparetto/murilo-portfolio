@@ -41,7 +41,7 @@ type Props = {
 export default function Scene({ scrollRef }: Props) {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
-  const { up } = useBreakpoints(BREAKPOINTS);
+  const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
 
   // ✅ single stable params object that GUI mutates
   const paramsRef = useRef<SceneParams>({ ...defaultParams });
@@ -203,7 +203,7 @@ export default function Scene({ scrollRef }: Props) {
 
         <Sky />
 
-        {/* the name and headline are DOM overlays in <Hero />; these only
+        {/* the name, headline and cta are DOM overlays in <Hero />; these only
             drive them */}
         <NameDriver doorProjectionRef={doorProjectionRef} />
         <HeadlineDriver />

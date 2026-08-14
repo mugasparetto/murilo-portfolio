@@ -244,7 +244,7 @@ export default function Model(props: JSX.IntrinsicElements["group"]) {
   const { actions } = useAnimations<GLTFActions>(animations, group);
   const setOutlined = useStore((s) => s.setOutlined);
   const clearOutlined = useStore((s) => s.clearOutlined);
-  const { up } = useBreakpoints(BREAKPOINTS);
+  const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
   const hiRes = useAdaptiveGate({
     disableBelow: 30,
     enableAbove: 31,

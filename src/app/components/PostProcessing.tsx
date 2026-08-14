@@ -19,7 +19,7 @@ type Props = {
 };
 
 export default function PostProcessing({ selected }: Props) {
-  const { up } = useBreakpoints(BREAKPOINTS);
+  const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
 
   const hiRes = useAdaptiveGate({ disableBelow: 30, enableAbove: 31 });
 

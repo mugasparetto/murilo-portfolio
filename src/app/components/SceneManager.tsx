@@ -24,7 +24,7 @@ export default function SceneManager() {
   const { entries } = useSceneRegistry();
   // ✅ single stable params object that GUI mutates
   const paramsRef = useRef<SceneParams>({ ...defaultParams });
-  const { up } = useBreakpoints(BREAKPOINTS);
+  const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
   const { outlined } = useStore();
 
   const poseRef = useRef<CameraPose>({

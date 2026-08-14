@@ -2,16 +2,9 @@ import { PrismicPreview } from "@prismicio/next";
 import { repositoryName } from "@/prismicio";
 
 import ClientProvider from "./components/ClientProvider";
+import SiteNav from "./components/SiteNav";
 
 import "./globals.css";
-
-import { Inter } from "next/font/google";
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
 
 export default function RootLayout({
   children,
@@ -19,9 +12,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en">
       <body>
         <ClientProvider>{children}</ClientProvider>
+        {/* outside the provider: fixed to the viewport, so it belongs to the
+            page rather than the scroller or the canvas */}
+        <SiteNav />
       </body>
       <PrismicPreview repositoryName={repositoryName} />
     </html>

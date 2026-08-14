@@ -44,3 +44,31 @@ body {
   color: white;
   font-family: var(--font-sans);
 }
+
+/*
+ * Hero CTA icon swap — see <CtaOverlay /> in src/slices/Hero/scene/Cta.tsx.
+ *
+ * Plain CSS rather than hover: utilities because the transitions are declared
+ * *inside* the hover state: leaving the button drops them, so the planes snap
+ * home rather than flying backwards.
+ */
+.cta-icon-copy {
+  transform: translate(-150%, 150%);
+}
+
+.cta-button:hover .cta-icon-lead {
+  transition: transform 0.2s ease-in-out;
+  transform: translate(150%, -150%);
+}
+
+.cta-button:hover .cta-icon-copy {
+  transition: transform 0.2s ease-in-out 0.1s;
+  transform: translate(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cta-button:hover .cta-icon-lead,
+  .cta-button:hover .cta-icon-copy {
+    transition: none;
+  }
+}

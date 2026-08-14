@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { KeyTextField } from "@prismicio/client";
 
-import { backdropOutline } from "@/app/helpers/backdrop";
-import { blockFill, nameBand, type BandRect } from "./Name";
-import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
+import { clipToBackdrop, createBackdropClip } from "@/app/helpers/backdrop";
+import { blockInset, nameBand, type BandRect } from "./Name";
+import SpecularButton from "@/app/components/SpecularButton";
 
 /**
  * The headline is the paragraph under the name — read the two as one block:
@@ -33,6 +32,23 @@ import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
  * coordinates honest.
  */
 
+function SendIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M22 2L11 13" />
+      <path d="M22 2L15 22L11 13L2 9L22 2Z" />
+    </svg>
+  );
+}
+
 type Props = {
   tagline: KeyTextField;
   description: KeyTextField;
@@ -44,18 +60,6 @@ const overlay: {
   height: number;
 } = { band: null, height: 0 };
 
-/** how far the cut-out's outer contour reaches past the band, in px */
-const BLEED = 200;
-
-/**
- * The projected backdrop outline, x/y interleaved, plus the last set actually
- * written. Whole pixels, so a slow camera move doesn't rewrite the path — and
- * so repaint the type — every single frame. Reused buffers, so the frame loop
- * never allocates.
- */
-const poly = new Int32Array(64);
-const written = new Int32Array(64);
-
 /**
  * Lives in the Hero section, above the canvas. Nothing here changes after
  * mount — <HeadlineDriver /> only ever touches the band's transform and clip.
@@ -64,8 +68,6 @@ export default function HeadlineOverlay({
   tagline = "",
   description = "",
 }: Props) {
-  const { up } = useBreakpoints(BREAKPOINTS);
-
   const head = (tagline ?? "").trim();
   const body = (description ?? "").trim();
   const band = useRef<HTMLDivElement | null>(null);
@@ -105,11 +107,13 @@ export default function HeadlineOverlay({
       // resize, and the server renders what the client hydrates. The gap under
       // the name is padding, not a margin, so the band's box still starts
       // exactly at the name's bottom edge — which is what the clip counts on.
-      className="pointer-events-none fixed top-0 left-0 z-1 w-full pt-4 md:pt-7 lg:pt-9 xl:pt-10 2xl:pt-11"
+      //
+      // The side inset matches the centred name svg's left edge, which pulls in
+      // below md; both values come from `blockFill` via `blockInset`, so the two
+      // still move together.
+      className="pointer-events-none fixed top-0 left-0 z-1 w-full px-(--block-inset) pt-4 md:px-(--block-inset-md) md:pt-7 lg:pt-9 xl:pt-10 2xl:pt-11"
       style={{
-        // matches the centred name svg's left edge, which pulls in below md
-        paddingLeft: `${(1 - blockFill(up.md)) * 50}%`,
-        paddingRight: `${(1 - blockFill(up.md)) * 50}%`,
+        ...blockInset,
         contain: "layout style",
         // moved every frame and never re-laid-out, so keep it on its own
         // compositor layer
@@ -119,7 +123,7 @@ export default function HeadlineOverlay({
         visibility: "hidden",
       }}
     >
-      {!up.md && <hr className="border-white/60 pb-3" />}
+      <hr className="border-white/60 pb-3 md:hidden" />
 
       {head && (
         <h2 className="flex items-center font-display m-0 text-base leading-tight font-extrabold text-white uppercase md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl">
@@ -134,6 +138,34 @@ export default function HeadlineOverlay({
           {body}
         </p>
       )}
+
+      <SpecularButton
+        // `size` only picks a set of classes, so the md step is a media query
+        // like everything else here rather than a second read of the viewport —
+        // these three are `lg`'s half of SIZES in <SpecularButton />.
+        size="sm"
+        onClick={() => {}}
+        // cta-button is what the icon swap hangs its hover off — see globals.css
+        className="cta-button pointer-events-auto mt-5 md:mt-10 md:px-10 md:py-4.5 md:text-[1.15rem] lg:px-8 lg:py-4"
+        tintOpacity={1}
+        tint="#000"
+        textColor="#fff"
+        autoAnimate
+        radius={40}
+        intensity={1.35}
+        speed={0.5}
+      >
+        <span className="inline-flex items-center gap-4">
+          Get in touch
+          <span
+            aria-hidden="true"
+            className="grid size-6 md:size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-white text-black *:col-start-1 *:row-start-1"
+          >
+            <SendIcon className="cta-icon-lead size-3 md:size-4" />
+            <SendIcon className="cta-icon-copy size-3 md:size-4" />
+          </span>
+        </span>
+      </SpecularButton>
     </div>
   );
 }
@@ -148,11 +180,8 @@ export function HeadlineDriver() {
   const { camera, size } = useThree();
 
   const rect = useMemo<BandRect>(() => ({ y: 0, height: 0 }), []);
-  const scratch = useMemo(() => new THREE.Vector3(), []);
+  const clip = useMemo(() => createBackdropClip(), []);
   const lastY = useRef(NaN);
-  const lastBandH = useRef(NaN);
-  const lastCount = useRef(0);
-  const lastCut = useRef<boolean | null>(null);
   const lastHidden = useRef<boolean | null>(null);
 
   useFrame(() => {
@@ -178,91 +207,9 @@ export function HeadlineDriver() {
       lastY.current = y;
     }
 
-    // --- backdrop cut-out, in the band's own box.
-    //
-    // The only thing here that can dirty the type, so it stays "none" until the
-    // About plane has actually risen far enough to reach it — which for most of
-    // the hero it hasn't.
-    const outline = backdropOutline();
-    let n = 0;
-    let cut = false;
-
-    if (outline && outline.length * 2 <= poly.length) {
-      let minX = Infinity;
-      let maxX = -Infinity;
-      let minY = Infinity;
-      let maxY = -Infinity;
-      let ahead = true;
-
-      for (let i = 0; i < outline.length; i++) {
-        scratch.copy(outline[i]).applyMatrix4(camera.matrixWorldInverse);
-
-        // a point behind the eye projects to a mirrored, meaningless place. The
-        // backdrop never gets there, but a mask built from one would swallow
-        // the whole block, so bail rather than guess.
-        if (scratch.z > -1) {
-          ahead = false;
-          break;
-        }
-
-        scratch.applyMatrix4(camera.projectionMatrix);
-
-        const px = Math.round((scratch.x * 0.5 + 0.5) * size.width);
-        const py = Math.round((1 - (scratch.y * 0.5 + 0.5)) * size.height) - y;
-
-        poly[n++] = px;
-        poly[n++] = py;
-
-        if (px < minX) minX = px;
-        if (px > maxX) maxX = px;
-        if (py < minY) minY = py;
-        if (py > maxY) maxY = py;
-      }
-
-      cut = ahead && maxX > 0 && minX < size.width && maxY > 0 && minY < bandH;
-    }
-
-    if (!cut) n = 0;
-
-    // integer compare before anything else: writing `clip-path` repaints the
-    // type, so it has to be earned
-    let moved =
-      cut !== lastCut.current ||
-      n !== lastCount.current ||
-      bandH !== lastBandH.current;
-
-    if (cut && !moved) {
-      for (let i = 0; i < n; i++) {
-        if (poly[i] !== written[i]) {
-          moved = true;
-          break;
-        }
-      }
-    }
-
-    if (!moved) return;
-
-    if (!cut) {
-      band.style.clipPath = "none";
-    } else {
-      // outer contour clockwise, the outline counter-clockwise against it, so
-      // it punches through under either fill rule — which spares `path()` an
-      // `evenodd` argument, the part with the thinnest support
-      let d = `M${-BLEED} ${-BLEED}H${size.width + BLEED}V${
-        bandH + BLEED
-      }H${-BLEED}Z`;
-
-      for (let i = 0; i < n; i += 2) {
-        d += `${i ? "L" : "M"}${poly[i]} ${poly[i + 1]}`;
-      }
-
-      band.style.clipPath = `path("${d}Z")`;
-      for (let i = 0; i < n; i++) written[i] = poly[i];
-    }
-
-    lastCut.current = cut;
-    lastCount.current = n;
-    lastBandH.current = bandH;
+    // the band's box starts at the name's bottom edge, so the outline has to be
+    // projected relative to `y`
+    clipToBackdrop(clip, band, camera, size.width, size.height, y, bandH);
   });
 
   return null;

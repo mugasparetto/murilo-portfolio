@@ -1,6 +1,14 @@
 "use client";
 
-import { RefObject, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  CSSProperties,
+  RefObject,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { KeyTextField } from "@prismicio/client";
@@ -91,6 +99,18 @@ const TOP = 0.05;
  */
 export const blockFill = (upMd: boolean) => (upMd ? 0.95 : 0.9);
 
+/**
+ * The same inset as custom properties, one per tier, for the overlays that line
+ * up with the block but don't need to *know* the breakpoint — see
+ * <HeadlineOverlay /> and <CtaOverlay />. Both values are constants, so they
+ * render identically on the server and the client and the tier is picked by a
+ * media query rather than by JS.
+ */
+export const blockInset = {
+  "--block-inset": `${(1 - blockFill(false)) * 50}vw`,
+  "--block-inset-md": `${(1 - blockFill(true)) * 50}vw`,
+} as CSSProperties;
+
 /** space between stacked lines, in cap heights */
 const LINE_GAP = 0.2;
 
@@ -118,10 +138,9 @@ const ECHOES = [
 const ECHO_STROKE = 0.028;
 
 /**
- * World point the block is pinned to, on the rest camera's view axis and far
- * enough ahead that scrolling drifts the name up at the pace of the near
- * geometry. Only the *delta* from its resting projection is used, so moving it
- * changes how fast the name leaves, never where it starts.
+ * World point the block is pinned to, on the rest camera's view axis. Deep
+ * enough that the name drifts up slowly, letting the hero scroll past behind
+ * it — see {@link anchorDrift} for what depth buys.
  */
 const ANCHOR = new THREE.Vector3(0, 1050, -1330);
 
@@ -146,26 +165,57 @@ const quad = new Int32Array(8);
 const written = new Int32Array(8);
 
 /**
- * NDC y of ANCHOR at the resting pose, worked out on first use. The camera's
- * fov is vertical, so this is aspect-independent and depends on nothing but
- * module constants.
+ * The resting pose as a camera, built on first use from the scene defaults, so
+ * anything can ask where that pose put a world point. Aspect is arbitrary: the
+ * fov is vertical, so NDC y doesn't depend on it.
  */
-let restY = NaN;
+let restCam: THREE.PerspectiveCamera | null = null;
 
-function anchorRestY() {
-  if (Number.isNaN(restY)) {
+function restCamera() {
+  if (!restCam) {
     const p = defaultParams;
-    const cam = new THREE.PerspectiveCamera(p.fov, 1, 50, 100000);
-    cam.position.set(p.cameraX, p.cameraY, p.cameraZ);
-    cam.lookAt(p.targetX, p.targetY, p.targetZ);
-    cam.updateMatrixWorld();
-    restY = ANCHOR.clone().project(cam).y;
+    restCam = new THREE.PerspectiveCamera(p.fov, 1, 50, 100000);
+    restCam.position.set(p.cameraX, p.cameraY, p.cameraZ);
+    restCam.lookAt(p.targetX, p.targetY, p.targetZ);
+    restCam.updateMatrixWorld();
   }
 
-  return restY;
+  return restCam;
 }
 
-const bandScratch = new THREE.Vector3();
+const liveScratch = new THREE.Vector3();
+const restScratch = new THREE.Vector3();
+
+/**
+ * How far `anchor` has drifted from its resting place this frame, in CSS px —
+ * negative once the camera has descended and the hero is leaving upwards.
+ *
+ * This is the whole of the hero overlays' motion: they're `fixed`, so nothing
+ * else moves them. Each one offsets its own resting position by this and so
+ * travels exactly as its anchor does.
+ *
+ * Which anchor is the pace knob, and depth is what sets it: the camera both
+ * descends and pitches over the hero, so a point far down the view axis picks
+ * up almost nothing but the rotation and crawls, while a near one gets the
+ * translation too and leaves fast. Only the *delta* from the resting projection
+ * is used, so moving an anchor changes how fast its overlay leaves, never where
+ * it starts.
+ *
+ * Projected in the base frame, so the pointer parallax is stripped out.
+ */
+export function anchorDrift(
+  anchor: THREE.Vector3,
+  camera: THREE.Camera,
+  height: number,
+) {
+  liveScratch.copy(anchor);
+  toBaseFrame(liveScratch);
+  liveScratch.project(camera);
+
+  restScratch.copy(anchor).project(restCamera());
+
+  return (restScratch.y - liveScratch.y) * 0.5 * height;
+}
 
 export type BandRect = { y: number; height: number };
 
@@ -189,17 +239,9 @@ export function nameBand(
   const layout = overlay.layout;
   if (!layout) return null;
 
-  // how far ANCHOR has travelled since the rest pose, projected in the base
-  // frame so the pointer parallax is stripped out
-  bandScratch.copy(ANCHOR);
-  toBaseFrame(bandScratch);
-  bandScratch.project(camera);
-
   // whole pixels: a fractional translate would resample the type every frame,
   // which reads as shimmer on the stroked echoes
-  out.y = Math.round(
-    height * TOP + (anchorRestY() - bandScratch.y) * 0.5 * height,
-  );
+  out.y = Math.round(height * TOP + anchorDrift(ANCHOR, camera, height));
   // the svg's intrinsic ratio, so this matches its laid-out height exactly
   out.height = Math.round((width * overlay.fill * layout.depth) / layout.inkW);
 

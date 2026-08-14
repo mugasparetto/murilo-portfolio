@@ -51,6 +51,8 @@ export function useBreakpoints<T extends Breakpoints>(
   options?: {
     defaultTier?: keyof T;
     defaultWidth?: number; // for initial SSR-friendly state
+    /** see `getInitialWidth` — only for consumers that render no SSR'd markup */
+    clientOnly?: boolean;
   },
 ): ResponsiveReturn<T> {
   // stable deps even if screens object is inline
@@ -101,9 +103,19 @@ export function useBreakpoints<T extends Breakpoints>(
     return { nextUp, nextDown };
   };
 
+  // The first client render has to reproduce the server's HTML or hydration
+  // fails, so it can't read the window — the effect below runs `update()` on
+  // mount and the real width lands immediately after. Reading it here instead
+  // buys a correct first render at the cost of every consumer that puts a
+  // breakpoint into its markup.
+  //
+  // `clientOnly` consumers have no such markup — everything inside the <Canvas>
+  // is mounted client-side — and for them the one-tick delay *is* visible: the
+  // scene lays itself out for mobile, then jumps when the real width lands.
   const getInitialWidth = () => {
-    // client: use real width immediately (prevents "all false" first render)
-    if (typeof window !== "undefined") return window.innerWidth;
+    if (options?.clientOnly && typeof window !== "undefined")
+      return window.innerWidth;
+
     return options?.defaultWidth ?? 0;
   };
 

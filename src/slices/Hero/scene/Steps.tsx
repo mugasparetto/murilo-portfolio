@@ -55,7 +55,7 @@ export default function Steps({
 
   const scrollVh = useScrollVhAbsolute(scrollContainerRef);
 
-  const { up } = useBreakpoints(BREAKPOINTS);
+  const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
 
   const stepWidth = 800;
   const stepHeight = 40;

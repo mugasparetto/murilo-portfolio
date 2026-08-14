@@ -193,7 +193,7 @@ const rnd = (i: number, salt: number) =>
 export default function Sky() {
   const { size, gl } = useThree();
   const dpr = gl.getPixelRatio();
-  const { up } = useBreakpoints(BREAKPOINTS);
+  const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
 
   // one per SOLIDS entry, so the frame loop can move fill + outline together
   const groupRefs = useRef<(THREE.Group | null)[]>([]);

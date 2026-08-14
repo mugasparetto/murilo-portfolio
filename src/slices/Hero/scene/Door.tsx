@@ -51,7 +51,7 @@ export default function Door({
 }: Props) {
   const { size, camera, gl, pointer } = useThree();
   const dpr = gl.getPixelRatio();
-  const { up } = useBreakpoints(BREAKPOINTS);
+  const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
   const doorRef = useRef<THREE.Mesh>(null);
 
   const scrollVh = useScrollVhAbsolute(scrollContainerRef);
