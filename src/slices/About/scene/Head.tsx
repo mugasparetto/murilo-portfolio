@@ -249,73 +249,240 @@ const MOUTH_POLYGON: UV[] = [
   [0.1, 0.15],
 ];
 
+// ── Frame-loop scratch ────────────────────────────────────────────────────────
+//
+// Everything the loops below need to read a position, a velocity or a separating
+// axis is preallocated here. Read straightforwardly — a vector per axis, a
+// projection object per test, a clone per position read — three pairs of pieces
+// came to a few hundred short-lived objects a frame, and the loop is at its
+// busiest exactly while a piece is in flight, so the minor collections landed in
+// the middle of a throw.
+//
+// None of it outlives the frame it is written in.
+
+/** Where the assembled face sits. */
+const HOME = new THREE.Vector3(0, -800, 2600);
+const ZERO = new THREE.Vector3();
+
+const posA = new THREE.Vector3();
+const posB = new THREE.Vector3();
+const posC = new THREE.Vector3();
+const clampPos = new THREE.Vector3();
+const velA = new THREE.Vector3();
+const velB = new THREE.Vector3();
+const boundsA = new THREE.Box2();
+const boundsB = new THREE.Box2();
+
 // ── SAT Helpers ───────────────────────────────────────────────────────────────
 
-function getAxes(poly: THREE.Vector2[]): THREE.Vector2[] {
-  const axes: THREE.Vector2[] = [];
-  for (let i = 0; i < poly.length; i++) {
+/**
+ * Candidate separating axes, as flat (x, y) pairs. One axis per edge of each
+ * polygon, so a pair needs `polyA.length + polyB.length` of them: 15 at most
+ * for the three faces below, against the 32 there is room for here. Widen this
+ * if a polygon ever grows past that — a typed array drops out-of-range writes
+ * silently, and a dropped axis is a missed separation, not a crash.
+ */
+const satAxes = new Float64Array(64);
+/** Filled in by the last `satCollide` that returned true. */
+const satHit = { depth: 0, axisX: 0, axisY: 0 };
+
+/** Append one outward edge normal per edge of `poly`, starting at `at`.
+ *  Returns the new write head. */
+function pushAxes(poly: THREE.Vector2[], at: number): number {
+  const n = poly.length;
+  for (let i = 0; i < n; i++) {
     const a = poly[i];
-    const b = poly[(i + 1) % poly.length];
-    const edge = new THREE.Vector2(b.x - a.x, b.y - a.y);
-    axes.push(new THREE.Vector2(-edge.y, edge.x).normalize());
+    const b = poly[i + 1 === n ? 0 : i + 1];
+    const ex = b.x - a.x;
+    const ey = b.y - a.y;
+    const len = Math.sqrt(ex * ex + ey * ey) || 1;
+    satAxes[at++] = -ey / len;
+    satAxes[at++] = ex / len;
   }
-  return axes;
+  return at;
 }
 
-function projectPolygon(axis: THREE.Vector2, poly: THREE.Vector2[]) {
-  let min = Infinity,
-    max = -Infinity;
-  for (const v of poly) {
-    const p = axis.dot(v);
-    if (p < min) min = p;
-    if (p > max) max = p;
+/** World-space AABB of a polygon, written into `out`. */
+function polygonBounds(poly: THREE.Vector2[], out: THREE.Box2): THREE.Box2 {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const { x, y } = poly[i];
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
   }
-  return { min, max };
+  out.min.set(minX, minY);
+  out.max.set(maxX, maxY);
+  return out;
 }
 
-function satCollide(
-  polyA: THREE.Vector2[],
-  polyB: THREE.Vector2[],
-): { depth: number; axis: THREE.Vector2 } | null {
+/**
+ * Separating-axis test. Returns whether the two polygons overlap; on a hit,
+ * `satHit` carries the minimum translation depth and the axis to push `b` along
+ * to separate them, pointing from `a`'s centre toward `b`'s. Overwritten by the
+ * next call.
+ */
+function satCollide(polyA: THREE.Vector2[], polyB: THREE.Vector2[]): boolean {
+  const axisCount = pushAxes(polyB, pushAxes(polyA, 0));
+
   let minDepth = Infinity;
-  const minAxis = new THREE.Vector2();
+  let axisX = 0;
+  let axisY = 0;
 
-  const axes = [...getAxes(polyA), ...getAxes(polyB)];
+  for (let i = 0; i < axisCount; i += 2) {
+    const ax = satAxes[i];
+    const ay = satAxes[i + 1];
 
-  for (const axis of axes) {
-    const a = projectPolygon(axis, polyA);
-    const b = projectPolygon(axis, polyB);
-    const overlap = Math.min(a.max, b.max) - Math.max(a.min, b.min);
-    if (overlap <= 0) return null;
+    let aMin = Infinity,
+      aMax = -Infinity;
+    for (let j = 0; j < polyA.length; j++) {
+      const p = ax * polyA[j].x + ay * polyA[j].y;
+      if (p < aMin) aMin = p;
+      if (p > aMax) aMax = p;
+    }
+
+    let bMin = Infinity,
+      bMax = -Infinity;
+    for (let j = 0; j < polyB.length; j++) {
+      const p = ax * polyB[j].x + ay * polyB[j].y;
+      if (p < bMin) bMin = p;
+      if (p > bMax) bMax = p;
+    }
+
+    const overlap = Math.min(aMax, bMax) - Math.max(aMin, bMin);
+    if (overlap <= 0) return false;
     if (overlap < minDepth) {
       minDepth = overlap;
-      minAxis.copy(axis);
+      axisX = ax;
+      axisY = ay;
     }
   }
 
-  const centreA = polyA
-    .reduce((s, v) => s.add(v), new THREE.Vector2())
-    .divideScalar(polyA.length);
-  const centreB = polyB
-    .reduce((s, v) => s.add(v), new THREE.Vector2())
-    .divideScalar(polyB.length);
-  if (
-    minAxis.dot(
-      new THREE.Vector2(centreB.x - centreA.x, centreB.y - centreA.y),
-    ) < 0
-  ) {
-    minAxis.negate();
+  let acx = 0,
+    acy = 0;
+  for (let i = 0; i < polyA.length; i++) {
+    acx += polyA[i].x;
+    acy += polyA[i].y;
+  }
+  acx /= polyA.length;
+  acy /= polyA.length;
+
+  let bcx = 0,
+    bcy = 0;
+  for (let i = 0; i < polyB.length; i++) {
+    bcx += polyB[i].x;
+    bcy += polyB[i].y;
+  }
+  bcx /= polyB.length;
+  bcy /= polyB.length;
+
+  if (axisX * (bcx - acx) + axisY * (bcy - acy) < 0) {
+    axisX = -axisX;
+    axisY = -axisY;
   }
 
-  return { depth: minDepth, axis: minAxis };
+  satHit.depth = minDepth;
+  satHit.axisX = axisX;
+  satHit.axisY = axisY;
+  return true;
 }
 
 function clampToBounds(sprite: SpriteHandle) {
   const box = sprite.getCentreBox();
   if (!box) return;
-  const pos = sprite.getPosition();
+  const pos = sprite.getPosition(clampPos);
   pos.clamp(box.min, box.max);
   sprite.setPosition(pos);
+}
+
+function dampVelocity(sprite: SpriteHandle, damp: number) {
+  const vel = sprite.getVelocity(velA);
+  vel.multiplyScalar(damp);
+  sprite.setVelocity(vel);
+}
+
+/**
+ * Resolve one unsnapped pair: separate them along the shallowest axis, then
+ * trade an impulse so the hit reads as a knock rather than a silent shove.
+ */
+function resolvePair(a: SpriteHandle, b: SpriteHandle) {
+  const polyA = a.getWorldPolygon();
+  polygonBounds(polyA, boundsA);
+  const polyB = b.getWorldPolygon();
+  polygonBounds(polyB, boundsB);
+
+  // Cheap reject first. A thrown piece spends most of its flight nowhere near
+  // the other two, and an AABB miss skips ~thirty axis projections — which is
+  // most of the frames of a throw.
+  //
+  // It also covers for a wrinkle in the test below. SAT only decides convex
+  // shapes, and two of the three faces aren't quite convex: EYES dips at
+  // [0.5, 0.64] and MOUTH at [0.5, 0.37], each a midpoint sitting a hair below
+  // the line between its neighbours. A reflex vertex costs SAT its guarantee
+  // that a disjoint pair has a separating edge normal, so it occasionally
+  // called a contact between pieces a few units apart. Those were always
+  // shallow — sub-unit on a 500-unit sprite, mostly under CONTACT_SLOP — but
+  // the box test rules them out for real. Straighten those two vertices if you
+  // want the guarantee back rather than the workaround.
+  if (!boundsA.intersectsBox(boundsB)) return;
+  if (!satCollide(polyA, polyB)) return;
+
+  const { depth, axisX, axisY } = satHit;
+  if (depth <= CONTACT_SLOP) return;
+
+  const aDragging = a.isDragging();
+  const bDragging = b.isDragging();
+
+  if (!aDragging && !bDragging) {
+    const pa = a.getPosition(posA);
+    const pb = b.getPosition(posB);
+    pa.x -= axisX * depth * 0.5;
+    pa.y -= axisY * depth * 0.5;
+    pb.x += axisX * depth * 0.5;
+    pb.y += axisY * depth * 0.5;
+    a.setPosition(pa);
+    b.setPosition(pb);
+    clampToBounds(a);
+    clampToBounds(b);
+  } else if (aDragging) {
+    const pb = b.getPosition(posB);
+    pb.x += axisX * depth;
+    pb.y += axisY * depth;
+    b.setPosition(pb);
+    clampToBounds(b);
+  } else {
+    const pa = a.getPosition(posA);
+    pa.x -= axisX * depth;
+    pa.y -= axisY * depth;
+    a.setPosition(pa);
+    clampToBounds(a);
+  }
+
+  const va = a.getVelocity(velA);
+  const vb = b.getVelocity(velB);
+  const impactSpeed = (va.x - vb.x) * axisX + (va.y - vb.y) * axisY;
+  if (impactSpeed <= 0) return; // already separating
+
+  // Equal masses share the impulse; a held piece is effectively infinitely
+  // heavy, so the free one takes all of it and gets genuinely knocked away
+  // rather than just displaced.
+  const held = aDragging || bDragging;
+  const impulse = impactSpeed * (1 + COLLISION_RESTITUTION) * (held ? 1 : 0.5);
+
+  if (!aDragging) {
+    va.x -= impulse * axisX;
+    va.y -= impulse * axisY;
+    a.setVelocity(va);
+  }
+  if (!bDragging) {
+    vb.x += impulse * axisX;
+    vb.y += impulse * axisY;
+    b.setVelocity(vb);
+  }
 }
 
 const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t);
@@ -450,8 +617,8 @@ export default function Head({ ref, onGrabbing }: Props) {
     // Only X and Y are driven — Z stays as-is (render layering).
     // After lerping we clamp to bounds so invisible walls still apply.
     if (snapState.headEyes) {
-      const headPos = head.getPosition();
-      const eyesPos = eyes.getPosition();
+      const headPos = head.getPosition(posA);
+      const eyesPos = eyes.getPosition(posB);
 
       // Target: head XY minus the offset (eyes sit *below* head, so Y is lower)
       const targetX = headPos.x - EYES_OFFSET.x;
@@ -463,14 +630,14 @@ export default function Head({ ref, onGrabbing }: Props) {
       clampToBounds(eyes);
 
       // Zero out throw velocity so it doesn't fight the lerp
-      const vel = eyes.getVelocity();
+      const vel = eyes.getVelocity(velA);
       vel.multiplyScalar(1 - snapLerp);
       eyes.setVelocity(vel);
     }
 
     if (snapState.eyesMouth) {
-      const eyesPos = eyes.getPosition();
-      const mouthPos = mouth.getPosition();
+      const eyesPos = eyes.getPosition(posA);
+      const mouthPos = mouth.getPosition(posB);
 
       const targetX = eyesPos.x - MOUTH_OFFSET.x;
       const targetY = eyesPos.y - MOUTH_OFFSET.y;
@@ -480,7 +647,7 @@ export default function Head({ ref, onGrabbing }: Props) {
       mouth.setPosition(mouthPos);
       clampToBounds(mouth);
 
-      const vel = mouth.getVelocity();
+      const vel = mouth.getVelocity(velA);
       vel.multiplyScalar(1 - snapLerp);
       mouth.setVelocity(vel);
     }
@@ -490,25 +657,25 @@ export default function Head({ ref, onGrabbing }: Props) {
     // We check XY distance only. Neither piece should be dragging when we
     // snap — a drag will have already cleared the flag in step 1.
     if (!snapState.headEyes && !head.isDragging() && !eyes.isDragging()) {
-      const hp = head.getPosition();
-      const ep = eyes.getPosition();
+      const hp = head.getPosition(posA);
+      const ep = eyes.getPosition(posB);
       const dx = hp.x - ep.x - EYES_OFFSET.x; // distance from ideal position
       const dy = hp.y - ep.y - EYES_OFFSET.y;
       if (Math.sqrt(dx * dx + dy * dy) < SNAP_DISTANCE) {
         snapState.headEyes = true;
         // Kill velocity on the follower (eyes) so there's no pop
-        eyes.setVelocity(new THREE.Vector3());
+        eyes.setVelocity(ZERO);
       }
     }
 
     if (!snapState.eyesMouth && !eyes.isDragging() && !mouth.isDragging()) {
-      const ep = eyes.getPosition();
-      const mp = mouth.getPosition();
+      const ep = eyes.getPosition(posA);
+      const mp = mouth.getPosition(posB);
       const dx = ep.x - mp.x - MOUTH_OFFSET.x;
       const dy = ep.y - mp.y - MOUTH_OFFSET.y;
       if (Math.sqrt(dx * dx + dy * dy) < SNAP_DISTANCE) {
         snapState.eyesMouth = true;
-        mouth.setVelocity(new THREE.Vector3());
+        mouth.setVelocity(ZERO);
       }
     }
 
@@ -517,98 +684,22 @@ export default function Head({ ref, onGrabbing }: Props) {
     // When two sprites are snapped they're intentionally overlapping at their
     // correct face position, so running SAT would immediately push them apart.
     // We skip the pair entirely; unsnapped pairs still collide normally.
-    type SpritePair = {
-      a: SpriteHandle;
-      b: SpriteHandle;
-      snapped: boolean;
-    };
-
-    const pairs: SpritePair[] = [
-      { a: head, b: eyes, snapped: snapState.headEyes },
-      { a: eyes, b: mouth, snapped: snapState.eyesMouth },
-      { a: head, b: mouth, snapped: false }, // head↔mouth never snap
-    ];
-
-    for (const { a, b, snapped } of pairs) {
-      if (snapped) continue; // ← collision suppressed while snapped
-
-      const polyA = a.getWorldPolygon();
-      const polyB = b.getWorldPolygon();
-      const result = satCollide(polyA, polyB);
-      if (!result) continue;
-
-      const { depth, axis } = result;
-      if (depth <= CONTACT_SLOP) continue;
-
-      const ax2 = new THREE.Vector2(axis.x, axis.y);
-
-      const aDragging = a.isDragging();
-      const bDragging = b.isDragging();
-
-      if (!aDragging && !bDragging) {
-        const posA = a.getPosition();
-        const posB = b.getPosition();
-        posA.x -= ax2.x * depth * 0.5;
-        posA.y -= ax2.y * depth * 0.5;
-        posB.x += ax2.x * depth * 0.5;
-        posB.y += ax2.y * depth * 0.5;
-        a.setPosition(posA);
-        b.setPosition(posB);
-        clampToBounds(a);
-        clampToBounds(b);
-      } else if (aDragging) {
-        const posB = b.getPosition();
-        posB.x += ax2.x * depth;
-        posB.y += ax2.y * depth;
-        b.setPosition(posB);
-        clampToBounds(b);
-      } else {
-        const posA = a.getPosition();
-        posA.x -= ax2.x * depth;
-        posA.y -= ax2.y * depth;
-        a.setPosition(posA);
-        clampToBounds(a);
-      }
-
-      const velA = a.getVelocity();
-      const velB = b.getVelocity();
-      const relVel = new THREE.Vector2(velA.x - velB.x, velA.y - velB.y);
-      const impactSpeed = relVel.dot(ax2);
-      if (impactSpeed <= 0) continue; // already separating
-
-      // Equal masses share the impulse; a held piece is effectively infinitely
-      // heavy, so the free one takes all of it and gets genuinely knocked away
-      // rather than just displaced.
-      const held = aDragging || bDragging;
-      const impulse =
-        impactSpeed * (1 + COLLISION_RESTITUTION) * (held ? 1 : 0.5);
-
-      if (!aDragging) {
-        velA.x -= impulse * ax2.x;
-        velA.y -= impulse * ax2.y;
-        a.setVelocity(velA);
-      }
-      if (!bDragging) {
-        velB.x += impulse * ax2.x;
-        velB.y += impulse * ax2.y;
-        b.setVelocity(velB);
-      }
-    }
+    if (!snapState.headEyes) resolvePair(head, eyes);
+    if (!snapState.eyesMouth) resolvePair(eyes, mouth);
+    resolvePair(head, mouth); // head↔mouth never snap
 
     // ── 5. All pairs snapped → fire onComplete once ───────────────────
     if (snapState.headEyes && snapState.eyesMouth) {
       const SUPER_DAMP = 0.85; // tune: higher = stops faster (0–1), per 60Hz frame
       const damp = Math.pow(1 - SUPER_DAMP, frames);
 
-      for (const sprite of [head, eyes, mouth]) {
-        const vel = sprite.getVelocity();
-        vel.multiplyScalar(damp);
-        sprite.setVelocity(vel);
-      }
+      dampVelocity(head, damp);
+      dampVelocity(eyes, damp);
+      dampVelocity(mouth, damp);
 
-      const headPos = head.getPosition();
-      const eyesPos = eyes.getPosition();
-      const mouthPos = mouth.getPosition();
+      const headPos = head.getPosition(posA);
+      const eyesPos = eyes.getPosition(posB);
+      const mouthPos = mouth.getPosition(posC);
 
       const dx1 = eyesPos.x - (headPos.x - EYES_OFFSET.x);
       const dy1 = eyesPos.y - (headPos.y - EYES_OFFSET.y);
@@ -631,21 +722,18 @@ export default function Head({ ref, onGrabbing }: Props) {
   });
 
   useFrame(() => {
-    const initalPos = new THREE.Vector3(0, -800, 2600);
-
     const head = headRef.current;
     const eyes = eyesRef.current;
     const mouth = mouthRef.current;
 
     if (head && metaBallsHeadFront.current && metaBallsHeadBack.current) {
-      const headPosition = head.getPosition();
-      if (headPosition.distanceTo(initalPos) > 2) {
+      const headPosition = head.getPosition(posA);
+      if (headPosition.distanceTo(HOME) > 2) {
         metaBallsHeadFront.current?.setVisible(false);
         metaBallsHeadBack.current?.setVisible(false);
         // Resetting z position to fix collisions
-        head.setPosition(
-          new THREE.Vector3(headPosition.x, headPosition.y, 2600),
-        );
+        headPosition.z = 2600;
+        head.setPosition(headPosition);
       }
     }
 
@@ -656,28 +744,26 @@ export default function Head({ ref, onGrabbing }: Props) {
       metaBallsMouthFront.current &&
       metaBallsMouthBack.current
     ) {
-      const eyesPosition = eyes.getPosition();
-      if (eyesPosition.distanceTo(initalPos) > 2) {
+      const eyesPosition = eyes.getPosition(posA);
+      if (eyesPosition.distanceTo(HOME) > 2) {
         metaBallsHeadFront.current?.setVisible(false);
         metaBallsHeadBack.current?.setVisible(false);
         metaBallsMouthFront.current?.setVisible(false);
         metaBallsMouthBack.current?.setVisible(false);
         // Resetting z position to fix collisions
-        eyes.setPosition(
-          new THREE.Vector3(eyesPosition.x, eyesPosition.y, 2600),
-        );
+        eyesPosition.z = 2600;
+        eyes.setPosition(eyesPosition);
       }
     }
 
     if (mouth && metaBallsMouthFront.current && metaBallsMouthBack.current) {
-      const mouthPosition = mouth.getPosition();
-      if (mouthPosition.distanceTo(initalPos) > 4) {
+      const mouthPosition = mouth.getPosition(posA);
+      if (mouthPosition.distanceTo(HOME) > 4) {
         metaBallsMouthFront.current?.setVisible(false);
         metaBallsMouthBack.current?.setVisible(false);
         // Resetting z position to fix collisions
-        mouth.setPosition(
-          new THREE.Vector3(mouthPosition.x, mouthPosition.y, 2600),
-        );
+        mouthPosition.z = 2600;
+        mouth.setPosition(mouthPosition);
       }
     }
   });

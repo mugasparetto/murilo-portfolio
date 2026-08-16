@@ -10,12 +10,22 @@ import { useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
 // New exported handle type
+//
+// The readers all take an optional `out`. The collision loop calls them several
+// times a frame for three pieces, and handing them somewhere to write is what
+// keeps that loop from minting a fresh vector on every read.
 export type SpriteHandle = {
-  getPosition: () => THREE.Vector3;
+  getPosition: (out?: THREE.Vector3) => THREE.Vector3;
   setPosition: (v: THREE.Vector3) => void;
-  getVelocity: () => THREE.Vector3;
+  getVelocity: (out?: THREE.Vector3) => THREE.Vector3;
   setVelocity: (v: THREE.Vector3) => void;
-  getWorldPolygon: () => THREE.Vector2[]; // polygon in world XY space
+  /**
+   * Polygon in world XY space. The array and its vectors are reused between
+   * calls on the same sprite, so copy anything you need to keep past the next
+   * call. Two different sprites never share a buffer, which is what lets a
+   * pairwise test hold both polygons at once.
+   */
+  getWorldPolygon: () => THREE.Vector2[];
   isDragging: () => boolean;
   getCentreBox: () => THREE.Box3 | null;
   setEnabled: (enabled: boolean) => void;
@@ -61,6 +71,12 @@ const MIN_VELOCITY_SPAN_MS = 24;
 const REST_SPEED = 1;
 /** Longest step the coast loop integrates, so a frame hitch can't tunnel. */
 const MAX_COAST_STEP = 1 / 30;
+/**
+ * How far each collision vertex is pushed off the polygon's centroid, in UV
+ * space. Negative shrinks the hull, so pieces have to overlap a little before
+ * they push each other apart.
+ */
+const POLYGON_INFLATE = -0.03;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -407,7 +423,6 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     const pointerPx = useRef<{ x: number; y: number } | null>(null);
     /** Identity handed to `dragOwner` while this sprite holds the pointer. */
     const dragToken = useRef({});
-    const dragVelocity = useRef(new THREE.Vector3());
 
     const pushSample = useCallback((x: number, y: number, t: number) => {
       const samples = velocitySamples.current;
@@ -474,6 +489,32 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     const extents = useMemo(
       () => polygonExtents(polygon, normalizedScale),
       [polygon, normalizedScale],
+    );
+
+    // The collision hull in UV space, inflate already applied. It depends on
+    // nothing but the polygon, so there is no reason for `getWorldPolygon` to
+    // re-derive the centroid and re-push every vertex on each of the six calls
+    // the collision loop makes per frame.
+    const hull = useMemo(() => {
+      const cx = polygon.reduce((sum, [u]) => sum + u, 0) / polygon.length;
+      const cy = polygon.reduce((sum, [, v]) => sum + v, 0) / polygon.length;
+
+      return polygon.map(([u, v]): UV => {
+        const du = u - cx;
+        const dv = v - cy;
+        const len = Math.sqrt(du * du + dv * dv) || 1;
+        return [
+          u + (du / len) * POLYGON_INFLATE,
+          v + (dv / len) * POLYGON_INFLATE,
+        ];
+      });
+    }, [polygon]);
+
+    // Where `getWorldPolygon` writes. One buffer per sprite, so a pairwise test
+    // can hold two polygons at once without either of them allocating.
+    const worldHull = useMemo(
+      () => polygon.map(() => new THREE.Vector2()),
+      [polygon],
     );
 
     // worldBox: the region the group's CENTRE is allowed to move within, as
@@ -917,19 +958,19 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     useImperativeHandle(
       ref,
       () => ({
-        getPosition: () => groupRef.current.position.clone(),
+        getPosition: (out) =>
+          (out ?? new THREE.Vector3()).copy(groupRef.current.position),
         setPosition: (v) => groupRef.current.position.copy(v),
         // How fast the piece is actually moving, whatever is moving it. While
         // it's held that's the pointer, read the same parallax-immune way the
         // throw is — a piece shoved into another one used to report zero, so it
         // displaced its neighbour without ever knocking it anywhere.
-        getVelocity: () =>
-          isDraggingRef.current
-            ? readPointerVelocity(
-                performance.now(),
-                dragVelocity.current,
-              ).clone()
-            : throwVelocity.current.clone(),
+        getVelocity: (out) => {
+          const target = out ?? new THREE.Vector3();
+          return isDraggingRef.current
+            ? readPointerVelocity(performance.now(), target)
+            : target.copy(throwVelocity.current);
+        },
         setVelocity: (v) => throwVelocity.current.copy(v),
         isDragging: () => isDraggingRef.current,
         getCentreBox,
@@ -937,25 +978,15 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         getWorldPolygon: () => {
           const pos = groupRef.current.position;
           const s = normalizedScale;
-          const INFLATE = -0.03; // tune this — in UV space
 
-          // Compute centroid
-          const cx = polygon.reduce((sum, [u]) => sum + u, 0) / polygon.length;
-          const cy =
-            polygon.reduce((sum, [, v]) => sum + v, 0) / polygon.length;
-
-          return polygon.map(([u, v]) => {
-            // Push vertex away from centroid by INFLATE amount
-            const du = u - cx;
-            const dv = v - cy;
-            const len = Math.sqrt(du * du + dv * dv) || 1;
-            const iu = u + (du / len) * INFLATE;
-            const iv = v + (dv / len) * INFLATE;
-            return new THREE.Vector2(
-              pos.x + (iu - 0.5) * s[0],
-              pos.y + (iv - 0.5) * s[1],
+          for (let i = 0; i < hull.length; i++) {
+            const [u, v] = hull[i];
+            worldHull[i].set(
+              pos.x + (u - 0.5) * s[0],
+              pos.y + (v - 0.5) * s[1],
             );
-          });
+          }
+          return worldHull;
         },
         setEnabled: (enabled: boolean) => {
           enabledRef.current = enabled;
@@ -975,7 +1006,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
           interactable.current = value; // a new ref inside PolygonSprite
         },
       }),
-      [polygon, normalizedScale, getCentreBox, readPointerVelocity],
+      [hull, worldHull, normalizedScale, getCentreBox, readPointerVelocity],
     );
 
     return (

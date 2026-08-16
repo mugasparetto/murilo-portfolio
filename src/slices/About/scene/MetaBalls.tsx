@@ -423,6 +423,14 @@ const MAX_ANCHORS = 16;
 const EMPTY_MASK = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);
 EMPTY_MASK.needsUpdate = true;
 
+// Scratch for the per-frame pointer projection. Every instance runs that
+// projection on every frame, and a fresh Ray plus two vectors each time is pure
+// garbage — nothing here outlives the call that writes it.
+const meshWorldPos = new THREE.Vector3();
+const pointerRay = new THREE.Ray();
+const pointerNdc = new THREE.Vector3();
+const pointerAnim = { x: 0, y: 0 };
+
 type MaskUniforms = {
   enabled: number;
   texture: THREE.Texture;
@@ -583,6 +591,20 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
       [props.mask, props.position, props.scale],
     );
 
+    // Constant for the life of the props, but the frame loop below used to
+    // rebuild all four every frame: a THREE.Color, an sRGB→linear conversion
+    // (three pows) and a Vector3 apiece, which across the four instances on the
+    // face came to 32 throwaway objects a frame for values that never move.
+    const holoColors = useMemo(
+      () => [
+        hexToVec3(props.holoColor1),
+        hexToVec3(props.holoColor2),
+        hexToVec3(props.holoColor3),
+        hexToVec3(props.holoColor4),
+      ],
+      [props.holoColor1, props.holoColor2, props.holoColor3, props.holoColor4],
+    );
+
     // ── Uniforms ─────────────────────────────────
     const uniforms = useMemo(
       () => ({
@@ -645,6 +667,12 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
 
     // ── Animation ────────────────────────────────
     useFrame(({ clock, size, pointer, camera: frameCamera }) => {
+      // A hidden field drives nothing, and Head hides the goo for good the
+      // moment a piece leaves the assembled face — so without this the four
+      // instances go on paying for a full uniform rewrite and a pointer
+      // unprojection every frame for the rest of the session.
+      if (meshRef.current && !meshRef.current.visible) return;
+
       // Ball motion is offset by `seed`; the holographic fill has its own phase
       // so instances can move independently but still share a colour.
       const t = clock.getElapsedTime() + props.seed * 10.0;
@@ -654,10 +682,10 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
       uniforms.uTimeScale.value = props.holoTimeScale;
       uniforms.uSeed.value = props.holoSeed;
       uniforms.uIterations.value = props.holoIterations;
-      uniforms.uColor1.value.copy(hexToVec3(props.holoColor1));
-      uniforms.uColor2.value.copy(hexToVec3(props.holoColor2));
-      uniforms.uColor3.value.copy(hexToVec3(props.holoColor3));
-      uniforms.uColor4.value.copy(hexToVec3(props.holoColor4));
+      uniforms.uColor1.value.copy(holoColors[0]);
+      uniforms.uColor2.value.copy(holoColors[1]);
+      uniforms.uColor3.value.copy(holoColors[2]);
+      uniforms.uColor4.value.copy(holoColors[3]);
       uniforms.uColorIntensity.value = props.holoColorIntensity;
       uniforms.uSoftness.value = props.holoSoftness;
       uniforms.uGamma.value = props.holoGamma;
@@ -718,33 +746,36 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
       // Unproject the NDC pointer through the camera onto the mesh's Z plane,
       // then convert to animation-space by subtracting the mesh world position
       // and dividing by its scale (which maps 1 world unit → 1/scale animation unit).
+      //
+      // Skipped outright on a layer that doesn't react to the cursor. With
+      // either `mouseStrength` or `mouseRadius` at zero the disturbance below
+      // is identically zero, so the whole projection is measured and thrown
+      // away — which is what every layer on the face was doing.
       let mouse: { x: number; y: number } | null = null;
-      if (meshRef.current) {
-        const meshWorldPos = new THREE.Vector3();
+      if (mouseStrength !== 0 && mouseRadius > 0 && meshRef.current) {
         meshRef.current.getWorldPosition(meshWorldPos);
 
         // Ray from camera through the NDC pointer position
-        const ray = new THREE.Ray();
-        const ndcPoint = new THREE.Vector3(pointer.x, pointer.y, 0.5);
-        ndcPoint.unproject(frameCamera);
-        ray.origin.copy(frameCamera.position);
-        ray.direction.subVectors(ndcPoint, frameCamera.position).normalize();
+        pointerNdc.set(pointer.x, pointer.y, 0.5).unproject(frameCamera);
+        pointerRay.origin.copy(frameCamera.position);
+        pointerRay.direction
+          .subVectors(pointerNdc, frameCamera.position)
+          .normalize();
 
         // Intersect with the Z=meshWorldPos.z plane
         const planeZ = meshWorldPos.z;
-        const t_intersect = (planeZ - ray.origin.z) / ray.direction.z;
-        if (t_intersect > 0) {
-          const worldX = ray.origin.x + ray.direction.x * t_intersect;
-          const worldY = ray.origin.y + ray.direction.y * t_intersect;
+        const hit = (planeZ - pointerRay.origin.z) / pointerRay.direction.z;
+        if (hit > 0) {
+          const worldX = pointerRay.origin.x + pointerRay.direction.x * hit;
+          const worldY = pointerRay.origin.y + pointerRay.direction.y * hit;
 
           // Convert world coords → animation-space:
           // The mesh is a unit plane scaled by props.scale, so
           // animationSize world-units span props.scale[0] world-units → scale factor
           const worldUnitsPerAnimUnit = props.scale[0] / props.animationSize;
-          mouse = {
-            x: (worldX - meshWorldPos.x) / worldUnitsPerAnimUnit,
-            y: (worldY - meshWorldPos.y) / worldUnitsPerAnimUnit,
-          };
+          pointerAnim.x = (worldX - meshWorldPos.x) / worldUnitsPerAnimUnit;
+          pointerAnim.y = (worldY - meshWorldPos.y) / worldUnitsPerAnimUnit;
+          mouse = pointerAnim;
         }
       }
 
