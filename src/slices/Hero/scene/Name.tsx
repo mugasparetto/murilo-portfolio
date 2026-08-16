@@ -85,8 +85,14 @@ const overlay: {
 /** size the glyphs are measured at; the viewBox scales them from here */
 const NOMINAL = 100;
 
-/** gap above the caps, as a share of the viewport height */
-const TOP = 0.05;
+/**
+ * Gap above the caps, as a share of the viewport height.
+ *
+ * Exported alongside `blockFill` because they're the two halves of one margin:
+ * anything that wants to sit in the same block as the name needs both. See
+ * <Title /> in the About scene, which reproduces the block as geometry.
+ */
+export const BLOCK_TOP = 0.05;
 
 /**
  * Share of the viewport width the widest line fills. Pulled in a little below
@@ -241,7 +247,7 @@ export function nameBand(
 
   // whole pixels: a fractional translate would resample the type every frame,
   // which reads as shimmer on the stroked echoes
-  out.y = Math.round(height * TOP + anchorDrift(ANCHOR, camera, height));
+  out.y = Math.round(height * BLOCK_TOP + anchorDrift(ANCHOR, camera, height));
   // the svg's intrinsic ratio, so this matches its laid-out height exactly
   out.height = Math.round((width * overlay.fill * layout.depth) / layout.inkW);
 

@@ -12,6 +12,7 @@ import {
 } from "@/slices/Hero/scene-core/params";
 import ParallaxRig from "./ParallaxRig";
 import ScrollRig from "./ScrollRig";
+import { ABOUT_POSE, HERO_POSE } from "./poses";
 import Postprocessing from "./PostProcessing";
 import { BREAKPOINTS, useBreakpoints } from "../hooks/breakpoints";
 
@@ -57,14 +58,8 @@ export default function SceneManager() {
               startVh: 115,
               endVh: 250,
             },
-            from: {
-              position: [0, 200, 3380], // pose A
-              lookAt: [0, 820, 0],
-            },
-            to: {
-              position: [0, -800, 3380], // pose B
-              lookAt: [0, -800, 0],
-            },
+            from: HERO_POSE,
+            to: ABOUT_POSE,
           },
         ]}
         basePoseRef={poseRef}

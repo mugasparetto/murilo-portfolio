@@ -8,9 +8,9 @@ import {
   useCallback,
 } from "react";
 import { ThreeElements, useFrame } from "@react-three/fiber";
-import { Text, Html } from "@react-three/drei";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import Head from "./Head";
+import Title from "./Title";
 import { KeyTextField } from "@prismicio/client";
 import {
   makeRanges,
@@ -71,7 +71,7 @@ function Lines({
       {...props}
     >
       <planeGeometry args={geoArgs} />
-      <primitive object={mat} attach="material" transparent opacity={0.2} />
+      <primitive object={mat} attach="material" transparent opacity={0.1} />
     </instancedMesh>
   );
 }
@@ -220,9 +220,17 @@ export default function Scene({ scrollWindow, content }: Props) {
     return () => publishBackdrop(null);
   }, [planeOutline, planePos]);
 
+  useFrame((_, delta) => {
+    if (head.current && grabbing == null && shouldFloat.current) {
+      timeRef.current += delta;
+      head.current.position.y = Math.sin(timeRef.current * 0.35) * 10;
+    }
+  });
+
   const handleGrabbing = useCallback(
     (payload: null | "head" | "eyes" | "mouth") => {
       setGrabbing(payload);
+      shouldFloat.current = false;
     },
     [],
   );
@@ -246,15 +254,7 @@ export default function Scene({ scrollWindow, content }: Props) {
       </group>
 
       <Suspense fallback={null}>
-        <Text
-          position={[0, -800, 2210]}
-          font="/fonts/PPMonumentExtended-Black.ttf"
-          fontSize={680}
-          color="white"
-          fillOpacity={0.2}
-        >
-          ABOUT ME
-        </Text>
+        <Title />
       </Suspense>
 
       <Suspense fallback={null}>
