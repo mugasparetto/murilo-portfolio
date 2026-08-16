@@ -67,6 +67,20 @@ const MAX_COAST_STEP = 1 / 30;
 /** A 2D point in UV space [0,1] where (0,0) = bottom-left, (1,1) = top-right */
 export type UV = [number, number];
 
+export type SpriteBounds = {
+  min: [number, number, number];
+  max: [number, number, number];
+  /**
+   * Put the X/Y walls on the screen edges instead of on `min`/`max`, measured
+   * every frame at the sprite's own depth. `min`/`max` stay on as the outer
+   * limit those walls are clipped to; pass ±Infinity on an axis to hand it to
+   * the screen entirely.
+   */
+  viewport?: boolean;
+  /** World units to pull the screen walls in by. Ignored without `viewport`. */
+  padding?: number;
+};
+
 interface PolygonSpriteProps {
   texture: THREE.Texture;
   /** Polygon vertices in UV space [0,1]. Defined once, clockwise or CCW – doesn't matter. */
@@ -89,11 +103,9 @@ interface PolygonSpriteProps {
    *
    * @example
    * bounds={{ min: [-10, -Infinity, -10], max: [10, Infinity, 10] }}
+   * bounds={{ viewport: true, min: [-Infinity, -10, 0], max: [Infinity, 10, 5] }}
    */
-  bounds?: {
-    min: [number, number, number];
-    max: [number, number, number];
-  };
+  bounds?: SpriteBounds;
   /** Fired when the pointer is pressed down inside the polygon */
   onPointerDown?: () => void;
   /** Fired when the pointer is released, after a press that started inside the polygon */
@@ -225,6 +237,88 @@ function worldUnitsPerPixel(
   if (!raycaster.ray.intersectPlane(worldPlane, hitPoint)) return 1;
 
   return scaleProbe.distanceTo(hitPoint) || 1;
+}
+
+// Screen corners in NDC, and the scratch the frustum measurement works in.
+const NDC_CORNERS: ReadonlyArray<readonly [number, number]> = [
+  [-1, -1],
+  [1, -1],
+  [-1, 1],
+  [1, 1],
+];
+const zPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1));
+const cornerHit = new THREE.Vector3();
+const visibleSpan = new THREE.Box2();
+const wall = new THREE.Vector2();
+
+/**
+ * The part of the world plane at depth `z` that is on screen right now, written
+ * into `out`. False — and `out` untouched — if the plane isn't in front of the
+ * camera at all.
+ *
+ * The rig tilts the camera as it sways, so the frustum cuts that plane as a
+ * trapezoid rather than a rectangle. Keeping the *innermost* of each opposing
+ * pair of corners inscribes a rectangle in it, which is what a wall wants: it
+ * then lies on screen along its whole length. The outer extents would put the
+ * wall past the narrow end of the trapezoid, which is the bug this replaces,
+ * only smaller. Camera roll is a degree or two here and is ignored.
+ */
+function visibleSpanAtZ(
+  z: number,
+  camera: THREE.Camera,
+  out: THREE.Box2,
+): boolean {
+  // Plane normal is +Z, so n·p + c = 0 solves to p.z = -c.
+  zPlane.constant = -z;
+
+  let minX = -Infinity;
+  let maxX = Infinity;
+  let minY = -Infinity;
+  let maxY = Infinity;
+
+  for (const [nx, ny] of NDC_CORNERS) {
+    ndc.set(nx, ny);
+    raycaster.setFromCamera(ndc, camera);
+    if (!raycaster.ray.intersectPlane(zPlane, cornerHit)) return false;
+
+    if (nx < 0) minX = Math.max(minX, cornerHit.x);
+    else maxX = Math.min(maxX, cornerHit.x);
+    if (ny < 0) minY = Math.max(minY, cornerHit.y);
+    else maxY = Math.min(maxY, cornerHit.y);
+  }
+
+  out.min.set(minX, minY);
+  out.max.set(maxX, maxY);
+  return true;
+}
+
+/**
+ * One axis of the live box — the tighter of the screen wall and the authored
+ * one — written into `out` as (min, max).
+ *
+ * When the two don't overlap at all the authored pair wins. That case is the
+ * camera having left for another section of the page: the piece is nowhere near
+ * the screen, and letting the walls follow the camera there would drag it along
+ * by the clamp. And if the screen is narrower than the piece, the walls meet in
+ * the middle rather than crossing over and clamping to a wall that is now the
+ * wrong side of the piece.
+ */
+function resolveWall(
+  screenMin: number,
+  screenMax: number,
+  worldMin: number,
+  worldMax: number,
+  out: THREE.Vector2,
+) {
+  if (screenMin > screenMax) {
+    const mid = (screenMin + screenMax) * 0.5;
+    screenMin = mid;
+    screenMax = mid;
+  }
+
+  const min = Math.max(screenMin, worldMin);
+  const max = Math.min(screenMax, worldMax);
+  return min <= max ? out.set(min, max) : out.set(worldMin, worldMax);
 }
 
 function buildPolygonGeometry(polygon: UV[]): THREE.BufferGeometry {
@@ -382,8 +476,9 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
       [polygon, normalizedScale],
     );
 
-    // centreBox: the region the group's CENTRE is allowed to move within.
-    const centreBox = useMemo(() => {
+    // worldBox: the region the group's CENTRE is allowed to move within, as
+    // authored. With `viewport` on it is only the outer limit — see liveBox.
+    const worldBox = useMemo(() => {
       if (!bounds) return null;
       const { min, max } = bounds;
       const { minX, maxX, minY, maxY } = extents;
@@ -401,9 +496,83 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
       );
     }, [bounds, extents]);
 
+    // The screen-tracking walls, rewritten every frame by the loop below. Held
+    // in a ref, not a memo, because it is mutated per frame; it starts unbounded
+    // because the first measurement lands before anything can read it, and a box
+    // that constrains nothing is the safe thing to be caught holding anyway.
+    const tracksViewport = !!bounds?.viewport;
+    const liveBox = useRef(
+      new THREE.Box3(
+        new THREE.Vector3(-Infinity, -Infinity, -Infinity),
+        new THREE.Vector3(Infinity, Infinity, Infinity),
+      ),
+    );
+
+    /**
+     * The walls in force right now. Read it at the point of use — with
+     * `viewport` on, the box behind it is rewritten every frame.
+     */
+    const getCentreBox = useCallback(
+      () => (tracksViewport ? liveBox.current : worldBox),
+      [tracksViewport, worldBox],
+    );
+
+    // ── Screen-tracking walls ────────────────────────────────────────────────
+    //
+    // Re-measured every frame rather than authored once, because the camera
+    // doesn't hold still: the parallax rig sways it toward the cursor, so walls
+    // pinned to world units sit where the screen edge was at the rest pose. A
+    // piece then bounces off nothing a good fifty units short of the edge on
+    // one side, and coasts out of frame on the other.
+    //
+    // Priority 0 and registered ahead of the two loops below, so all three see
+    // the same camera — the one the rig left behind at the end of last frame,
+    // which is also the one the pointer is aimed through.
+    useFrame(() => {
+      if (!tracksViewport || !worldBox || !groupRef.current) return;
+
+      const box = liveBox.current;
+      // Z is never anything but the authored pair — the screen has nothing to
+      // say about depth.
+      box.min.z = worldBox.min.z;
+      box.max.z = worldBox.max.z;
+
+      // Measured at the piece's own depth, not at some nominal plane: the
+      // pieces sit tens of units apart in Z and the frustum widens between them.
+      const pos = groupRef.current.position;
+      if (!visibleSpanAtZ(pos.z, camera, visibleSpan)) return; // keep last good walls
+
+      const pad = bounds?.padding ?? 0;
+
+      // Same inset the authored box gets: the walls hold the piece's centre, so
+      // pull each one in by how far the polygon reaches that way and the
+      // visible edge — not the origin — is what lands on the screen edge.
+      resolveWall(
+        visibleSpan.min.x - extents.minX + pad,
+        visibleSpan.max.x - extents.maxX - pad,
+        worldBox.min.x,
+        worldBox.max.x,
+        wall,
+      );
+      box.min.x = wall.x;
+      box.max.x = wall.y;
+
+      resolveWall(
+        visibleSpan.min.y - extents.minY + pad,
+        visibleSpan.max.y - extents.maxY - pad,
+        worldBox.min.y,
+        worldBox.max.y,
+        wall,
+      );
+      box.min.y = wall.x;
+      box.max.y = wall.y;
+    });
+
     // ── Debug: Box3Helper for the OUTER bounds ────────────────────────────────
     // Added imperatively to the scene so it renders in world space, independent
     // of the sprite's group transform, and aligns with the visible bounce walls.
+    // With `viewport` on those walls are usually inside this box — what it draws
+    // is the limit the screen ones are clipped to, not where they are.
     useEffect(() => {
       if (!debug || !bounds) return;
 
@@ -617,14 +786,15 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
 
         // Don't launch a piece that's already pinned against a wall into it —
         // it would only bounce straight back out on the next frame.
-        if (centreBox) {
+        const box = getCentreBox();
+        if (box) {
           const p = groupRef.current.position;
           const v = throwVelocity.current;
           const EDGE = 0.5;
-          if (p.x <= centreBox.min.x + EDGE && v.x < 0) v.x = 0;
-          if (p.x >= centreBox.max.x - EDGE && v.x > 0) v.x = 0;
-          if (p.y <= centreBox.min.y + EDGE && v.y < 0) v.y = 0;
-          if (p.y >= centreBox.max.y - EDGE && v.y > 0) v.y = 0;
+          if (p.x <= box.min.x + EDGE && v.x < 0) v.x = 0;
+          if (p.x >= box.max.x - EDGE && v.x > 0) v.x = 0;
+          if (p.y <= box.min.y + EDGE && v.y < 0) v.y = 0;
+          if (p.y >= box.max.y - EDGE && v.y > 0) v.y = 0;
         }
       };
 
@@ -652,7 +822,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
       polygon,
       draggable,
       throwable,
-      centreBox,
+      getCentreBox,
       onPointerDown,
       onPointerUp,
       pushSample,
@@ -691,8 +861,9 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
       );
 
       // Clamp to the inset centre box during drag
-      if (centreBox) {
-        groupRef.current.position.clamp(centreBox.min, centreBox.max);
+      const box = getCentreBox();
+      if (box) {
+        groupRef.current.position.clamp(box.min, box.max);
       }
     });
 
@@ -714,8 +885,8 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
 
       pos.addScaledVector(vel, step);
 
-      if (centreBox) {
-        const b = centreBox;
+      const b = getCentreBox();
+      if (b) {
         if (pos.x < b.min.x) {
           pos.x = b.min.x;
           vel.x = Math.abs(vel.x) * WALL_RESTITUTION;
@@ -761,7 +932,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
             : throwVelocity.current.clone(),
         setVelocity: (v) => throwVelocity.current.copy(v),
         isDragging: () => isDraggingRef.current,
-        getCentreBox: () => centreBox,
+        getCentreBox,
 
         getWorldPolygon: () => {
           const pos = groupRef.current.position;
@@ -804,7 +975,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
           interactable.current = value; // a new ref inside PolygonSprite
         },
       }),
-      [polygon, normalizedScale, centreBox, readPointerVelocity],
+      [polygon, normalizedScale, getCentreBox, readPointerVelocity],
     );
 
     return (

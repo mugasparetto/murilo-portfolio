@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { useTexture, Line } from "@react-three/drei";
 import MetaBalls, { FieldMask, MetaBallsHandle } from "./MetaBalls";
-import PolygonSprite, { UV, SpriteHandle } from "./PolygonSprite";
+import PolygonSprite, { UV, SpriteHandle, SpriteBounds } from "./PolygonSprite";
 
 // ─── Snap configuration ───────────────────────────────────────────────────────
 
@@ -114,6 +114,35 @@ const HEAD_OUTLINE = {
 const EYE_BAND_OUTLINE = {
   /** Well clear of the arc, where the band still spans u = 0.022–0.985. */
   floor: 0.47,
+};
+
+/**
+ * Where a piece is allowed to go.
+ *
+ * `viewport` puts the side and top/bottom walls on the actual screen edges,
+ * re-measured every frame at the piece's own depth. Fixed world-unit walls only
+ * line up with the screen at the camera's rest pose, and the parallax rig never
+ * leaves it there — the piece then bounces off thin air on the side the camera
+ * has swayed away from, and off nothing at all on the other.
+ *
+ * The numbers left below are the outer limit the screen walls are clipped to,
+ * and all they still do is catch the camera leaving for another section of the
+ * page: the About pose is the last one the scroll rig holds, so the head band
+ * is off screen entirely while the hero is up, and without a limit the walls
+ * would follow the camera up there and drag the pieces with them. X is handed
+ * to the screen outright — a wall there is only ever a wall you can see, and on
+ * a wide monitor the frustum is already past where a fixed one would sit.
+ */
+const PIECE_BOUNDS: SpriteBounds = {
+  viewport: true,
+  min: [-Infinity, -1100, 2559],
+  max: [Infinity, -500, 2601],
+};
+
+/** Same, with the mouth's slightly deeper Z ceiling. */
+const MOUTH_BOUNDS: SpriteBounds = {
+  ...PIECE_BOUNDS,
+  max: [Infinity, -500, 2605],
 };
 
 /** World-unit XY distance below which two pieces snap together. */
@@ -730,7 +759,7 @@ export default function Head({ ref, onGrabbing }: Props) {
         ref={headRef}
         draggable
         throwable
-        bounds={{ min: [-550, -1100, 2559], max: [550, -500, 2601] }}
+        bounds={PIECE_BOUNDS}
         onPointerDown={() => handleGrab("head")}
         onPointerUp={() => handleGrab(null)}
       />
@@ -807,7 +836,7 @@ export default function Head({ ref, onGrabbing }: Props) {
         draggable
         ref={eyesRef}
         throwable
-        bounds={{ min: [-550, -1100, 2559], max: [550, -500, 2601] }}
+        bounds={PIECE_BOUNDS}
         onPointerDown={() => handleGrab("eyes")}
         onPointerUp={() => handleGrab(null)}
       >
@@ -892,7 +921,7 @@ export default function Head({ ref, onGrabbing }: Props) {
         draggable
         throwable
         ref={mouthRef}
-        bounds={{ min: [-550, -1100, 2559], max: [550, -500, 2605] }}
+        bounds={MOUTH_BOUNDS}
         onPointerDown={() => handleGrab("mouth")}
         onPointerUp={() => handleGrab(null)}
       >
