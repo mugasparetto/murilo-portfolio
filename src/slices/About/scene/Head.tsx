@@ -2,7 +2,7 @@ import { RefObject, useMemo, useCallback, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { useTexture, Line } from "@react-three/drei";
-import MetaBalls, { MetaBallsHandle } from "./MetaBalls";
+import MetaBalls, { FieldMask, MetaBallsHandle } from "./MetaBalls";
 import PolygonSprite, { UV, SpriteHandle } from "./PolygonSprite";
 import UfoScene, { UfoSceneHandle } from "./Ufo";
 
@@ -19,18 +19,39 @@ const MOUTH_OFFSET = new THREE.Vector2(0, -33.5); // mouth sits below eyes
  * Shared iso-surface tuning for every metaball field on the face.
  * Small, varied balls read past a raised threshold, so the thin necks between
  * them break and the goo strings out instead of fusing into one slab.
+ *
+ * The strings come from the *shape* of each ball's field rather than from the
+ * layout: `ballYScale` stretches it along Y so a ball bonds hard with the bars
+ * above and below it but only weakly with its sideways neighbours, and
+ * `ballTaper` skews that stretch upward so each strand tapers to a thin tail at
+ * the top and pools into a bulb underneath — dripping honey, not a bead.
+ *
+ * The pair that decides whether you see strings or a sheet is `ballRadius` vs.
+ * the lane spacing (≈ 0.8 * animationSize * clumpFactor / ballCount). A strand
+ * is roughly 2 * ballRadius / sqrt(fieldThreshold) wide, so once that
+ * approaches the spacing the strands touch and fuse back into a slab. Keep the
+ * radius small and buy the length back with `ballYScale`.
  */
 const GOO = {
-  ballRadius: 1.3,
-  ballRadiusVariance: 1.5,
-  fieldThreshold: 1.25,
+  ballRadius: 1,
+  ballRadiusVariance: 0.9,
+  ballYScale: 5,
+  ballYScaleVariance: 0.8,
+  ballTaper: 0.15,
+  // Slightly fatter kernel tail so a strand keeps its bond to the bars as it
+  // stretches, instead of snapping the moment it drifts.
+  fieldPower: 0.95,
+  fieldThreshold: 1.35,
   fieldEdge: 0.01,
   // Volume: thick centres fall into shadow, thin silhouettes catch a wet
   // highlight. Without this the field renders as a flat sticker.
-  coreShade: 0.9,
+  coreShade: 0.85,
   rimLight: 0.15,
   rimWidth: 5.5,
-  thicknessRange: 8,
+  // Strands overshoot the iso-surface far less than a fat ball did, so the
+  // range that maps to "fully thick" has to come down with them or they read
+  // as all rim and no body.
+  thicknessRange: 2,
 } as const;
 
 /**
@@ -41,17 +62,60 @@ const GOO = {
  *   slower drift + weaker mouse response = parallax against the front layer.
  */
 const GOO_BACK = {
-  shade: 0.4,
+  shade: 0.2,
   opacity: 1,
   fieldEdge: 0.5,
   rimLight: 0.08,
   speed: 0.32,
-  mouseStrength: 6,
+  mouseStrength: 0,
+  fieldPower: 0.75,
 } as const;
 
 /** Render order for the goo. Sprites sit at 10, so both stay behind the face. */
 const BACK_ORDER = 5;
 const FRONT_ORDER = 6;
+
+/**
+ * Where the head stops, read off the skull cap's own alpha.
+ *
+ * The plane the goo renders on is deliberately bigger than the head (it has to
+ * be, or strands would be cut off before they finished falling), so the field
+ * runs off both sides of the face and up over the scalp — the anchor bars alone
+ * reach ±15 animation units, wider than the head is at that height.
+ *
+ * The cap alone is enough to describe the whole outline. Above the floor its
+ * alpha traces the dome, which is the only part of the head that actually
+ * narrows; below it the width is held, so the seam the goo hangs in — and the
+ * eye band under that — stay filled. Measured from the texture, the cap is
+ * opaque down to v = 0.7117 and spans u = 0.046–0.997 over its last few rows,
+ * the same width the eye band starts at, so the held edge lines up with the
+ * face below it.
+ */
+const HEAD_OUTLINE = {
+  /** Just inside the cap's bottom edge (v = 0.7117), with room to spare. */
+  floor: 0.74,
+};
+
+/**
+ * The same trick one slab lower, for the goo hanging in the eye ↔ mouth seam.
+ * Reading the eye band instead of the cap does both jobs at once:
+ *
+ *   above — the band's alpha stops dead at its top edge (v = 0.6623), which is
+ *   the floor of the *upper* seam. So the lower goo simply cannot be drawn up
+ *   there; the cut lands exactly on the band's own edge, where an opaque sprite
+ *   covers it, so nothing shows for it.
+ *
+ *   below — the width is held, leaving the lower seam and the mouth beneath it
+ *   filled, which is the one gap this goo is meant to show through.
+ *
+ * The floor has to clear the band's bottom cut, which is an arc: full width
+ * down to v ≈ 0.450, then gone within another 0.015. Sampling below that would
+ * hold the narrow tail of the arc and pinch the goo into a wedge.
+ */
+const EYE_BAND_OUTLINE = {
+  /** Well clear of the arc, where the band still spans u = 0.022–0.985. */
+  floor: 0.47,
+};
 
 /** World-unit XY distance below which two pieces snap together. */
 const SNAP_DISTANCE = 20;
@@ -60,7 +124,7 @@ const SNAP_DISTANCE = 20;
  * Lerp factor per frame toward the snap target.
  * 1.0 = instant lock; 0.1 = springy follow.
  */
-const SNAP_LERP = 1;
+const SNAP_LERP = 0.18;
 
 // ─── Snap state ───────────────────────────────────────────────────────────────
 
@@ -258,6 +322,32 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
     return [size * aspect, size, 1];
   }, [bottom]);
 
+  // The head's outline, handed to the goo so it can't escape it. Pinned to the
+  // sprites' starting transform rather than tracked live — the goo is hidden
+  // the moment any piece leaves that spot (see the visibility loop below), so
+  // there is never a frame where the two disagree.
+  const headMask = useMemo<FieldMask>(
+    () => ({
+      texture: top,
+      position: [0, -800],
+      scale: [scale[0] * 0.96, scale[1] * 0.97],
+      ...HEAD_OUTLINE,
+    }),
+    [top, scale],
+  );
+
+  // Same inset as the head mask, so both fields are trimmed by the same margin
+  // and the two seams read as one face rather than two differently-clipped ones.
+  const mouthMask = useMemo<FieldMask>(
+    () => ({
+      texture: middle,
+      position: [0, -800],
+      scale: [scale[0] * 0.96, scale[1] * 0.97],
+      ...EYE_BAND_OUTLINE,
+    }),
+    [middle, scale],
+  );
+
   const handleGrab = useCallback(
     (payload: null | "head" | "eyes" | "mouth") => {
       onGrabbing(payload);
@@ -281,8 +371,6 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
       metaBallsHeadBack.current?.setPauseTarget(headTarget);
       metaBallsMouthFront.current?.setPauseTarget(mouthTarget);
       metaBallsMouthBack.current?.setPauseTarget(mouthTarget);
-
-      metaBallsMouthBack.current?.setPauseYOffset(payload === "mouth" ? 9 : 6);
     },
     [onGrabbing],
   );
@@ -634,12 +722,14 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         enableTransparency
         animationSize={40}
         renderOrder={BACK_ORDER}
+        mask={headMask}
         {...GOO}
         {...GOO_BACK}
-        ballSpreadY={2}
-        ballCount={12}
-        clumpFactor={0.8}
-        seed={5}
+        ballSpreadY={4}
+        ballCount={8}
+        clumpFactor={0.6}
+        seed={12}
+        pauseYOffset={25}
         // Invisible: the bars still shape the field so the rear balls hang off
         // them, but only the front layer actually draws them. Two identical
         // bars in perfect registration read as one flat slab.
@@ -665,22 +755,24 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
 
       <MetaBalls
         ref={metaBallsHeadFront}
-        position={[12, -630, 2605]}
+        position={[8, -630, 2605]}
         mouseMinX={-10}
         mouseMaxX={10}
-        scale={[280, 280, 1]}
+        scale={[340, 280, 1]}
         enableTransparency
         animationSize={40}
         renderOrder={FRONT_ORDER}
         seed={10}
+        mask={headMask}
         {...GOO}
-        ballSpreadY={8}
-        ballCount={10}
+        ballSpreadY={4}
+        ballCount={9}
+        pauseYOffset={25}
         // 0.4 * animationSize * clumpFactor must stay inside mouseMaxX, or the
         // outermost balls pile up against the wall and fuse into a solid edge.
-        clumpFactor={0.65}
+        clumpFactor={0.7}
         anchors={[
-          { x: -1.5, y: -7.25, radius: 15, roundness: 0.6, yScale: 0.1 },
+          { x: -1.5, y: -7.05, radius: 15, roundness: 0.6, yScale: 0.1 },
           { x: -1, y: -17, radius: 15, roundness: 0.6, yScale: 0.1 },
         ]}
       />
@@ -708,31 +800,32 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
 
       <MetaBalls
         ref={metaBallsMouthFront}
-        position={[10, -830, 2605]}
-        scale={[280, 280, 1]}
+        position={[5, -830, 2605]}
+        scale={[300, 280, 1]}
         mouseMinX={-12}
         mouseMaxX={12}
         enableTransparency
-        seed={7}
+        seed={12}
         // Match the front head metaballs' colour phase (seed 10 → 10 * 10)
         holoTimeOffset={100}
         animationSize={40}
         renderOrder={FRONT_ORDER}
-        pauseYOffset={6}
+        pauseYOffset={25}
+        mask={mouthMask}
         {...GOO}
-        ballSpreadY={2}
-        ballCount={12}
-        clumpFactor={0.7}
+        ballSpreadY={3}
+        ballCount={9}
+        clumpFactor={0.9}
         anchors={[
           { x: -1.5, y: 1.5, radius: 15, roundness: 0.6, yScale: 0.1 },
-          { x: -0.95, y: -6, radius: 15, roundness: 0.6, yScale: 0.05 },
+          { x: -0.95, y: -7, radius: 13, roundness: 0.6, yScale: 0.05 },
         ]}
       />
 
       <MetaBalls
         ref={metaBallsMouthBack}
         position={[10, -830, 2605]}
-        scale={[280, 280, 1]}
+        scale={[300, 280, 1]}
         mouseMinX={-12}
         mouseMaxX={12}
         enableTransparency
@@ -741,12 +834,13 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         holoTimeOffset={50}
         animationSize={40}
         renderOrder={BACK_ORDER}
-        // pauseYOffset={pause === "mouth" ? 9 : 6}
+        pauseYOffset={25}
+        mask={mouthMask}
         {...GOO}
         {...GOO_BACK}
-        ballSpreadY={2}
-        ballCount={12}
-        clumpFactor={0.7}
+        ballSpreadY={4}
+        ballCount={8}
+        clumpFactor={0.6}
         // Invisible for the same reason as the rear head layer above.
         anchors={[
           {

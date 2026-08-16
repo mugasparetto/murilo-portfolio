@@ -41,6 +41,42 @@ export type AnchorBall = {
   visible?: boolean;
 };
 
+/**
+ * Clips the field to an *outline* borrowed from one or two textures' alpha, so
+ * the goo can never be seen outside the shape it is supposed to live in. The
+ * plane the field renders on is almost always bigger than that shape — it has
+ * to be, or the strands would be cut off before they finished — so without a
+ * mask the outermost balls run off the sides and over the top.
+ *
+ * The mask is an outline, not a stencil of the pieces: everything inside it is
+ * kept, including any gap *between* the pieces. That is the whole point when
+ * the goo's job is to hang in that gap.
+ *
+ * `position` / `scale` describe where the mask textures sit relative to this
+ * component's own `position` / `scale`; both are read in the same units, and
+ * both planes are assumed to be axis-aligned siblings.
+ */
+export type FieldMask = {
+  /** The outline, as texture alpha. */
+  texture: THREE.Texture;
+  /** Centre of the mask texture's plane, in the same space as `position`. */
+  position: [number, number];
+  /** Size of the mask texture's plane, in the same space as `scale`. */
+  scale: [number, number];
+  /**
+   * Lowest UV row of the texture the mask will read. At and below it the mask
+   * holds that row's width instead of following the alpha further down, which
+   * is the whole trick: the shape can stop there — because the texture only
+   * covers its top piece, or because there is a gap to the next one — without
+   * punching a hole through the field hanging below.
+   *
+   * Set it just inside the bottom edge of the piece, with room to spare; the
+   * outline barely changes over the last few rows, and reading past the edge
+   * into empty alpha is what would cut the field off.
+   */
+  floor?: number;
+};
+
 type HolographicMetaBallsProps = {
   speed?: number;
   animationSize?: number;
@@ -52,6 +88,29 @@ type HolographicMetaBallsProps = {
   ballRadiusVariance?: number;
   /** Static per-ball vertical scatter (±). 0 = every ball on the same line */
   ballSpreadY?: number;
+  /**
+   * Vertical stretch of each ball's *field* (not its radius). 1 = a round bead.
+   * Above ~2 the field reaches much further along Y than X, so a ball fuses
+   * with whatever is above and below it while staying thin sideways — which is
+   * what turns a row of beads into hanging strings of goo.
+   */
+  ballYScale?: number;
+  /** Extra Y-stretch handed out per-ball by its hash, as a fraction (±). */
+  ballYScaleVariance?: number;
+  /**
+   * Asymmetry of that vertical stretch, 0–1. At 0 the ball is a symmetric
+   * capsule; above 0 the field reaches further up than down, so the strand
+   * tapers to a thin tail overhead and pools into a bulb underneath — the
+   * teardrop silhouette of dripping honey.
+   */
+  ballTaper?: number;
+  /**
+   * Exponent on each ball's kernel. 1 is the classic 1/d² falloff. Below 1 the
+   * tail fattens so balls bond across bigger gaps (longer, more connected
+   * strings); above 1 it sharpens so they stay separate beads. Raise
+   * `fieldThreshold` alongside a drop here, or everything fuses into a slab.
+   */
+  fieldPower?: number;
   /**
    * Iso-surface level. 1 is the classic metaball threshold; raising it shrinks
    * each ball's effective radius and snaps the thin necks between them, which
@@ -77,6 +136,8 @@ type HolographicMetaBallsProps = {
    * faster as you move inward from the silhouette. */
   thicknessRange?: number;
   enableTransparency?: boolean;
+  /** Silhouette the field is clipped to. Omit and nothing is clipped. */
+  mask?: FieldMask;
   anchors?: AnchorBall[];
   position?: [number, number, number];
   scale?: [number, number, number];
@@ -174,6 +235,8 @@ const fragmentShader = /* glsl */ `
 
   uniform float uFieldThreshold;
   uniform float uFieldEdge;
+  uniform float uBallTaper;
+  uniform float uFieldPower;
 
   uniform float uShade;
   uniform float uOpacity;
@@ -184,7 +247,7 @@ const fragmentShader = /* glsl */ `
 
   uniform float iAnimationSize;
   uniform float iBallCount;
-  uniform vec3  iMetaBalls[50];
+  uniform vec4  iMetaBalls[50];
   uniform float enableTransparency;
   uniform float iAnchorCount;
   uniform vec3  iAnchors[16];
@@ -193,15 +256,60 @@ const fragmentShader = /* glsl */ `
   uniform float iAnchorYScale[16];
   uniform float iAnchorVisible[16];
 
+  uniform sampler2D uMaskTex;
+  uniform float uMaskEnabled;
+  uniform vec2  uMaskScale;
+  uniform vec2  uMaskOffset;
+  uniform float uMaskFloor;
+
   float hash21(vec2 p) {
     p = fract(p * vec2(234.34, 435.345));
     p += dot(p, p + 34.23);
     return fract(p.x * p.y);
   }
 
-  float mb(vec2 c, float r, vec2 p) {
-    vec2 d = p - c;
-    return (r * r) / dot(d, d);
+  // Coverage of the outline the field is allowed to be seen through, in this
+  // plane's own UV. See the FieldMask docs above for the geometry.
+  float fieldMask(vec2 uv) {
+    if (uMaskEnabled < 0.5) return 1.0;
+
+    vec2 m = uv * uMaskScale + uMaskOffset;
+
+    // Above the floor the outline is read straight off the alpha, so a shape
+    // that narrows towards the top — a scalp, a crown, a dome — keeps the
+    // field tucked inside it. At and below the floor the width is simply held,
+    // which leaves everything under the shape's bottom edge filled rather than
+    // cut away. That is the half that matters here: the goo hangs in a gap, and
+    // a gap has no alpha of its own to be inside of.
+    float outline = texture2D(uMaskTex, vec2(m.x, max(m.y, uMaskFloor))).a;
+
+    // Sideways there is no held width to fall back on. Tested explicitly
+    // rather than left to the sampler, because clamp-to-edge smears the border
+    // column outward for ever — and a shape that runs off the side of its own
+    // texture leaves that column fully opaque.
+    float inside = step(0.0, m.x) * step(m.x, 1.0) * step(m.y, 1.0);
+
+    return outline * inside;
+  }
+
+  // b = (x, y, radius, yScale)
+  float mb(vec4 b, vec2 p) {
+    vec2 d = p - b.xy;
+
+    // Anisotropic falloff. Dividing d.y down before the distance test makes the
+    // field reach further along Y than X, so a ball bonds with its neighbours
+    // above and below while staying narrow sideways: a string, not a bead.
+    //
+    // The stretch is also asymmetric — smoothstep ramps it from "short" below
+    // the centre to "long" above, over the ball's own radius so there's no kink
+    // at d.y = 0. The result hangs: a thin tail overhead, a fat bulb beneath.
+    float up = smoothstep(-b.z, b.z, d.y);
+    float ys = b.w * mix(max(1.0 - uBallTaper, 0.05), 1.0 + uBallTaper, up);
+    d.y /= max(ys, 0.01);
+
+    // Below 1 the exponent fattens the kernel's tail, bonding balls across
+    // wider gaps so the strings stay unbroken further from their anchor.
+    return pow((b.z * b.z) / dot(d, d), uFieldPower);
   }
 
   float mb_anchor(vec2 c, float r, float roundness, float strength, float yScale, vec2 p) {
@@ -258,7 +366,7 @@ const fragmentShader = /* glsl */ `
 
     for (int i = 0; i < 50; i++) {
       if (float(i) >= iBallCount) break;
-      float k = mb(iMetaBalls[i].xy, iMetaBalls[i].z, coord);
+      float k = mb(iMetaBalls[i], coord);
       mbField        += k;
       mbVisibleField += k;
     }
@@ -300,7 +408,7 @@ const fragmentShader = /* glsl */ `
     col *= uShade;
 
     float alpha = enableTransparency > 0.5 ? fVisible : 1.0;
-    gl_FragColor = vec4(col, alpha * fVisible * uOpacity);
+    gl_FragColor = vec4(col, alpha * fVisible * uOpacity * fieldMask(vUv));
   }
 `;
 
@@ -310,13 +418,67 @@ const fragmentShader = /* glsl */ `
 
 const MAX_ANCHORS = 16;
 
+/** Bound to the mask samplers when there is no mask — they must point at
+ *  something, and a transparent texel is the "clip nothing" identity. */
+const EMPTY_MASK = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);
+EMPTY_MASK.needsUpdate = true;
+
+type MaskUniforms = {
+  enabled: number;
+  texture: THREE.Texture;
+  scale: THREE.Vector2;
+  offset: THREE.Vector2;
+  floor: number;
+};
+
+/**
+ * Resolve a FieldMask into the affine map from this plane's UV into the mask
+ * texture's UV. A point at UV `p` on this plane sits at world
+ * `centre + (p - 0.5) * size`, so pushing that through the mask plane's own
+ * inverse gives `p * (size / maskSize) + (centre - maskCentre) / maskSize +
+ * 0.5 * (1 - size / maskSize)`.
+ */
+function resolveMask(
+  mask: FieldMask | undefined,
+  position: [number, number, number],
+  scale: [number, number, number],
+): MaskUniforms {
+  if (!mask) {
+    return {
+      enabled: 0,
+      texture: EMPTY_MASK,
+      scale: new THREE.Vector2(1, 1),
+      offset: new THREE.Vector2(0, 0),
+      floor: 0,
+    };
+  }
+
+  const [mw, mh] = mask.scale;
+  const kx = scale[0] / mw;
+  const ky = scale[1] / mh;
+
+  return {
+    enabled: 1,
+    texture: mask.texture,
+    scale: new THREE.Vector2(kx, ky),
+    offset: new THREE.Vector2(
+      (position[0] - mask.position[0]) / mw + 0.5 * (1 - kx),
+      (position[1] - mask.position[1]) / mh + 0.5 * (1 - ky),
+    ),
+    // 0 reads the very bottom row, so by default nothing is held and the mask
+    // is just the texture's own alpha.
+    floor: mask.floor ?? 0,
+  };
+}
+
 type SceneProps = Required<
-  Omit<HolographicMetaBallsProps, "position" | "scale" | "ref">
+  Omit<HolographicMetaBallsProps, "position" | "scale" | "ref" | "mask">
 > & {
   position: [number, number, number];
   scale: [number, number, number];
   renderOrder?: number;
   seed: number;
+  mask?: FieldMask;
 };
 
 const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
@@ -337,7 +499,7 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
     }));
 
     const metaBalls = useMemo(
-      () => Array.from({ length: 50 }, () => new THREE.Vector3()),
+      () => Array.from({ length: 50 }, () => new THREE.Vector4()),
       [],
     );
 
@@ -352,6 +514,9 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
           amp: 4 + h[2] * 4,
           radius: props.ballRadius + h[1] * props.ballRadiusVariance,
           yOffset: (g[0] * 2 - 1) * props.ballSpreadY,
+          // Uneven strand lengths — a row of identical strings reads as a comb.
+          yScale:
+            props.ballYScale * (1 + (g[1] * 2 - 1) * props.ballYScaleVariance),
         };
       });
     }, [
@@ -360,6 +525,8 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
       props.ballRadius,
       props.ballRadiusVariance,
       props.ballSpreadY,
+      props.ballYScale,
+      props.ballYScaleVariance,
     ]);
 
     // Tracked positions for lerping — initialised lazily on first frame
@@ -410,6 +577,12 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
       }
     }, [props.anchors]);
 
+    // ── Silhouette mask ──────────────────────────
+    const maskUniforms = useMemo(
+      () => resolveMask(props.mask, props.position, props.scale),
+      [props.mask, props.position, props.scale],
+    );
+
     // ── Uniforms ─────────────────────────────────
     const uniforms = useMemo(
       () => ({
@@ -431,6 +604,8 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
         uZoom: { value: props.holoZoom ?? 1.0 },
         uFieldThreshold: { value: props.fieldThreshold },
         uFieldEdge: { value: props.fieldEdge },
+        uBallTaper: { value: props.ballTaper },
+        uFieldPower: { value: props.fieldPower },
         uShade: { value: props.shade },
         uOpacity: { value: props.opacity },
         uCoreShade: { value: props.coreShade },
@@ -447,6 +622,11 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
         iAnchorStrength: { value: anchorStrength },
         iAnchorYScale: { value: anchorYScale },
         iAnchorVisible: { value: anchorVisible },
+        uMaskTex: { value: maskUniforms.texture },
+        uMaskEnabled: { value: maskUniforms.enabled },
+        uMaskScale: { value: maskUniforms.scale.clone() },
+        uMaskOffset: { value: maskUniforms.offset.clone() },
+        uMaskFloor: { value: maskUniforms.floor },
       }),
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [],
@@ -485,12 +665,20 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
       uniforms.uZoom.value = props.holoZoom;
       uniforms.uFieldThreshold.value = props.fieldThreshold;
       uniforms.uFieldEdge.value = props.fieldEdge;
+      uniforms.uBallTaper.value = props.ballTaper;
+      uniforms.uFieldPower.value = props.fieldPower;
       uniforms.uShade.value = props.shade;
       uniforms.uOpacity.value = props.opacity;
       uniforms.uCoreShade.value = props.coreShade;
       uniforms.uRimLight.value = props.rimLight;
       uniforms.uRimWidth.value = props.rimWidth;
       uniforms.uThicknessRange.value = props.thicknessRange;
+
+      uniforms.uMaskTex.value = maskUniforms.texture;
+      uniforms.uMaskEnabled.value = maskUniforms.enabled;
+      uniforms.uMaskScale.value.copy(maskUniforms.scale);
+      uniforms.uMaskOffset.value.copy(maskUniforms.offset);
+      uniforms.uMaskFloor.value = maskUniforms.floor;
 
       const anchors = props.anchors;
       const topAnchor = anchors[0] ?? { x: 0, y: 37.5 };
@@ -637,7 +825,7 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
           offRef.x = finalX - ballPositions.current[i].x;
         }
 
-        metaBalls[i].set(finalX, finalY, p.radius);
+        metaBalls[i].set(finalX, finalY, p.radius, p.yScale);
       }
     });
 
@@ -677,6 +865,10 @@ const HolographicMetaBalls = forwardRef<
     ballRadius = 0.8,
     ballRadiusVariance = 1.2,
     ballSpreadY = 0,
+    ballYScale = 1,
+    ballYScaleVariance = 0,
+    ballTaper = 0,
+    fieldPower = 1,
     fieldThreshold = 1.0,
     fieldEdge = 0.02,
     shade = 1,
@@ -686,6 +878,7 @@ const HolographicMetaBalls = forwardRef<
     rimWidth = 2,
     thicknessRange = 1.5,
     enableTransparency = false,
+    mask,
     anchors = [
       {
         x: 0,
@@ -713,9 +906,9 @@ const HolographicMetaBalls = forwardRef<
     pauseTarget = null,
     pauseSpeed = 0.2,
     pauseYOffset = 5,
-    mouseRadius = 8,
-    mouseStrength = 12,
-    mouseInfluenceSpeed = 0.12,
+    mouseRadius = 0,
+    mouseStrength = 0,
+    mouseInfluenceSpeed = 0,
     mouseMinX = null,
     mouseMaxX = null,
     holoTimeScale = HOLO.timeScale,
@@ -743,6 +936,10 @@ const HolographicMetaBalls = forwardRef<
       ballRadius={ballRadius}
       ballRadiusVariance={ballRadiusVariance}
       ballSpreadY={ballSpreadY}
+      ballYScale={ballYScale}
+      ballYScaleVariance={ballYScaleVariance}
+      ballTaper={ballTaper}
+      fieldPower={fieldPower}
       fieldThreshold={fieldThreshold}
       fieldEdge={fieldEdge}
       shade={shade}
@@ -752,6 +949,7 @@ const HolographicMetaBalls = forwardRef<
       rimWidth={rimWidth}
       thicknessRange={thicknessRange}
       enableTransparency={enableTransparency}
+      mask={mask}
       anchors={anchors}
       position={position}
       scale={scale}
