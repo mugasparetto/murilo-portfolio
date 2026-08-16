@@ -2,6 +2,7 @@ import {
   useRef,
   useMemo,
   useEffect,
+  useCallback,
   useImperativeHandle,
   forwardRef,
 } from "react";
@@ -24,10 +25,42 @@ export type SpriteHandle = {
 
 // ─── Throw tuning ─────────────────────────────────────────────────────────────
 
-const THROW_SPEED_THRESHOLD = 400;
-const MAX_THROW_SPEED = 1000;
+/**
+ * The throw is measured from the *pointer*, in screen pixels, and only turned
+ * into world units at release.
+ *
+ * Measuring the sprite's world position instead — which is what this did — reads
+ * the camera's motion as if it were the user's. The parallax rig keeps easing
+ * the camera toward the cursor for a few hundred ms after the pointer stops, and
+ * the world point under a stationary cursor slides ~40 units with it. Since the
+ * sprite only re-aimed on `pointermove`, the next twitch of the hand cashed all
+ * of that drift in at once: one huge jump over a couple of milliseconds, in a
+ * direction that had nothing to do with the drag. Hence "nudge it slightly, let
+ * go, watch it rocket off sideways".
+ */
+
+/** Pointer speed, in world units/sec, below which a release is not a throw. */
+const THROW_SPEED_THRESHOLD = 260;
+/** Ceiling on the launch speed, in world units/sec. */
+const MAX_THROW_SPEED = 900;
+/**
+ * How hard speed above the threshold turns into launch speed. The launch ramps
+ * up *from* a standstill at the threshold rather than starting there, so a flick
+ * that barely clears it barely moves the piece.
+ */
+const THROW_GAIN = 1.15;
+/** Fraction of the coasting velocity that survives one second of friction. */
 const FRICTION = 0.2;
-const VELOCITY_SAMPLE_COUNT = 3;
+/** Fraction of the wall-normal speed that survives a bounce off the bounds. */
+const WALL_RESTITUTION = 0.65;
+/** Only pointer motion from the last this-many ms feeds the throw… */
+const VELOCITY_WINDOW_MS = 90;
+/** …and that window has to span at least this long before it's trusted. */
+const MIN_VELOCITY_SPAN_MS = 24;
+/** Below this speed, in world units/sec, a coasting piece is parked. */
+const REST_SPEED = 1;
+/** Longest step the coast loop integrates, so a frame hitch can't tunnel. */
+const MAX_COAST_STEP = 1 / 30;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -93,27 +126,53 @@ const spriteWorldPos = new THREE.Vector3();
 const planeNormal = new THREE.Vector3();
 const facingPlane = new THREE.Plane();
 const hitPoint = new THREE.Vector3();
+const scaleProbe = new THREE.Vector3();
+
+/**
+ * Which sprite currently owns the pointer.
+ *
+ * All three listen on `document` and their polygons overlap in world space once
+ * the face comes apart, so a press inside an overlap used to start a drag on two
+ * pieces at once — both then followed the cursor and shoved each other.
+ */
+let dragOwner: object | null = null;
+
+/**
+ * Whether a press landed on a real DOM control rather than on the scene.
+ *
+ * The sprites hit-test against their own geometry and know nothing about the
+ * HTML layered over the canvas, so without this they happily grab straight
+ * through a link. Opt anything else out with `data-no-drag`.
+ */
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  return !!el?.closest?.(
+    "a, button, input, textarea, select, label, [data-no-drag]",
+  );
+}
 
 function aimAtPointer(
-  event: PointerEvent,
+  clientX: number,
+  clientY: number,
   camera: THREE.Camera,
   gl: THREE.WebGLRenderer,
 ) {
   const rect = gl.domElement.getBoundingClientRect();
   ndc.set(
-    ((event.clientX - rect.left) / rect.width) * 2 - 1,
-    -((event.clientY - rect.top) / rect.height) * 2 + 1,
+    ((clientX - rect.left) / rect.width) * 2 - 1,
+    -((clientY - rect.top) / rect.height) * 2 + 1,
   );
   raycaster.setFromCamera(ndc, camera);
 }
 
 function pointerToUV(
-  event: PointerEvent,
+  clientX: number,
+  clientY: number,
   mesh: THREE.Mesh,
   camera: THREE.Camera,
   gl: THREE.WebGLRenderer,
 ): UV | null {
-  aimAtPointer(event, camera, gl);
+  aimAtPointer(clientX, clientY, camera, gl);
 
   mesh.getWorldPosition(spriteWorldPos);
   camera.getWorldDirection(planeNormal);
@@ -127,17 +186,45 @@ function pointerToUV(
 }
 
 function pointerToWorldPlane(
-  event: PointerEvent,
+  clientX: number,
+  clientY: number,
   worldPlane: THREE.Plane,
   camera: THREE.Camera,
   gl: THREE.WebGLRenderer,
 ): THREE.Vector3 | null {
-  aimAtPointer(event, camera, gl);
+  aimAtPointer(clientX, clientY, camera, gl);
 
   // still cloned: callers keep the result past the current event
   return raycaster.ray.intersectPlane(worldPlane, hitPoint)
     ? hitPoint.clone()
     : null;
+}
+
+/**
+ * World units one screen pixel covers on `worldPlane` — the exchange rate that
+ * turns a pointer flick into a throw.
+ *
+ * The drag plane is perpendicular to the view axis, so the scale is uniform
+ * across it and one measurement at the centre holds everywhere. Reading it off
+ * two rays rather than off the fov keeps it correct for any camera.
+ */
+function worldUnitsPerPixel(
+  worldPlane: THREE.Plane,
+  camera: THREE.Camera,
+  gl: THREE.WebGLRenderer,
+): number {
+  const rect = gl.domElement.getBoundingClientRect();
+  if (rect.width < 1) return 1;
+
+  ndc.set(0, 0);
+  raycaster.setFromCamera(ndc, camera);
+  if (!raycaster.ray.intersectPlane(worldPlane, scaleProbe)) return 1;
+
+  ndc.set(2 / rect.width, 0);
+  raycaster.setFromCamera(ndc, camera);
+  if (!raycaster.ray.intersectPlane(worldPlane, hitPoint)) return 1;
+
+  return scaleProbe.distanceTo(hitPoint) || 1;
 }
 
 function buildPolygonGeometry(polygon: UV[]): THREE.BufferGeometry {
@@ -216,9 +303,67 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     const dragPlane = useRef(new THREE.Plane());
     const dragOffset = useRef(new THREE.Vector3());
 
-    type Sample = { pos: THREE.Vector3; t: number };
+    /** Screen-space pointer track, newest last. Cleared when the drag ends. */
+    type Sample = { x: number; y: number; t: number };
     const velocitySamples = useRef<Sample[]>([]);
     const throwVelocity = useRef(new THREE.Vector3());
+    /** Pixels → world units on the drag plane, measured once per grab. */
+    const worldPerPixel = useRef(1);
+    /** Last pointer position, so the frame loop can re-aim a held piece. */
+    const pointerPx = useRef<{ x: number; y: number } | null>(null);
+    /** Identity handed to `dragOwner` while this sprite holds the pointer. */
+    const dragToken = useRef({});
+    const dragVelocity = useRef(new THREE.Vector3());
+
+    const pushSample = useCallback((x: number, y: number, t: number) => {
+      const samples = velocitySamples.current;
+      samples.push({ x, y, t });
+      // Keep a little more than the read window, so the read always has
+      // something to look back at and a 1000Hz mouse can't grow this unbounded.
+      while (samples.length > 1 && t - samples[0].t > VELOCITY_WINDOW_MS * 2) {
+        samples.shift();
+      }
+    }, []);
+
+    /**
+     * Pointer velocity in world units/sec over the last `VELOCITY_WINDOW_MS`,
+     * written into `out`.
+     *
+     * Measured as one displacement over one span rather than as a mean of
+     * per-event velocities: coalesced events can land a millisecond apart, and
+     * averaging their individual speeds let a single such pair carry the whole
+     * estimate. Ageing against `now` — not against the newest sample — is what
+     * makes a pointer that has come to rest read as stopped.
+     */
+    const readPointerVelocity = useCallback(
+      (now: number, out: THREE.Vector3) => {
+        out.set(0, 0, 0);
+
+        const samples = velocitySamples.current;
+        if (samples.length < 2) return out;
+
+        const newest = samples[samples.length - 1];
+        if (now - newest.t > VELOCITY_WINDOW_MS) return out;
+
+        let oldest = newest;
+        for (let i = samples.length - 1; i >= 0; i--) {
+          if (now - samples[i].t > VELOCITY_WINDOW_MS) break;
+          oldest = samples[i];
+        }
+
+        const span = newest.t - oldest.t;
+        if (span < MIN_VELOCITY_SPAN_MS) return out;
+
+        const k = worldPerPixel.current / (span / 1000);
+        // Screen Y grows downward, world Y upward.
+        return out.set(
+          (newest.x - oldest.x) * k,
+          -(newest.y - oldest.y) * k,
+          0,
+        );
+      },
+      [],
+    );
 
     const normalizedScale = useMemo<[number, number, number]>(
       () => (typeof scale === "number" ? [scale, scale, scale] : scale),
@@ -284,13 +429,28 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     }, [debug, bounds, scene]);
 
     useEffect(() => {
+      // Pinned for the life of the effect so the cleanup below compares against
+      // the same identity the handlers claimed with.
+      const token = dragToken.current;
+
       const handlePointerDown = (event: PointerEvent) => {
         if (!enabledRef.current) return;
         if (!interactable.current) return;
         if (!meshRef.current) return;
+        if (dragOwner) return; // another piece already has the pointer
+        // Real DOM controls win the press. The nav pill is fixed to the bottom
+        // centre of the viewport, which is exactly where the lower slices sit,
+        // and a click meant for one of its links shouldn't grab the face.
+        if (isInteractiveTarget(event.target)) return;
         meshRef.current.updateWorldMatrix(true, false);
 
-        const uv = pointerToUV(event, meshRef.current, camera, gl);
+        const uv = pointerToUV(
+          event.clientX,
+          event.clientY,
+          meshRef.current,
+          camera,
+          gl,
+        );
         if (!uv) return;
         if (!pointInPolygon(uv[0], uv[1], polygon)) return;
 
@@ -312,7 +472,8 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         dragPlane.current.setFromNormalAndCoplanarPoint(normal, spriteWorldPos);
 
         const worldHit = pointerToWorldPlane(
-          event,
+          event.clientX,
+          event.clientY,
           dragPlane.current,
           camera,
           gl,
@@ -325,45 +486,82 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
           worldHit.z - groupRef.current.position.z,
         );
 
+        // The plane is pinned to the camera axis at grab time, so it never
+        // tilts mid-drag: Z stays exactly where it was and the pixel→world
+        // scale measured here holds for the whole drag.
+        worldPerPixel.current = worldUnitsPerPixel(
+          dragPlane.current,
+          camera,
+          gl,
+        );
+
+        velocitySamples.current.length = 0;
+        pointerPx.current = { x: event.clientX, y: event.clientY };
+        if (throwable) {
+          pushSample(event.clientX, event.clientY, performance.now());
+        }
+
         isDraggingRef.current = true;
+        dragOwner = token;
+
+        // Stop the browser starting a gesture of its own from this press. A
+        // native link or text drag paints the no-drop cursor over the page and
+        // swallows every pointermove until the button comes up, so the piece
+        // sits frozen mid-drag and only catches up on release.
+        event.preventDefault();
+      };
+
+      // preventDefault on pointerdown covers Chrome, but it isn't a guarantee
+      // across browsers — refusing the dragstart outright is.
+      const handleDragStart = (event: Event) => {
+        if (isDraggingRef.current) event.preventDefault();
+      };
+
+      /**
+       * Give up the pointer without throwing anything.
+       *
+       * `pointercancel` is how the browser says it has taken the gesture over —
+       * a native drag starting, or touch scrolling winning the pan — and it
+       * arrives *instead of* `pointerup`, never alongside it. Without this the
+       * piece stays stuck to the pointer and, worse, `dragOwner` is never
+       * cleared, so no piece can be grabbed again for the rest of the session.
+       */
+      const abortDrag = () => {
+        if (!isPressedRef.current && !isDraggingRef.current) return;
+
+        isPressedRef.current = false;
+        isDraggingRef.current = false;
+        pointerPx.current = null;
+        velocitySamples.current.length = 0;
+        throwVelocity.current.set(0, 0, 0);
+        if (dragOwner === token) dragOwner = null;
+
+        onPointerUp?.();
+        document.body.style.cursor = isInsideRef.current ? "grab" : "default";
       };
 
       const handlePointerMove = (event: PointerEvent) => {
         if (isDraggingRef.current && draggable) {
-          const worldHit = pointerToWorldPlane(
-            event,
-            dragPlane.current,
-            camera,
-            gl,
-          );
-          if (worldHit && groupRef.current) {
-            groupRef.current.position.set(
-              worldHit.x - dragOffset.current.x,
-              worldHit.y - dragOffset.current.y,
-              worldHit.z - dragOffset.current.z,
-            );
-
-            // Clamp to the inset centre box during drag
-            if (centreBox) {
-              groupRef.current.position.clamp(centreBox.min, centreBox.max);
-            }
-
-            if (throwable) {
-              const samples = velocitySamples.current;
-              samples.push({
-                pos: groupRef.current.position.clone(),
-                t: performance.now(),
-              });
-              if (samples.length > VELOCITY_SAMPLE_COUNT) samples.shift();
-            }
+          // Recorded, not applied: the frame loop re-aims the piece so it keeps
+          // tracking the cursor while the camera drifts between moves.
+          pointerPx.current = { x: event.clientX, y: event.clientY };
+          if (throwable) {
+            pushSample(event.clientX, event.clientY, performance.now());
           }
           return;
         }
 
+        if (dragOwner) return; // hover is meaningless mid-drag
         if (!meshRef.current) return;
         meshRef.current.updateWorldMatrix(true, false);
 
-        const uv = pointerToUV(event, meshRef.current, camera, gl);
+        const uv = pointerToUV(
+          event.clientX,
+          event.clientY,
+          meshRef.current,
+          camera,
+          gl,
+        );
         if (!uv) return;
 
         const hit = pointInPolygon(uv[0], uv[1], polygon);
@@ -379,46 +577,74 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         }
       };
 
-      const handlePointerUp = () => {
+      const handlePointerUp = (event: PointerEvent) => {
         if (!isPressedRef.current) return;
+
+        const wasDragging = isDraggingRef.current;
         isPressedRef.current = false;
         isDraggingRef.current = false;
+        pointerPx.current = null;
+        if (dragOwner === token) dragOwner = null;
+
         onPointerUp?.();
         document.body.style.cursor = isInsideRef.current ? "grab" : "default";
 
-        if (!throwable) return;
-
-        const samples = velocitySamples.current;
         throwVelocity.current.set(0, 0, 0);
-
-        if (samples.length >= 2) {
-          const vel = new THREE.Vector3();
-          for (let i = 1; i < samples.length; i++) {
-            const dt = (samples[i].t - samples[i - 1].t) / 1000;
-            if (dt <= 0) continue;
-            vel.add(
-              new THREE.Vector3()
-                .subVectors(samples[i].pos, samples[i - 1].pos)
-                .divideScalar(dt),
-            );
-          }
-          vel.divideScalar(samples.length - 1);
-
-          if (vel.length() >= THROW_SPEED_THRESHOLD) {
-            throwVelocity.current.copy(vel).clampLength(0, MAX_THROW_SPEED);
-          }
+        if (!throwable || !wasDragging) {
+          velocitySamples.current.length = 0;
+          return;
         }
 
-        velocitySamples.current = [];
+        // The release is itself a sample. Without it, letting go after the
+        // pointer had come to rest threw the piece at whatever speed it carried
+        // when the last pointermove fired, however long ago that was.
+        const now = performance.now();
+        pushSample(event.clientX, event.clientY, now);
+        readPointerVelocity(now, throwVelocity.current);
+        velocitySamples.current.length = 0;
+
+        const speed = throwVelocity.current.length();
+        if (speed <= THROW_SPEED_THRESHOLD) {
+          throwVelocity.current.set(0, 0, 0);
+          return;
+        }
+
+        const launch = Math.min(
+          (speed - THROW_SPEED_THRESHOLD) * THROW_GAIN,
+          MAX_THROW_SPEED,
+        );
+        throwVelocity.current.multiplyScalar(launch / speed);
+
+        // Don't launch a piece that's already pinned against a wall into it —
+        // it would only bounce straight back out on the next frame.
+        if (centreBox) {
+          const p = groupRef.current.position;
+          const v = throwVelocity.current;
+          const EDGE = 0.5;
+          if (p.x <= centreBox.min.x + EDGE && v.x < 0) v.x = 0;
+          if (p.x >= centreBox.max.x - EDGE && v.x > 0) v.x = 0;
+          if (p.y <= centreBox.min.y + EDGE && v.y < 0) v.y = 0;
+          if (p.y >= centreBox.max.y - EDGE && v.y > 0) v.y = 0;
+        }
       };
 
       document.addEventListener("pointerdown", handlePointerDown);
       document.addEventListener("pointermove", handlePointerMove);
       document.addEventListener("pointerup", handlePointerUp);
+      document.addEventListener("pointercancel", abortDrag);
+      document.addEventListener("dragstart", handleDragStart);
+      // Releasing outside the window never delivers a pointerup.
+      window.addEventListener("blur", abortDrag);
+
       return () => {
         document.removeEventListener("pointerdown", handlePointerDown);
         document.removeEventListener("pointermove", handlePointerMove);
         document.removeEventListener("pointerup", handlePointerUp);
+        document.removeEventListener("pointercancel", abortDrag);
+        document.removeEventListener("dragstart", handleDragStart);
+        window.removeEventListener("blur", abortDrag);
+        // Unmounting mid-drag would otherwise lock every other piece out.
+        if (dragOwner === token) dragOwner = null;
       };
     }, [
       camera,
@@ -429,45 +655,92 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
       centreBox,
       onPointerDown,
       onPointerUp,
+      pushSample,
+      readPointerVelocity,
     ]);
+
+    // ── Drag tracking ─────────────────────────────────────────────────────────
+    //
+    // A held piece is re-aimed every frame rather than on pointermove alone. The
+    // parallax rig keeps easing the camera toward the cursor for a few hundred
+    // ms after the pointer stops, so a piece pinned to a world point slides out
+    // from under the cursor in that time and snapped back on the next move.
+    //
+    // This runs at priority 0, ahead of the composer's render and of the rig's
+    // own camera update, so it aims through exactly the camera the next frame is
+    // drawn with.
+    useFrame(() => {
+      if (!draggable || !isDraggingRef.current) return;
+
+      const p = pointerPx.current;
+      if (!p || !groupRef.current) return;
+
+      const worldHit = pointerToWorldPlane(
+        p.x,
+        p.y,
+        dragPlane.current,
+        camera,
+        gl,
+      );
+      if (!worldHit) return;
+
+      groupRef.current.position.set(
+        worldHit.x - dragOffset.current.x,
+        worldHit.y - dragOffset.current.y,
+        worldHit.z - dragOffset.current.z,
+      );
+
+      // Clamp to the inset centre box during drag
+      if (centreBox) {
+        groupRef.current.position.clamp(centreBox.min, centreBox.max);
+      }
+    });
 
     // ── Friction / coasting + bounce loop ────────────────────────────────────────
     useFrame((_, delta) => {
       if (!throwable) return;
-      if (throwVelocity.current.lengthSq() < 1e-6) return;
+
+      const vel = throwVelocity.current;
+      if (vel.lengthSq() < 1e-6) return;
+      if (isDraggingRef.current) {
+        vel.set(0, 0, 0);
+        return;
+      }
 
       const pos = groupRef.current.position;
-      const vel = throwVelocity.current;
+      // A long frame integrates as a short one: better to lose a little travel
+      // than to jump the piece through a wall or through another piece.
+      const step = Math.min(delta, MAX_COAST_STEP);
 
-      pos.addScaledVector(vel, delta);
+      pos.addScaledVector(vel, step);
 
       if (centreBox) {
         const b = centreBox;
         if (pos.x < b.min.x) {
           pos.x = b.min.x;
-          vel.x = Math.abs(vel.x);
+          vel.x = Math.abs(vel.x) * WALL_RESTITUTION;
         } else if (pos.x > b.max.x) {
           pos.x = b.max.x;
-          vel.x = -Math.abs(vel.x);
+          vel.x = -Math.abs(vel.x) * WALL_RESTITUTION;
         }
         if (pos.y < b.min.y) {
           pos.y = b.min.y;
-          vel.y = Math.abs(vel.y);
+          vel.y = Math.abs(vel.y) * WALL_RESTITUTION;
         } else if (pos.y > b.max.y) {
           pos.y = b.max.y;
-          vel.y = -Math.abs(vel.y);
+          vel.y = -Math.abs(vel.y) * WALL_RESTITUTION;
         }
         if (pos.z < b.min.z) {
           pos.z = b.min.z;
-          vel.z = Math.abs(vel.z);
+          vel.z = Math.abs(vel.z) * WALL_RESTITUTION;
         } else if (pos.z > b.max.z) {
           pos.z = b.max.z;
-          vel.z = -Math.abs(vel.z);
+          vel.z = -Math.abs(vel.z) * WALL_RESTITUTION;
         }
       }
 
-      vel.multiplyScalar(Math.pow(FRICTION, delta));
-      if (vel.length() < 0.01) vel.set(0, 0, 0);
+      vel.multiplyScalar(Math.pow(FRICTION, step));
+      if (vel.lengthSq() < REST_SPEED * REST_SPEED) vel.set(0, 0, 0);
     });
 
     useImperativeHandle(
@@ -475,7 +748,17 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
       () => ({
         getPosition: () => groupRef.current.position.clone(),
         setPosition: (v) => groupRef.current.position.copy(v),
-        getVelocity: () => throwVelocity.current.clone(),
+        // How fast the piece is actually moving, whatever is moving it. While
+        // it's held that's the pointer, read the same parallax-immune way the
+        // throw is — a piece shoved into another one used to report zero, so it
+        // displaced its neighbour without ever knocking it anywhere.
+        getVelocity: () =>
+          isDraggingRef.current
+            ? readPointerVelocity(
+                performance.now(),
+                dragVelocity.current,
+              ).clone()
+            : throwVelocity.current.clone(),
         setVelocity: (v) => throwVelocity.current.copy(v),
         isDragging: () => isDraggingRef.current,
         getCentreBox: () => centreBox,
@@ -509,6 +792,9 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
             // Clean up any in-progress drag immediately
             isDraggingRef.current = false;
             isPressedRef.current = false;
+            pointerPx.current = null;
+            velocitySamples.current.length = 0;
+            if (dragOwner === dragToken.current) dragOwner = null;
             throwVelocity.current.set(0, 0, 0);
             document.body.style.cursor = "default";
           }
@@ -518,7 +804,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
           interactable.current = value; // a new ref inside PolygonSprite
         },
       }),
-      [polygon, normalizedScale, centreBox],
+      [polygon, normalizedScale, centreBox, readPointerVelocity],
     );
 
     return (

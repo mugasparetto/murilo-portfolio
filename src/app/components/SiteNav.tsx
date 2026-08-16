@@ -45,7 +45,7 @@ export default function SiteNav() {
     <nav
       ref={navRef}
       aria-label="Primary"
-      className={`pointer-events-none text-center fixed bottom-(--block-inset) md:bottom-6 left-(--block-inset) z-50 flex w-10 flex-col items-start rounded-sm border border-white bg-black transition-[width] duration-300 ease-out max-md:overflow-hidden md:left-1/2 md:w-auto md:-translate-x-1/2 md:flex-row md:items-center md:px-4 md:py-2 ${open ? "max-md:pointer-events-auto max-md:w-40" : ""}`}
+      className={`pointer-events-none select-none text-center fixed bottom-(--block-inset) md:bottom-6 left-(--block-inset) z-50 flex w-10 flex-col items-start rounded-sm border border-white bg-black transition-[width] duration-300 ease-out max-md:overflow-hidden md:left-1/2 md:w-auto md:-translate-x-1/2 md:flex-row md:items-center md:px-4 md:py-2 ${open ? "max-md:pointer-events-auto max-md:w-40" : ""}`}
       style={blockInset}
     >
       <button

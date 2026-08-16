@@ -121,10 +121,25 @@ const EYE_BAND_OUTLINE = {
 const SNAP_DISTANCE = 20;
 
 /**
- * Lerp factor per frame toward the snap target.
+ * Lerp factor toward the snap target, expressed per 60Hz frame and rescaled by
+ * the real delta below — otherwise the snap is twice as springy on a 120Hz
+ * display as it is on a 60Hz one.
  * 1.0 = instant lock; 0.1 = springy follow.
  */
 const SNAP_LERP = 0.18;
+
+/**
+ * Fraction of the closing speed that survives a piece-to-piece hit. The bounce
+ * used to be perfectly elastic, so pieces traded speed forever and a pair
+ * resting in contact buzzed against each other.
+ */
+const COLLISION_RESTITUTION = 0.55;
+
+/**
+ * Overlap below this is left alone. Separating every last unit re-triggers on
+ * the next frame and reads as a jitter, and nobody can see half a unit.
+ */
+const CONTACT_SLOP = 0.5;
 
 // ─── Snap state ───────────────────────────────────────────────────────────────
 
@@ -376,7 +391,7 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
   );
 
   // ── Snap + collision frame loop ────────────────────────────────────────────
-  useFrame(() => {
+  useFrame((_, delta) => {
     const head = headRef.current;
     const eyes = eyesRef.current;
     const mouth = mouthRef.current;
@@ -385,6 +400,12 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
     if (isComplete.current) return;
 
     const snapState = snap.current;
+
+    // Every per-frame factor below is tuned at 60Hz and rescaled to the real
+    // frame time, so the snap feels the same on a 144Hz monitor as on a 60Hz
+    // one. Delta is capped so a hitch can't overshoot past the target.
+    const frames = Math.min(delta, 1 / 20) * 60;
+    const snapLerp = 1 - Math.pow(1 - SNAP_LERP, frames);
 
     // ── 1. Un-snap if the user is currently dragging a snapped piece ─────────
     //
@@ -410,14 +431,14 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
       const targetX = headPos.x - EYES_OFFSET.x;
       const targetY = headPos.y - EYES_OFFSET.y;
 
-      eyesPos.x += (targetX - eyesPos.x) * SNAP_LERP;
-      eyesPos.y += (targetY - eyesPos.y) * SNAP_LERP;
+      eyesPos.x += (targetX - eyesPos.x) * snapLerp;
+      eyesPos.y += (targetY - eyesPos.y) * snapLerp;
       eyes.setPosition(eyesPos);
       clampToBounds(eyes);
 
       // Zero out throw velocity so it doesn't fight the lerp
       const vel = eyes.getVelocity();
-      vel.multiplyScalar(1 - SNAP_LERP);
+      vel.multiplyScalar(1 - snapLerp);
       eyes.setVelocity(vel);
     }
 
@@ -428,13 +449,13 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
       const targetX = eyesPos.x - MOUTH_OFFSET.x;
       const targetY = eyesPos.y - MOUTH_OFFSET.y;
 
-      mouthPos.x += (targetX - mouthPos.x) * SNAP_LERP;
-      mouthPos.y += (targetY - mouthPos.y) * SNAP_LERP;
+      mouthPos.x += (targetX - mouthPos.x) * snapLerp;
+      mouthPos.y += (targetY - mouthPos.y) * snapLerp;
       mouth.setPosition(mouthPos);
       clampToBounds(mouth);
 
       const vel = mouth.getVelocity();
-      vel.multiplyScalar(1 - SNAP_LERP);
+      vel.multiplyScalar(1 - snapLerp);
       mouth.setVelocity(vel);
     }
 
@@ -491,6 +512,8 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
       if (!result) continue;
 
       const { depth, axis } = result;
+      if (depth <= CONTACT_SLOP) continue;
+
       const ax2 = new THREE.Vector2(axis.x, axis.y);
 
       const aDragging = a.isDragging();
@@ -525,27 +548,35 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
       const velB = b.getVelocity();
       const relVel = new THREE.Vector2(velA.x - velB.x, velA.y - velB.y);
       const impactSpeed = relVel.dot(ax2);
-      if (impactSpeed < 0) continue;
+      if (impactSpeed <= 0) continue; // already separating
+
+      // Equal masses share the impulse; a held piece is effectively infinitely
+      // heavy, so the free one takes all of it and gets genuinely knocked away
+      // rather than just displaced.
+      const held = aDragging || bDragging;
+      const impulse =
+        impactSpeed * (1 + COLLISION_RESTITUTION) * (held ? 1 : 0.5);
 
       if (!aDragging) {
-        velA.x -= impactSpeed * ax2.x;
-        velA.y -= impactSpeed * ax2.y;
+        velA.x -= impulse * ax2.x;
+        velA.y -= impulse * ax2.y;
         a.setVelocity(velA);
       }
       if (!bDragging) {
-        velB.x += impactSpeed * ax2.x;
-        velB.y += impactSpeed * ax2.y;
+        velB.x += impulse * ax2.x;
+        velB.y += impulse * ax2.y;
         b.setVelocity(velB);
       }
     }
 
     // ── 5. All pairs snapped → fire onComplete once ───────────────────
     if (snapState.headEyes && snapState.eyesMouth) {
-      const SUPER_DAMP = 0.85; // tune: higher = stops faster (0–1)
+      const SUPER_DAMP = 0.85; // tune: higher = stops faster (0–1), per 60Hz frame
+      const damp = Math.pow(1 - SUPER_DAMP, frames);
 
       for (const sprite of [head, eyes, mouth]) {
         const vel = sprite.getVelocity();
-        vel.multiplyScalar(1 - SUPER_DAMP);
+        vel.multiplyScalar(damp);
         sprite.setVelocity(vel);
       }
 
