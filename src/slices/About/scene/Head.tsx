@@ -4,7 +4,6 @@ import { useFrame } from "@react-three/fiber";
 import { useTexture, Line } from "@react-three/drei";
 import MetaBalls, { FieldMask, MetaBallsHandle } from "./MetaBalls";
 import PolygonSprite, { UV, SpriteHandle } from "./PolygonSprite";
-import UfoScene, { UfoSceneHandle } from "./Ufo";
 
 // ─── Snap configuration ───────────────────────────────────────────────────────
 
@@ -295,10 +294,9 @@ const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t);
 type Props = {
   ref: RefObject<THREE.Group | null>;
   onGrabbing: (payload: null | "head" | "eyes" | "mouth") => void;
-  hideBillboard: (payload: "head" | "eyes" | "mouth") => void;
 };
 
-export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
+export default function Head({ ref, onGrabbing }: Props) {
   const bottom = useTexture("/textures/head/bottom.webp");
   const middle = useTexture("/textures/head/middle.webp");
   const top = useTexture("/textures/head/top.webp");
@@ -306,7 +304,6 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
   const headRef = useRef<SpriteHandle>(null);
   const eyesRef = useRef<SpriteHandle>(null);
   const mouthRef = useRef<SpriteHandle>(null);
-  const ufoRef = useRef<UfoSceneHandle>(null);
 
   const metaBallsHeadFront = useRef<MetaBallsHandle>(null);
   const metaBallsHeadBack = useRef<MetaBallsHandle>(null);
@@ -620,7 +617,6 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         head.setPosition(
           new THREE.Vector3(headPosition.x, headPosition.y, 2600),
         );
-        hideBillboard("head");
       }
     }
 
@@ -641,7 +637,6 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         eyes.setPosition(
           new THREE.Vector3(eyesPosition.x, eyesPosition.y, 2600),
         );
-        hideBillboard("eyes");
       }
     }
 
@@ -654,7 +649,6 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         mouth.setPosition(
           new THREE.Vector3(mouthPosition.x, mouthPosition.y, 2600),
         );
-        hideBillboard("mouth");
       }
     }
   });
@@ -710,14 +704,11 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
     if (t >= 0.5 && !triggeredUfo.current) {
       // Trigger UFO abduction when lid is mostly open
       const eyeGroup = eyesRef.current?.getGroup();
-      let abductTarget: [number, number, number] = [0, -800, 2600];
       if (eyeGroup) {
         const worldPos = new THREE.Vector3();
         eyeGroup.getWorldPosition(worldPos);
-        abductTarget = [worldPos.x + 8, worldPos.y, 2560];
       }
 
-      ufoRef.current?.trigger(abductTarget);
       triggeredUfo.current = true;
     }
 
@@ -913,8 +904,6 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
           renderOrder={0}
         />
       </PolygonSprite>
-
-      <UfoScene ref={ufoRef} position={[0, -400, 2600]} />
     </group>
   );
 }
