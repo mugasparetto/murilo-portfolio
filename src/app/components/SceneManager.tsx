@@ -5,7 +5,6 @@ import { useRef } from "react";
 import * as THREE from "three";
 
 import { useSceneRegistry } from "@/app/hooks/SceneRegistry";
-import { useStore } from "@/app/hooks/store";
 import {
   defaultParams,
   type SceneParams,
@@ -26,7 +25,6 @@ export default function SceneManager() {
   // ✅ single stable params object that GUI mutates
   const paramsRef = useRef<SceneParams>({ ...defaultParams });
   const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
-  const { outlined } = useStore();
 
   const poseRef = useRef<CameraPose>({
     position: new THREE.Vector3(
@@ -68,7 +66,7 @@ export default function SceneManager() {
         priority={0}
       />
 
-      <Postprocessing selected={outlined} />
+      <Postprocessing />
 
       {up.md && (
         <ParallaxRig

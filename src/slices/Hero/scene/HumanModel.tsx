@@ -1,11 +1,9 @@
 import * as THREE from "three";
 import { useRef, JSX, useEffect, useMemo, useState, useCallback } from "react";
-import { useGLTF, useAnimations, Outlines } from "@react-three/drei";
+import { useGLTF, useAnimations } from "@react-three/drei";
 import { GLTF } from "three-stdlib";
 
-import { useStore } from "@/app/hooks/store";
-import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
-import { useAdaptiveGate } from "@/app/hooks/adaptiveGate";
+import HullOutline from "@/app/components/HullOutline";
 
 const INITIAL_ROTATION_Y = Math.PI - Math.PI * 0.05;
 
@@ -30,15 +28,6 @@ export default function HumanModel(props: JSX.IntrinsicElements["group"]) {
 
   const [hovered, setHovered] = useState(false);
   const isLooking = useRef(false);
-
-  const setOutlined = useStore((s) => s.setOutlined);
-  const clearOutlined = useStore((s) => s.clearOutlined);
-
-  const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
-  const hiRes = useAdaptiveGate({
-    disableBelow: 30,
-    enableAbove: 31,
-  });
 
   /**
    * Clone GLTF material so hover effects
@@ -158,26 +147,6 @@ export default function HumanModel(props: JSX.IntrinsicElements["group"]) {
   //   return () => window.removeEventListener("keydown", handleKeyDown);
   // }, [playLookCycle]);
 
-  /**
-   * Outline registration
-   */
-  useEffect(() => {
-    if (!group.current) return;
-
-    const meshes: THREE.Object3D[] = [];
-
-    group.current.traverse((obj) => {
-      // @ts-expect-error runtime flag
-      if (obj.isMesh) meshes.push(obj);
-    });
-
-    setOutlined(meshes);
-
-    return () => {
-      clearOutlined();
-    };
-  }, [clearOutlined, setOutlined]);
-
   const transform = useMemo(
     () => ({
       scale: 80,
@@ -207,14 +176,7 @@ export default function HumanModel(props: JSX.IntrinsicElements["group"]) {
             onPointerLeave={() => setHovered(false)}
             onClick={playLookCycle}
           >
-            {(!up.md || !hiRes) && (
-              <Outlines
-                thickness={1.75}
-                color="white"
-                renderOrder={10}
-                angle={22}
-              />
-            )}
+            <HullOutline />
           </skinnedMesh>
 
           <primitive object={nodes.mixamorigHips} />

@@ -183,6 +183,28 @@ export default function Steps({
 
     stepsPivot.current.position.copy(center);
     steps.current.position.sub(center);
+
+    /**
+     * setFromObject() caches a bounding box on every SkinnedMesh it walks, and
+     * it computes that box from whatever pose is current — here, the bind pose,
+     * which for this model is ~100x smaller than the animated one.
+     * SkinnedMesh.raycast() then uses that stale box to reject rays, so the
+     * human would silently stop responding to hover and clicks. Drop the caches
+     * this walk just created and let three rebuild them from the live pose.
+     */
+    steps.current.traverse((obj) => {
+      // three treats both as nullable at runtime; @types/three doesn't
+      const skinned = obj as unknown as {
+        isSkinnedMesh?: boolean;
+        boundingBox: THREE.Box3 | null;
+        boundingSphere: THREE.Sphere | null;
+      };
+
+      if (skinned.isSkinnedMesh) {
+        skinned.boundingBox = null;
+        skinned.boundingSphere = null;
+      }
+    });
   }, []);
 
   // Update transform when params change
