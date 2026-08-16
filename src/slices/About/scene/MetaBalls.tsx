@@ -46,6 +46,36 @@ type HolographicMetaBallsProps = {
   animationSize?: number;
   ballCount?: number;
   clumpFactor?: number;
+  /** Base radius of a free-floating ball, in animation-space units */
+  ballRadius?: number;
+  /** Extra radius handed out per-ball by its hash. 0 = every ball identical */
+  ballRadiusVariance?: number;
+  /** Static per-ball vertical scatter (±). 0 = every ball on the same line */
+  ballSpreadY?: number;
+  /**
+   * Iso-surface level. 1 is the classic metaball threshold; raising it shrinks
+   * each ball's effective radius and snaps the thin necks between them, which
+   * is what opens up holes. Anchors are unaffected.
+   */
+  fieldThreshold?: number;
+  /** Width of the smoothstep band at the surface, as a fraction of the
+   * threshold. Larger = softer, wetter-looking edge. */
+  fieldEdge?: number;
+  // ── Depth / volume shading ─────────────────
+  /** Flat brightness multiplier. Drop below 1 on a rear layer so it reads as
+   * sitting in the shadow of the one in front. */
+  shade?: number;
+  /** Alpha multiplier, applied on top of the field's own coverage. */
+  opacity?: number;
+  /** Colour multiplier where the goo is thickest. <1 shades the core. */
+  coreShade?: number;
+  /** Additive highlight along the silhouette. */
+  rimLight?: number;
+  /** Falloff exponent for the rim. Higher = tighter band at the edge. */
+  rimWidth?: number;
+  /** Field overshoot mapped to "fully thick". Smaller = shading ramps up
+   * faster as you move inward from the silhouette. */
+  thicknessRange?: number;
   enableTransparency?: boolean;
   anchors?: AnchorBall[];
   position?: [number, number, number];
@@ -70,6 +100,12 @@ type HolographicMetaBallsProps = {
   mouseInfluenceSpeed?: number;
   // ── Holographic overrides ──────────────────
   holoTimeScale?: number;
+  /**
+   * Phase offset (seconds) into the holographic pattern. Two instances sharing
+   * this value render the same colours regardless of their ball-motion `seed`.
+   * Defaults to `seed * 10` so each instance is coloured differently.
+   */
+  holoTimeOffset?: number;
   holoSeed?: number;
   holoIterations?: number;
   holoColor1?: string;
@@ -136,6 +172,16 @@ const fragmentShader = /* glsl */ `
   uniform float uGrainAmount;
   uniform float uZoom;
 
+  uniform float uFieldThreshold;
+  uniform float uFieldEdge;
+
+  uniform float uShade;
+  uniform float uOpacity;
+  uniform float uCoreShade;
+  uniform float uRimLight;
+  uniform float uRimWidth;
+  uniform float uThicknessRange;
+
   uniform float iAnimationSize;
   uniform float iBallCount;
   uniform vec3  iMetaBalls[50];
@@ -162,7 +208,9 @@ const fragmentShader = /* glsl */ `
     vec2 d = p - c;
     d.y /= max(yScale, 0.01);
     float k = (r * r) / dot(d, d);
-    return strength * pow(k, 1.0 / max(roundness, 0.01));
+    // Scaled by the threshold so anchors keep their silhouette when the
+    // threshold is raised to open gaps between the free-floating balls.
+    return strength * pow(k, 1.0 / max(roundness, 0.01)) * uFieldThreshold;
   }
 
   void main() {
@@ -226,13 +274,33 @@ const fragmentShader = /* glsl */ `
       if (iAnchorVisible[i] > 0.5) mbVisibleField += k;
     }
 
-    float fAll     = smoothstep(1.0, 1.02, mbField);
-    float fVisible = smoothstep(1.0, 1.02, mbVisibleField);
+    float edgeHi = uFieldThreshold * (1.0 + uFieldEdge);
+    float fAll     = smoothstep(uFieldThreshold, edgeHi, mbField);
+    float fVisible = smoothstep(uFieldThreshold, edgeHi, mbVisibleField);
 
     col *= 0.85 + 0.15 * fAll;
 
+    // ── Volume shading ─────────────────────────────────────────────────
+    // How far the field overshoots the iso-surface stands in for how thick
+    // the goo is at this pixel: 0 right at the silhouette, 1 deep inside a
+    // blob. Without this the field is a flat sticker.
+    float thickness = clamp(
+      (mbVisibleField - uFieldThreshold) / max(uThicknessRange, 0.001),
+      0.0, 1.0
+    );
+
+    // Thick core falls into shadow, thin edges stay bright — the same cue
+    // that makes a soap bubble or a blob of honey read as rounded.
+    col *= mix(1.0, uCoreShade, thickness);
+
+    // Wet highlight hugging the silhouette.
+    col += uRimLight * pow(1.0 - thickness, max(uRimWidth, 0.001));
+
+    // Flat multiplier separating stacked layers front-to-back.
+    col *= uShade;
+
     float alpha = enableTransparency > 0.5 ? fVisible : 1.0;
-    gl_FragColor = vec4(col, alpha * fVisible);
+    gl_FragColor = vec4(col, alpha * fVisible * uOpacity);
   }
 `;
 
@@ -276,14 +344,23 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
     const ballParams = useMemo(() => {
       return Array.from({ length: props.ballCount }, (_, i) => {
         const h = hash31(i + 1 + props.seed * 100.0);
+        // Second sample so the static scatter doesn't correlate with size/phase
+        const g = hash31(i + 501 + props.seed * 100.0);
         return {
           st: h[0] * Math.PI * 2,
           speed: 0.5 + h[1],
           amp: 4 + h[2] * 4,
-          radius: 0.8 + h[1] * 1.2,
+          radius: props.ballRadius + h[1] * props.ballRadiusVariance,
+          yOffset: (g[0] * 2 - 1) * props.ballSpreadY,
         };
       });
-    }, [props.ballCount, props.seed]);
+    }, [
+      props.ballCount,
+      props.seed,
+      props.ballRadius,
+      props.ballRadiusVariance,
+      props.ballSpreadY,
+    ]);
 
     // Tracked positions for lerping — initialised lazily on first frame
     const ballPositions = useRef<{ x: number; y: number }[] | null>(null);
@@ -352,6 +429,14 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
         uGamma: { value: props.holoGamma },
         uGrainAmount: { value: props.holoGrainAmount },
         uZoom: { value: props.holoZoom ?? 1.0 },
+        uFieldThreshold: { value: props.fieldThreshold },
+        uFieldEdge: { value: props.fieldEdge },
+        uShade: { value: props.shade },
+        uOpacity: { value: props.opacity },
+        uCoreShade: { value: props.coreShade },
+        uRimLight: { value: props.rimLight },
+        uRimWidth: { value: props.rimWidth },
+        uThicknessRange: { value: props.thicknessRange },
         iAnimationSize: { value: props.animationSize },
         iBallCount: { value: props.ballCount },
         iMetaBalls: { value: metaBalls },
@@ -380,8 +465,10 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
 
     // ── Animation ────────────────────────────────
     useFrame(({ clock, size, pointer, camera: frameCamera }) => {
+      // Ball motion is offset by `seed`; the holographic fill has its own phase
+      // so instances can move independently but still share a colour.
       const t = clock.getElapsedTime() + props.seed * 10.0;
-      uniforms.uTime.value = t;
+      uniforms.uTime.value = clock.getElapsedTime() + props.holoTimeOffset;
       uniforms.uResolution.value.set(size.width, size.height);
 
       uniforms.uTimeScale.value = props.holoTimeScale;
@@ -396,6 +483,14 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
       uniforms.uGamma.value = props.holoGamma;
       uniforms.uGrainAmount.value = props.holoGrainAmount;
       uniforms.uZoom.value = props.holoZoom;
+      uniforms.uFieldThreshold.value = props.fieldThreshold;
+      uniforms.uFieldEdge.value = props.fieldEdge;
+      uniforms.uShade.value = props.shade;
+      uniforms.uOpacity.value = props.opacity;
+      uniforms.uCoreShade.value = props.coreShade;
+      uniforms.uRimLight.value = props.rimLight;
+      uniforms.uRimWidth.value = props.rimWidth;
+      uniforms.uThicknessRange.value = props.thicknessRange;
 
       const anchors = props.anchors;
       const topAnchor = anchors[0] ?? { x: 0, y: 37.5 };
@@ -420,6 +515,7 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
             x: (laneT * 2 - 1) * props.animationSize * 0.4 * props.clumpFactor,
             y:
               topAnchor.y * 1.3 +
+              p.yOffset +
               Math.sin(t * props.speed * p.speed + p.st) *
                 p.amp *
                 props.clumpFactor,
@@ -473,6 +569,7 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
           (laneT * 2 - 1) * props.animationSize * 0.4 * props.clumpFactor;
         const naturalY =
           topAnchor.y * 1.3 +
+          p.yOffset +
           Math.sin(t * props.speed * p.speed + p.st) *
             p.amp *
             props.clumpFactor;
@@ -577,6 +674,17 @@ const HolographicMetaBalls = forwardRef<
     animationSize = 50,
     ballCount = 20,
     clumpFactor = 0.8,
+    ballRadius = 0.8,
+    ballRadiusVariance = 1.2,
+    ballSpreadY = 0,
+    fieldThreshold = 1.0,
+    fieldEdge = 0.02,
+    shade = 1,
+    opacity = 1,
+    coreShade = 1,
+    rimLight = 0,
+    rimWidth = 2,
+    thicknessRange = 1.5,
     enableTransparency = false,
     anchors = [
       {
@@ -611,6 +719,7 @@ const HolographicMetaBalls = forwardRef<
     mouseMinX = null,
     mouseMaxX = null,
     holoTimeScale = HOLO.timeScale,
+    holoTimeOffset = seed * 10,
     holoSeed = HOLO.seed,
     holoIterations = HOLO.iterations,
     holoColor1 = HOLO.color1,
@@ -631,6 +740,17 @@ const HolographicMetaBalls = forwardRef<
       animationSize={animationSize}
       ballCount={ballCount}
       clumpFactor={clumpFactor}
+      ballRadius={ballRadius}
+      ballRadiusVariance={ballRadiusVariance}
+      ballSpreadY={ballSpreadY}
+      fieldThreshold={fieldThreshold}
+      fieldEdge={fieldEdge}
+      shade={shade}
+      opacity={opacity}
+      coreShade={coreShade}
+      rimLight={rimLight}
+      rimWidth={rimWidth}
+      thicknessRange={thicknessRange}
       enableTransparency={enableTransparency}
       anchors={anchors}
       position={position}
@@ -647,6 +767,7 @@ const HolographicMetaBalls = forwardRef<
       mouseMinX={mouseMinX}
       mouseMaxX={mouseMaxX}
       holoTimeScale={holoTimeScale}
+      holoTimeOffset={holoTimeOffset}
       holoSeed={holoSeed}
       holoIterations={holoIterations}
       holoColor1={holoColor1}

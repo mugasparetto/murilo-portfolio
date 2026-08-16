@@ -15,6 +15,44 @@ import UfoScene, { UfoSceneHandle } from "./Ufo";
 const EYES_OFFSET = new THREE.Vector2(0, -33.5); // eyes sit below head centre
 const MOUTH_OFFSET = new THREE.Vector2(0, -33.5); // mouth sits below eyes
 
+/**
+ * Shared iso-surface tuning for every metaball field on the face.
+ * Small, varied balls read past a raised threshold, so the thin necks between
+ * them break and the goo strings out instead of fusing into one slab.
+ */
+const GOO = {
+  ballRadius: 1.3,
+  ballRadiusVariance: 1.5,
+  fieldThreshold: 1.25,
+  fieldEdge: 0.01,
+  // Volume: thick centres fall into shadow, thin silhouettes catch a wet
+  // highlight. Without this the field renders as a flat sticker.
+  coreShade: 0.9,
+  rimLight: 0.15,
+  rimWidth: 5.5,
+  thicknessRange: 8,
+} as const;
+
+/**
+ * Overrides for the rear layer of each pair. Depth here is sold by contrast,
+ * not by Z — nothing in this group writes depth, so `renderOrder` decides
+ * occlusion and everything below is a painterly cue:
+ *   darker + softer edge + weaker rim = further away and out of focus,
+ *   slower drift + weaker mouse response = parallax against the front layer.
+ */
+const GOO_BACK = {
+  shade: 0.4,
+  opacity: 1,
+  fieldEdge: 0.5,
+  rimLight: 0.08,
+  speed: 0.32,
+  mouseStrength: 6,
+} as const;
+
+/** Render order for the goo. Sprites sit at 10, so both stay behind the face. */
+const BACK_ORDER = 5;
+const FRONT_ORDER = 6;
+
 /** World-unit XY distance below which two pieces snap together. */
 const SNAP_DISTANCE = 20;
 
@@ -22,7 +60,7 @@ const SNAP_DISTANCE = 20;
  * Lerp factor per frame toward the snap target.
  * 1.0 = instant lock; 0.1 = springy follow.
  */
-const SNAP_LERP = 0.18;
+const SNAP_LERP = 1;
 
 // ─── Snap state ───────────────────────────────────────────────────────────────
 
@@ -595,13 +633,33 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         scale={[280, 280, 1]}
         enableTransparency
         animationSize={40}
-        renderOrder={5}
+        renderOrder={BACK_ORDER}
+        {...GOO}
+        {...GOO_BACK}
+        ballSpreadY={2}
         ballCount={12}
-        clumpFactor={0.6}
+        clumpFactor={0.8}
         seed={5}
+        // Invisible: the bars still shape the field so the rear balls hang off
+        // them, but only the front layer actually draws them. Two identical
+        // bars in perfect registration read as one flat slab.
         anchors={[
-          { x: -1.5, y: -7.25, radius: 16, roundness: 0.6, yScale: 0.1 },
-          { x: -1, y: -17, radius: 16, roundness: 0.6, yScale: 0.1 },
+          {
+            x: -1.5,
+            y: -7.25,
+            radius: 16,
+            roundness: 0.6,
+            yScale: 0.1,
+            visible: false,
+          },
+          {
+            x: -1,
+            y: -17,
+            radius: 16,
+            roundness: 0.6,
+            yScale: 0.1,
+            visible: false,
+          },
         ]}
       />
 
@@ -613,9 +671,14 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         scale={[280, 280, 1]}
         enableTransparency
         animationSize={40}
+        renderOrder={FRONT_ORDER}
         seed={10}
-        ballCount={16}
-        clumpFactor={0.85}
+        {...GOO}
+        ballSpreadY={8}
+        ballCount={10}
+        // 0.4 * animationSize * clumpFactor must stay inside mouseMaxX, or the
+        // outermost balls pile up against the wall and fuse into a solid edge.
+        clumpFactor={0.65}
         anchors={[
           { x: -1.5, y: -7.25, radius: 15, roundness: 0.6, yScale: 0.1 },
           { x: -1, y: -17, radius: 15, roundness: 0.6, yScale: 0.1 },
@@ -651,9 +714,15 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         mouseMaxX={12}
         enableTransparency
         seed={7}
+        // Match the front head metaballs' colour phase (seed 10 → 10 * 10)
+        holoTimeOffset={100}
         animationSize={40}
+        renderOrder={FRONT_ORDER}
         pauseYOffset={6}
-        ballCount={18}
+        {...GOO}
+        ballSpreadY={2}
+        ballCount={12}
+        clumpFactor={0.7}
         anchors={[
           { x: -1.5, y: 1.5, radius: 15, roundness: 0.6, yScale: 0.1 },
           { x: -0.95, y: -6, radius: 15, roundness: 0.6, yScale: 0.05 },
@@ -668,13 +737,34 @@ export default function Head({ ref, onGrabbing, hideBillboard }: Props) {
         mouseMaxX={12}
         enableTransparency
         seed={12}
+        // Match the back head metaballs' colour phase (seed 5 → 5 * 10)
+        holoTimeOffset={50}
         animationSize={40}
-        renderOrder={5}
+        renderOrder={BACK_ORDER}
         // pauseYOffset={pause === "mouth" ? 9 : 6}
-        ballCount={18}
+        {...GOO}
+        {...GOO_BACK}
+        ballSpreadY={2}
+        ballCount={12}
+        clumpFactor={0.7}
+        // Invisible for the same reason as the rear head layer above.
         anchors={[
-          { x: -1.5, y: 1.5, radius: 15, roundness: 0.6, yScale: 0.1 },
-          { x: -0.95, y: -6, radius: 15, roundness: 0.6, yScale: 0.05 },
+          {
+            x: -1.5,
+            y: 1.5,
+            radius: 15,
+            roundness: 0.6,
+            yScale: 0.1,
+            visible: false,
+          },
+          {
+            x: -0.95,
+            y: -6,
+            radius: 15,
+            roundness: 0.6,
+            yScale: 0.05,
+            visible: false,
+          },
         ]}
       />
 
