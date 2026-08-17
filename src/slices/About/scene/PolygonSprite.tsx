@@ -84,6 +84,17 @@ const REST_SPEED = 1;
 /** Longest step the coast loop integrates, so a frame hitch can't tunnel. */
 const MAX_COAST_STEP = 1 / 30;
 /**
+ * How far a piece may drift between two frames and still count as parked, in
+ * world units. Parked is what buys a piece the right not to be shoved by a wall
+ * moving onto it — see the walls loop.
+ *
+ * Not zero, because a piece being carried by one it is bonded to closes the last
+ * of that gap asymptotically and never quite stops. Under this it is close
+ * enough to standing still that letting a wall stop on it costs the wall the
+ * same fraction of a unit.
+ */
+const PARKED_EPSILON = 0.05;
+/**
  * How far outside its walls a piece at rest has to be found before it is walked
  * back in, in world units.
  *
@@ -632,6 +643,12 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     const extraBounds = useRef(new THREE.Box3());
     const hasExtraBounds = useRef(false);
     const narrowedBox = useRef(new THREE.Box3());
+    /**
+     * Where the piece was when the walls were last measured. Starts at NaN so
+     * the first frame's distance test is false and the piece counts as moving —
+     * there is no previous frame to have held still since.
+     */
+    const lastWallPos = useRef(new THREE.Vector3(NaN, NaN, NaN));
 
     /**
      * The walls in force right now. Read it at the point of use — with
@@ -707,6 +724,38 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
       );
       box.min.y = wall.x;
       box.max.y = wall.y;
+
+      // ── A wall never shoves a piece that isn't going anywhere ──────────────
+      //
+      // These walls track the camera, and the camera does not only sway: the
+      // scroll rig flies it to another section of the page entirely. On the way
+      // out the screen edges sweep straight across the parked pieces, and a
+      // wall that keeps its grip through that carries them along with it —
+      // scroll up to the hero and come back to find the face shoved into a
+      // heap. The pieces sit close to their walls to begin with, so it takes
+      // very little camera travel: the mouth's own floor is 245 units above the
+      // screen's, which at the About pose leaves it about 39 units of room.
+      //
+      // The authored `min`/`max` are meant to catch exactly this, but they only
+      // bite once the screen has left the authored range altogether — some four
+      // hundred units later, by which point the damage is done.
+      //
+      // So a wall that has moved onto a piece which has not moved simply stops
+      // at it. Nothing is dragged and nothing is left outside its walls, which
+      // is the same guarantee the stranded walk-back makes, arrived at before
+      // the piece is ever stranded. Anything actually in motion — held, coasting
+      // or carried along by a piece it is bonded to — is clamped as usual, which
+      // is what keeps a piece pushed *into* a wall on the right side of it.
+      if (
+        !isDraggingRef.current &&
+        pos.distanceToSquared(lastWallPos.current) < PARKED_EPSILON ** 2
+      ) {
+        if (pos.x < box.min.x) box.min.x = pos.x;
+        else if (pos.x > box.max.x) box.max.x = pos.x;
+        if (pos.y < box.min.y) box.min.y = pos.y;
+        else if (pos.y > box.max.y) box.max.y = pos.y;
+      }
+      lastWallPos.current.copy(pos);
     });
 
     // ── Debug: Box3Helper for the OUTER bounds ────────────────────────────────
