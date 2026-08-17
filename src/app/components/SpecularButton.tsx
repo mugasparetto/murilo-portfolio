@@ -233,10 +233,33 @@ const SpecularButton = ({
     fx.appendChild(renderer.domElement);
 
     const sizeRef = { w: 1, h: 1 };
+
+    // The button's own box, cached.
+    //
+    // Reading it is a layout read, and a layout read from a `pointermove`
+    // handler is a forced synchronous reflow of the whole page: Lenis scrolls
+    // the document from its own rAF, so the layout is dirty again by the time
+    // the next move arrives and the browser has to redo it on the spot, at
+    // pointer rate. Cached here and refreshed in the frame loop below, only
+    // once something it depends on has actually happened.
+    const rect = { left: 0, top: 0, right: 0, bottom: 0, width: 1, height: 1 };
+    let rectDirty = true;
+
+    const readRect = () => {
+      const r = btn.getBoundingClientRect();
+      rect.left = r.left;
+      rect.top = r.top;
+      rect.right = r.right;
+      rect.bottom = r.bottom;
+      rect.width = r.width;
+      rect.height = r.height;
+      rectDirty = false;
+    };
+
     const resize = () => {
       // Fractional size + explicit center keep the SDF pinned to the exact
       // CSS border, instead of drifting up to a pixel from offsetWidth rounding.
-      const rect = btn.getBoundingClientRect();
+      readRect();
       const w = rect.width;
       const h = rect.height;
       sizeRef.w = w;
@@ -250,31 +273,54 @@ const SpecularButton = ({
     ro.observe(btn);
     resize();
 
+    // Scrolling moves the button without resizing it, so the observer above
+    // never hears about it.
+    const markRectDirty = () => {
+      rectDirty = true;
+    };
+    window.addEventListener("scroll", markRectDirty, { passive: true });
+    window.addEventListener("resize", markRectDirty);
+
     // Light angle steers toward the pointer (anywhere on the page) and falls
     // back to a slow sweep when the pointer hasn't moved yet.
+    //
+    // The handler only banks where the pointer is; the angle itself is worked
+    // out once a frame in `update`, which is the only place the cached box is
+    // known to be current — and is also where it belongs, since several moves
+    // can arrive between two frames and only the last of them is ever drawn.
     let pointerAngle: number | null = null;
     let proximityT = 0;
+    let pointerX = 0;
+    let pointerY = 0;
+    let seenPointer = false;
     const onPointerMove = (e: PointerEvent) => {
-      const rect = btn.getBoundingClientRect();
+      pointerX = e.clientX;
+      pointerY = e.clientY;
+      seenPointer = true;
+    };
+    window.addEventListener("pointermove", onPointerMove);
+
+    const aimAtPointer = () => {
+      if (!seenPointer) return;
+
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
-      const dx = Math.max(rect.left - e.clientX, 0, e.clientX - rect.right);
-      const dy = Math.max(rect.top - e.clientY, 0, e.clientY - rect.bottom);
+      const dx = Math.max(rect.left - pointerX, 0, pointerX - rect.right);
+      const dy = Math.max(rect.top - pointerY, 0, pointerY - rect.bottom);
       const dist = Math.hypot(dx, dy);
       // Over the button itself the light settles on the diagonal (framing the
       // corners) and gently sways with the cursor position within the button.
       if (dist === 0) {
-        const nx = (e.clientX - cx) / (rect.width / 2);
-        const ny = (cy - e.clientY) / (rect.height / 2);
+        const nx = (pointerX - cx) / (rect.width / 2);
+        const ny = (cy - pointerY) / (rect.height / 2);
         pointerAngle =
           Math.atan2(2 / rect.height, -2 / rect.width) + nx * 0.3 + ny * 0.15;
       } else {
-        pointerAngle = Math.atan2(cy - e.clientY, e.clientX - cx);
+        pointerAngle = Math.atan2(cy - pointerY, pointerX - cx);
       }
       const t = Math.max(0, 1 - dist / Math.max(propsRef.current.proximity, 1));
       proximityT = t * t * (3 - 2 * t);
     };
-    window.addEventListener("pointermove", onPointerMove);
 
     let angle = 2.4;
     let idleAngle = 2.4;
@@ -287,6 +333,11 @@ const SpecularButton = ({
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
       const p = propsRef.current;
+
+      // Inside rAF the reflow this may cost is one the frame was going to pay
+      // anyway, and only when the page has actually moved under the button.
+      if (rectDirty) readRect();
+      aimAtPointer();
 
       idleAngle += p.speed * dt;
       const steer =
@@ -326,6 +377,8 @@ const SpecularButton = ({
       cancelAnimationFrame(raf);
       ro.disconnect();
       window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("scroll", markRectDirty);
+      window.removeEventListener("resize", markRectDirty);
       if (renderer.domElement.parentNode === fx)
         fx.removeChild(renderer.domElement);
       geometry.dispose();

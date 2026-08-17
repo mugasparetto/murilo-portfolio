@@ -6,7 +6,7 @@ import {
   useImperativeHandle,
   forwardRef,
 } from "react";
-import { useThree, useFrame } from "@react-three/fiber";
+import { useThree, useFrame, type Size } from "@react-three/fiber";
 import * as THREE from "three";
 
 // New exported handle type
@@ -28,6 +28,18 @@ export type SpriteHandle = {
   getWorldPolygon: () => THREE.Vector2[];
   isDragging: () => boolean;
   getCentreBox: () => THREE.Box3 | null;
+  /**
+   * A second box to narrow this sprite's own walls with, in the same space as
+   * `bounds`; the walls in force become the intersection of the two. Copied, not
+   * held. `null` clears it.
+   *
+   * It exists so a caller that has bonded several sprites together can hold each
+   * of them to the walls of *all* of them. Without it the wall a group is
+   * drifting into only stops the one piece that reaches it first, and the rest
+   * carry on through — which for a group meant to be rigid means it comes apart
+   * against the wall.
+   */
+  setExtraBounds: (box: THREE.Box3 | null) => void;
   setEnabled: (enabled: boolean) => void;
   getGroup: () => THREE.Object3D;
   setInteractable: (value: boolean) => void;
@@ -71,6 +83,36 @@ const MIN_VELOCITY_SPAN_MS = 24;
 const REST_SPEED = 1;
 /** Longest step the coast loop integrates, so a frame hitch can't tunnel. */
 const MAX_COAST_STEP = 1 / 30;
+/**
+ * How far outside its walls a piece at rest has to be found before it is walked
+ * back in, in world units.
+ *
+ * With `viewport` bounds the walls are re-measured from the live camera every
+ * frame, so they move — the parallax sway slides them tens of units, and a
+ * resize or an orientation change moves them by however much the frustum
+ * changed. A piece that has come to rest is touched by nothing else: the drag
+ * loop wants a drag and the coast loop wants a velocity. So a wall can sweep
+ * across a parked piece and simply leave it outside, hanging over the edge of
+ * the screen until something happens to move it again.
+ *
+ * The slack is what keeps the fix from welding parked pieces to the screen edge
+ * and walking them around with the sway. At the About pose the rig moves the
+ * camera by at most half its `strength` (±50 world units on X), and the pieces
+ * sit ~23% of the way from the camera to the look-at target, so the walls at
+ * their depth slide about ±40: an ordinary pointer sweep opens up far less than
+ * this slack and goes on being ignored. A corner-to-corner sweep against a piece
+ * parked at the far extreme can just reach it, and by then the piece really is
+ * that far out of frame, so bringing it back is the right answer anyway.
+ *
+ * Once it does trigger the piece is walked all the way back in rather than back
+ * to the slack, or it would park on the new edge of it and strand again on the
+ * next nudge.
+ */
+const STRANDED_SLACK = 80;
+/** How much of the remaining trip back in a stranded piece makes per 60Hz frame. */
+const STRANDED_RECOVER = 0.08;
+/** Below this, in world units, the walk back is over. */
+const STRANDED_SETTLE = 0.5;
 /**
  * How far each collision vertex is pushed off the polygon's centroid, in UV
  * space. Negative shrinks the hull, so pieces have to overlap a little before
@@ -155,6 +197,8 @@ const planeNormal = new THREE.Vector3();
 const facingPlane = new THREE.Plane();
 const hitPoint = new THREE.Vector3();
 const scaleProbe = new THREE.Vector3();
+/** Nearest point inside the walls, for the stranded check in the coast loop. */
+const insideWalls = new THREE.Vector3();
 
 /**
  * Which sprite currently owns the pointer.
@@ -179,16 +223,25 @@ function isInteractiveTarget(target: EventTarget | null): boolean {
   );
 }
 
+/**
+ * The canvas rect, taken from R3F rather than measured.
+ *
+ * `size` is the canvas's own bounds — the element R3F observes fills the styled
+ * container exactly — kept up to date by a ResizeObserver, so reading it costs
+ * nothing. `getBoundingClientRect` here does not: this runs from a `pointermove`
+ * handler, three of them per event, and Lenis has already dirtied the layout by
+ * scrolling the document in the frame before, so the first call of each event
+ * forces a synchronous reflow of the whole page.
+ */
 function aimAtPointer(
   clientX: number,
   clientY: number,
   camera: THREE.Camera,
-  gl: THREE.WebGLRenderer,
+  size: Size,
 ) {
-  const rect = gl.domElement.getBoundingClientRect();
   ndc.set(
-    ((clientX - rect.left) / rect.width) * 2 - 1,
-    -((clientY - rect.top) / rect.height) * 2 + 1,
+    ((clientX - size.left) / size.width) * 2 - 1,
+    -((clientY - size.top) / size.height) * 2 + 1,
   );
   raycaster.setFromCamera(ndc, camera);
 }
@@ -198,9 +251,9 @@ function pointerToUV(
   clientY: number,
   mesh: THREE.Mesh,
   camera: THREE.Camera,
-  gl: THREE.WebGLRenderer,
+  size: Size,
 ): UV | null {
-  aimAtPointer(clientX, clientY, camera, gl);
+  aimAtPointer(clientX, clientY, camera, size);
 
   mesh.getWorldPosition(spriteWorldPos);
   camera.getWorldDirection(planeNormal);
@@ -218,9 +271,9 @@ function pointerToWorldPlane(
   clientY: number,
   worldPlane: THREE.Plane,
   camera: THREE.Camera,
-  gl: THREE.WebGLRenderer,
+  size: Size,
 ): THREE.Vector3 | null {
-  aimAtPointer(clientX, clientY, camera, gl);
+  aimAtPointer(clientX, clientY, camera, size);
 
   // still cloned: callers keep the result past the current event
   return raycaster.ray.intersectPlane(worldPlane, hitPoint)
@@ -239,16 +292,15 @@ function pointerToWorldPlane(
 function worldUnitsPerPixel(
   worldPlane: THREE.Plane,
   camera: THREE.Camera,
-  gl: THREE.WebGLRenderer,
+  size: Size,
 ): number {
-  const rect = gl.domElement.getBoundingClientRect();
-  if (rect.width < 1) return 1;
+  if (size.width < 1) return 1;
 
   ndc.set(0, 0);
   raycaster.setFromCamera(ndc, camera);
   if (!raycaster.ray.intersectPlane(worldPlane, scaleProbe)) return 1;
 
-  ndc.set(2 / rect.width, 0);
+  ndc.set(2 / size.width, 0);
   raycaster.setFromCamera(ndc, camera);
   if (!raycaster.ray.intersectPlane(worldPlane, hitPoint)) return 1;
 
@@ -319,6 +371,25 @@ function visibleSpanAtZ(
  * the middle rather than crossing over and clamping to a wall that is now the
  * wrong side of the piece.
  */
+/**
+ * The tighter of two ranges, written into `out` as (min, max). Ranges that miss
+ * each other entirely collapse to the point between them rather than crossing
+ * over into a box whose min is past its max, which clamps to nonsense.
+ */
+function narrowRange(
+  aMin: number,
+  aMax: number,
+  bMin: number,
+  bMax: number,
+  out: THREE.Vector2,
+) {
+  const min = Math.max(aMin, bMin);
+  const max = Math.min(aMax, bMax);
+  if (min <= max) return out.set(min, max);
+  const mid = (min + max) * 0.5;
+  return out.set(mid, mid);
+}
+
 function resolveWall(
   screenMin: number,
   screenMax: number,
@@ -401,7 +472,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
   ) {
     const meshRef = useRef<THREE.Mesh>(null!);
     const groupRef = useRef<THREE.Group>(null!);
-    const { camera, gl, scene } = useThree();
+    const { camera, scene, size } = useThree();
 
     const isPressedRef = useRef(false);
     const isInsideRef = useRef(false);
@@ -421,6 +492,12 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     const worldPerPixel = useRef(1);
     /** Last pointer position, so the frame loop can re-aim a held piece. */
     const pointerPx = useRef<{ x: number; y: number } | null>(null);
+    /**
+     * Whether a wall has been left across this piece and it is on its way back
+     * in. Latched, so the walk finishes instead of stopping the moment the piece
+     * is back inside `STRANDED_SLACK` of the wall.
+     */
+    const recovering = useRef(false);
     /** Identity handed to `dragOwner` while this sprite holds the pointer. */
     const dragToken = useRef({});
 
@@ -549,14 +626,37 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
       ),
     );
 
+    // A second box to narrow the sprite's own walls with, handed in from
+    // outside — see `setExtraBounds`. Kept flat rather than as a nullable box so
+    // clearing it costs nothing.
+    const extraBounds = useRef(new THREE.Box3());
+    const hasExtraBounds = useRef(false);
+    const narrowedBox = useRef(new THREE.Box3());
+
     /**
      * The walls in force right now. Read it at the point of use — with
-     * `viewport` on, the box behind it is rewritten every frame.
+     * `viewport` on, the box behind it is rewritten every frame, and the extra
+     * box on top of it can change just as often.
      */
-    const getCentreBox = useCallback(
-      () => (tracksViewport ? liveBox.current : worldBox),
-      [tracksViewport, worldBox],
-    );
+    const getCentreBox = useCallback(() => {
+      const base = tracksViewport ? liveBox.current : worldBox;
+      if (!hasExtraBounds.current) return base;
+
+      const extra = extraBounds.current;
+      if (!base) return extra;
+
+      const out = narrowedBox.current;
+      narrowRange(base.min.x, base.max.x, extra.min.x, extra.max.x, wall);
+      out.min.x = wall.x;
+      out.max.x = wall.y;
+      narrowRange(base.min.y, base.max.y, extra.min.y, extra.max.y, wall);
+      out.min.y = wall.x;
+      out.max.y = wall.y;
+      narrowRange(base.min.z, base.max.z, extra.min.z, extra.max.z, wall);
+      out.min.z = wall.x;
+      out.max.z = wall.y;
+      return out;
+    }, [tracksViewport, worldBox]);
 
     // ── Screen-tracking walls ────────────────────────────────────────────────
     //
@@ -659,7 +759,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
           event.clientY,
           meshRef.current,
           camera,
-          gl,
+          size,
         );
         if (!uv) return;
         if (!pointInPolygon(uv[0], uv[1], polygon)) return;
@@ -686,7 +786,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
           event.clientY,
           dragPlane.current,
           camera,
-          gl,
+          size,
         );
         if (!worldHit) return;
 
@@ -702,7 +802,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         worldPerPixel.current = worldUnitsPerPixel(
           dragPlane.current,
           camera,
-          gl,
+          size,
         );
 
         velocitySamples.current.length = 0;
@@ -770,7 +870,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
           event.clientY,
           meshRef.current,
           camera,
-          gl,
+          size,
         );
         if (!uv) return;
 
@@ -859,7 +959,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
       };
     }, [
       camera,
-      gl,
+      size,
       polygon,
       draggable,
       throwable,
@@ -891,7 +991,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         p.y,
         dragPlane.current,
         camera,
-        gl,
+        size,
       );
       if (!worldHit) return;
 
@@ -908,51 +1008,86 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
       }
     });
 
-    // ── Friction / coasting + bounce loop ────────────────────────────────────────
+    // ── Friction / coasting + bounce + recovery loop ─────────────────────────
+    //
+    // Everything that keeps a piece honest while it is *not* in the user's hand:
+    // it coasts to a stop off the walls, and once stopped it stays inside them
+    // even though they move underneath it.
     useFrame((_, delta) => {
-      if (!throwable) return;
+      if (!groupRef.current) return;
 
       const vel = throwVelocity.current;
-      if (vel.lengthSq() < 1e-6) return;
+      const pos = groupRef.current.position;
+
       if (isDraggingRef.current) {
         vel.set(0, 0, 0);
+        recovering.current = false;
         return;
       }
 
-      const pos = groupRef.current.position;
-      // A long frame integrates as a short one: better to lose a little travel
-      // than to jump the piece through a wall or through another piece.
-      const step = Math.min(delta, MAX_COAST_STEP);
-
-      pos.addScaledVector(vel, step);
-
       const b = getCentreBox();
-      if (b) {
-        if (pos.x < b.min.x) {
-          pos.x = b.min.x;
-          vel.x = Math.abs(vel.x) * WALL_RESTITUTION;
-        } else if (pos.x > b.max.x) {
-          pos.x = b.max.x;
-          vel.x = -Math.abs(vel.x) * WALL_RESTITUTION;
+
+      // ── Coasting: integrate, bounce, rub off some speed ────────────────────
+      if (throwable && vel.lengthSq() >= 1e-6) {
+        recovering.current = false;
+
+        // A long frame integrates as a short one: better to lose a little travel
+        // than to jump the piece through a wall or through another piece.
+        const step = Math.min(delta, MAX_COAST_STEP);
+
+        pos.addScaledVector(vel, step);
+
+        if (b) {
+          if (pos.x < b.min.x) {
+            pos.x = b.min.x;
+            vel.x = Math.abs(vel.x) * WALL_RESTITUTION;
+          } else if (pos.x > b.max.x) {
+            pos.x = b.max.x;
+            vel.x = -Math.abs(vel.x) * WALL_RESTITUTION;
+          }
+          if (pos.y < b.min.y) {
+            pos.y = b.min.y;
+            vel.y = Math.abs(vel.y) * WALL_RESTITUTION;
+          } else if (pos.y > b.max.y) {
+            pos.y = b.max.y;
+            vel.y = -Math.abs(vel.y) * WALL_RESTITUTION;
+          }
+          if (pos.z < b.min.z) {
+            pos.z = b.min.z;
+            vel.z = Math.abs(vel.z) * WALL_RESTITUTION;
+          } else if (pos.z > b.max.z) {
+            pos.z = b.max.z;
+            vel.z = -Math.abs(vel.z) * WALL_RESTITUTION;
+          }
         }
-        if (pos.y < b.min.y) {
-          pos.y = b.min.y;
-          vel.y = Math.abs(vel.y) * WALL_RESTITUTION;
-        } else if (pos.y > b.max.y) {
-          pos.y = b.max.y;
-          vel.y = -Math.abs(vel.y) * WALL_RESTITUTION;
-        }
-        if (pos.z < b.min.z) {
-          pos.z = b.min.z;
-          vel.z = Math.abs(vel.z) * WALL_RESTITUTION;
-        } else if (pos.z > b.max.z) {
-          pos.z = b.max.z;
-          vel.z = -Math.abs(vel.z) * WALL_RESTITUTION;
-        }
+
+        vel.multiplyScalar(Math.pow(FRICTION, step));
+        if (vel.lengthSq() < REST_SPEED * REST_SPEED) vel.set(0, 0, 0);
+        return;
       }
 
-      vel.multiplyScalar(Math.pow(FRICTION, step));
-      if (vel.lengthSq() < REST_SPEED * REST_SPEED) vel.set(0, 0, 0);
+      // ── At rest: has a wall been moved out from under it? ──────────────────
+      //
+      // Deliberately not a clamp. A clamp here would pin a parked piece to the
+      // screen edge and walk it around with the parallax sway, which is a piece
+      // moving on its own — worse than the overhang it fixes. See
+      // `STRANDED_SLACK` for where the line is drawn instead.
+      if (!b) return;
+
+      insideWalls.copy(pos).clamp(b.min, b.max);
+      const outside = insideWalls.distanceTo(pos);
+
+      if (outside > STRANDED_SLACK) recovering.current = true;
+      if (!recovering.current) return;
+
+      if (outside < STRANDED_SETTLE) {
+        pos.copy(insideWalls);
+        recovering.current = false;
+        return;
+      }
+
+      const frames = Math.min(delta, MAX_COAST_STEP) * 60;
+      pos.lerp(insideWalls, 1 - Math.pow(1 - STRANDED_RECOVER, frames));
     });
 
     useImperativeHandle(
@@ -974,6 +1109,10 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         setVelocity: (v) => throwVelocity.current.copy(v),
         isDragging: () => isDraggingRef.current,
         getCentreBox,
+        setExtraBounds: (box: THREE.Box3 | null) => {
+          hasExtraBounds.current = !!box;
+          if (box) extraBounds.current.copy(box);
+        },
 
         getWorldPolygon: () => {
           const pos = groupRef.current.position;

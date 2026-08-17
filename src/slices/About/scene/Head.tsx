@@ -6,14 +6,47 @@ import MetaBalls, { FieldMask, MetaBallsHandle } from "./MetaBalls";
 import PolygonSprite, { UV, SpriteHandle, SpriteBounds } from "./PolygonSprite";
 import ThirdEye, { ThirdEyeHandle } from "./ThirdEye";
 
-// ─── Snap configuration ───────────────────────────────────────────────────────
+// ─── The piece chain ──────────────────────────────────────────────────────────
+//
+// head ── eyes ── mouth, in that order, joined by two bonds: bond `i` is the one
+// between piece `i` and piece `i + 1`, so bond HEAD is the head↔eyes join and
+// bond EYES the eyes↔mouth one. Head and mouth are not neighbours and never
+// snap to each other.
+//
+// Everything below indexes into that chain rather than naming the pieces,
+// because a locked run of it is one rigid body and the piece that *leads* the
+// body is whichever one is actually being moved — the one in the user's hand, or
+// the one that was thrown. So the chain gets walked in both directions: the
+// pieces above the leader follow it exactly as the ones below do.
+
+const HEAD = 0;
+const EYES = 1;
+const MOUTH = 2;
+const PIECE_COUNT = 3;
+const BOND_COUNT = PIECE_COUNT - 1;
+
+type PieceName = "head" | "eyes" | "mouth";
+const PIECE_INDEX: Record<PieceName, number> = {
+  head: HEAD,
+  eyes: EYES,
+  mouth: MOUTH,
+};
 
 /**
- * XY offset from head → eyes and eyes → mouth in the assembled face.
- * Z is ignored — each sprite keeps its own Z (render layering only).
+ * XY step from one piece to the next along the chain: the assembled face has
+ * `pos[i + 1] = pos[i] + CHAIN_STEP[i]`. Z is ignored — each sprite keeps its
+ * own Z (render layering only).
+ *
+ * Each band is pulled *up* onto the one above it rather than left where the
+ * texture has it, which closes the two seams. The goo hangs in them while the
+ * face is intact, but it is gone for good the moment a piece moves (see the
+ * visibility loop below), so a reassembled face with its seams still open would
+ * only be a face with two gaps in it.
  */
-const EYES_OFFSET = new THREE.Vector2(0, -33.5); // eyes sit below head centre
-const MOUTH_OFFSET = new THREE.Vector2(0, -33.5); // mouth sits below eyes
+const CHAIN_STEP = [
+  new THREE.Vector2(0, 33.5), // eyes, up onto the head
+  new THREE.Vector2(0, 33.5), // mouth, up onto the eyes
+];
 
 /**
  * Shared iso-surface tuning for every metaball field on the face.
@@ -146,8 +179,37 @@ const MOUTH_BOUNDS: SpriteBounds = {
   max: [Infinity, -500, 2605],
 };
 
-/** World-unit XY distance below which two pieces snap together. */
-const SNAP_DISTANCE = 20;
+/**
+ * World-unit XY distance below which two neighbours snap together.
+ *
+ * This is a capture radius the user aims at with the piece in hand, not a
+ * tolerance checked once on release, so it wants to be wide enough that the
+ * snap is something you can feel happening: the other piece flies in to meet
+ * the one you are holding while you are still holding it.
+ *
+ * Hard ceiling of 33.5 — the length of `CHAIN_STEP`, which is how far from
+ * assembled the *intact* face parked at HOME already is, since it sits with its
+ * seams open and the three sprites exactly on top of each other. Anything at or
+ * past that and both bonds are inside the capture radius before the page has
+ * even been touched: the face would snap its own seams shut, settle, fly home
+ * and open the eye with nobody having taken it apart.
+ */
+const SNAP_DISTANCE = 15;
+
+/**
+ * How far a bond has to be pulled open before it may snap again.
+ *
+ * Only in force for the grab that broke it. A piece being pulled out of a
+ * finished face starts its drag at zero distance and is inside the capture
+ * radius for as long as it takes to get clear, so without a release wider than
+ * the capture the bond would re-lock on the frame after the grab broke it and
+ * the face could never be taken apart at all.
+ *
+ * Letting go re-arms both bonds regardless of how far they were pulled — a
+ * nudge and a release should settle back into the face rather than leave it
+ * sitting a few units out of true.
+ */
+const SNAP_BREAK_DISTANCE = 2 * SNAP_DISTANCE;
 
 /**
  * Lerp factor toward the snap target, expressed per 60Hz frame and rescaled by
@@ -156,6 +218,15 @@ const SNAP_DISTANCE = 20;
  * 1.0 = instant lock; 0.1 = springy follow.
  */
 const SNAP_LERP = 0.18;
+
+/** Residual bond error, in world units, below which the face counts as whole. */
+const SETTLE_DISTANCE = 0.5;
+
+/**
+ * How much of its speed a piece in the finished face loses per 60Hz frame, so
+ * the trio stops coasting instead of drifting on into the trip home.
+ */
+const ASSEMBLED_DAMP = 0.85;
 
 /**
  * Fraction of the closing speed that survives a piece-to-piece hit. The bounce
@@ -215,9 +286,15 @@ function easeInOut(t: number) {
 
 // ─── Snap state ───────────────────────────────────────────────────────────────
 
-type SnapState = {
-  headEyes: boolean; // eyes is locked relative to head
-  eyesMouth: boolean; // mouth is locked relative to eyes
+type Bond = {
+  /** The two pieces are held at their face offset, one following the other. */
+  locked: boolean;
+  /**
+   * Whether the bond is allowed to lock at all. Cleared by the grab that breaks
+   * it, and set again either by the pieces getting `SNAP_BREAK_DISTANCE` apart
+   * or by that grab ending.
+   */
+  armed: boolean;
 };
 
 /**
@@ -323,6 +400,31 @@ const velA = new THREE.Vector3();
 const velB = new THREE.Vector3();
 const boundsA = new THREE.Box2();
 const boundsB = new THREE.Box2();
+
+/** The three pieces in chain order, filled at the top of the frame loop. */
+const chain: SpriteHandle[] = [];
+/** How far each bond is from assembled, measured before anything is moved. */
+const bondGap = new Float64Array(BOND_COUNT);
+/** Which bonds locked this frame, so the new follower can be brought to rest. */
+const bondJustLocked = [false, false];
+/**
+ * Which rigid body each piece belongs to, as the index of the topmost piece in
+ * it. Two pieces in the same body are meant to overlap and never collide.
+ */
+const bodyOf = new Int8Array(PIECE_COUNT);
+/**
+ * The piece that leads each body, indexed by body — so by the index of the
+ * topmost piece in it. A body's motion lives entirely on its leader: the pieces
+ * following it are carried, and their own velocity is damped away.
+ */
+const leaderOf = new Int8Array(PIECE_COUNT);
+/** Where each piece stands relative to its leader in the assembled face. */
+const leaderOffsetX = new Float64Array(PIECE_COUNT);
+const leaderOffsetY = new Float64Array(PIECE_COUNT);
+/** The walls a whole body may move within, in its leader's frame. */
+const bodyBox = new THREE.Box3();
+/** The same box moved out into one piece's frame, to hand to that piece. */
+const pieceBox = new THREE.Box3();
 
 // ── SAT Helpers ───────────────────────────────────────────────────────────────
 
@@ -456,11 +558,231 @@ function dampVelocity(sprite: SpriteHandle, damp: number) {
   sprite.setVelocity(vel);
 }
 
+// ── Chain helpers ─────────────────────────────────────────────────────────────
+
+/** How far bond `b` is from being assembled, in world XY units. */
+function measureBond(b: number): number {
+  const upper = chain[b].getPosition(posA);
+  const lower = chain[b + 1].getPosition(posB);
+  const dx = lower.x - upper.x - CHAIN_STEP[b].x;
+  const dy = lower.y - upper.y - CHAIN_STEP[b].y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
 /**
- * Resolve one unsnapped pair: separate them along the shallowest axis, then
- * trade an impulse so the hit reads as a knock rather than a silent shove.
+ * Which piece the body spanning `lo … hi` follows.
+ *
+ * The one in the user's hand, if it is in this body — the piece being dragged
+ * has to stay under the cursor, so everything else comes to *it*. Otherwise the
+ * fastest, so a piece thrown into the face tows it along rather than being
+ * yanked to a halt by it. Failing both — a body at rest — the topmost, which is
+ * the head whenever the whole face is together, and the head is what the trip
+ * home is flown by.
  */
-function resolvePair(a: SpriteHandle, b: SpriteHandle) {
+function pickLeader(lo: number, hi: number, dragged: number): number {
+  if (dragged >= lo && dragged <= hi) return dragged;
+
+  let leader = lo;
+  let fastest = 0;
+  for (let i = lo; i <= hi; i++) {
+    const speed = chain[i].getVelocity(velA).lengthSq();
+    if (speed > fastest) {
+      fastest = speed;
+      leader = i;
+    }
+  }
+  return leader;
+}
+
+/**
+ * Work out the walls the body `lo … hi` may move within and hand them to every
+ * piece in it.
+ *
+ * The three pieces have different polygons, so their walls sit in different
+ * places: against the same screen floor the mouth's own floor is 245 units up
+ * and the eyes' only 35, because that is how far each polygon reaches below its
+ * origin. Left to themselves they are stopped by different things, so the wall a
+ * bonded pair is drifting into stops whichever of them reaches it first and lets
+ * the other carry on straight through it — the pair visibly folding into each
+ * other against the wall.
+ *
+ * So every piece's walls are pulled back into the leader's frame — a piece
+ * standing `d` along the chain sits at `leader + d`, so its walls say the leader
+ * must be inside `box - d` — and the tightest of them wins. Each piece is then
+ * held to that same box moved back out into its own frame.
+ *
+ * That last step is what makes them stop as one rather than merely stop early:
+ * the boxes handed out are one box translated by the very offsets the pieces are
+ * held at, so clamping a rigid body clamps every piece of it by the same amount
+ * and it stays rigid.
+ */
+function applyBodyWalls(lo: number, hi: number, leader: number) {
+  // Walk the offsets out from the leader in both directions. Bond `i` joins
+  // piece `i` to `i + 1`, so the step between two pieces is the one named for
+  // the upper of them.
+  leaderOffsetX[leader] = 0;
+  leaderOffsetY[leader] = 0;
+  for (let i = leader + 1; i <= hi; i++) {
+    leaderOffsetX[i] = leaderOffsetX[i - 1] + CHAIN_STEP[i - 1].x;
+    leaderOffsetY[i] = leaderOffsetY[i - 1] + CHAIN_STEP[i - 1].y;
+  }
+  for (let i = leader - 1; i >= lo; i--) {
+    leaderOffsetX[i] = leaderOffsetX[i + 1] - CHAIN_STEP[i].x;
+    leaderOffsetY[i] = leaderOffsetY[i + 1] - CHAIN_STEP[i].y;
+  }
+
+  bodyBox.min.set(-Infinity, -Infinity, -Infinity);
+  bodyBox.max.set(Infinity, Infinity, Infinity);
+
+  let bounded = false;
+  for (let i = lo; i <= hi; i++) {
+    // Clear first: what is wanted here is the piece's own walls, not the body
+    // walls this function left on it last frame. Feeding those back in would
+    // ratchet the box tighter every time the screen walls moved.
+    chain[i].setExtraBounds(null);
+
+    const box = chain[i].getCentreBox();
+    if (!box) continue;
+    bounded = true;
+
+    const dx = leaderOffsetX[i];
+    const dy = leaderOffsetY[i];
+    if (box.min.x - dx > bodyBox.min.x) bodyBox.min.x = box.min.x - dx;
+    if (box.max.x - dx < bodyBox.max.x) bodyBox.max.x = box.max.x - dx;
+    if (box.min.y - dy > bodyBox.min.y) bodyBox.min.y = box.min.y - dy;
+    if (box.max.y - dy < bodyBox.max.y) bodyBox.max.y = box.max.y - dy;
+    // Z carries no chain offset — the step between pieces is XY only.
+    if (box.min.z > bodyBox.min.z) bodyBox.min.z = box.min.z;
+    if (box.max.z < bodyBox.max.z) bodyBox.max.z = box.max.z;
+  }
+
+  if (!bounded) return; // nothing in the body has walls; leave them all clear
+
+  // A body with no legal position at all — a face taller than the screen leaves
+  // room for — is centred rather than left for the clamp to shove against
+  // whichever wall it reads first.
+  centreIfEmpty(bodyBox);
+
+  for (let i = lo; i <= hi; i++) {
+    pieceBox.copy(bodyBox);
+    pieceBox.min.x += leaderOffsetX[i];
+    pieceBox.max.x += leaderOffsetX[i];
+    pieceBox.min.y += leaderOffsetY[i];
+    pieceBox.max.y += leaderOffsetY[i];
+    chain[i].setExtraBounds(pieceBox);
+  }
+}
+
+/** Collapse any axis of `box` whose min has passed its max onto the midpoint. */
+function centreIfEmpty(box: THREE.Box3) {
+  if (box.min.x > box.max.x) {
+    box.min.x = box.max.x = (box.min.x + box.max.x) * 0.5;
+  }
+  if (box.min.y > box.max.y) {
+    box.min.y = box.max.y = (box.min.y + box.max.y) * 0.5;
+  }
+  if (box.min.z > box.max.z) {
+    box.min.z = box.max.z = (box.min.z + box.max.z) * 0.5;
+  }
+}
+
+/**
+ * Move `follower` to where `leader` wants it: carried by however far the leader
+ * moved this frame, then sprung the rest of the way in.
+ *
+ * The carry is what makes the pair read as rigid. A spring on its own is forever
+ * chasing a target that moved again before it arrived, so it settles at a
+ * standing error proportional to the leader's speed — at drag speed that is a
+ * bonded piece trailing a good few frames behind the one it is supposedly stuck
+ * to, which looks like the face coming apart again. Carrying the follower by the
+ * leader's own step leaves the spring nothing to do but close the gap it started
+ * with, so it converges once and stays converged at any speed, and the spring is
+ * still there to make the initial snap read as the piece being pulled in rather
+ * than teleporting.
+ *
+ * `lastX`/`lastY` hold every piece's position at the end of last frame. The
+ * leader has already been moved by the time this runs — by its own drag or coast
+ * loop if it leads the body, by this function if it is itself following someone
+ * further up the chain — so the difference is exactly the step to pass on.
+ */
+function carry(
+  follower: number,
+  leader: number,
+  lerp: number,
+  lastX: Float64Array,
+  lastY: Float64Array,
+) {
+  const piece = chain[follower];
+  const bond = Math.min(follower, leader);
+
+  // Whatever it was doing under its own steam is over: it is being towed now,
+  // and a leftover throw would only fight the tow for the next few frames.
+  if (bondJustLocked[bond]) piece.setVelocity(ZERO);
+
+  const leaderPos = chain[leader].getPosition(posA);
+  const pos = piece.getPosition(posB);
+
+  // The step belongs to the bond, so it reads the same in both directions and
+  // only the sign changes: the piece below its leader sits one step further
+  // along the chain, the piece above it one step back.
+  const step = CHAIN_STEP[bond];
+  const sign = follower > leader ? 1 : -1;
+  const targetX = leaderPos.x + sign * step.x;
+  const targetY = leaderPos.y + sign * step.y;
+
+  pos.x += leaderPos.x - lastX[leader];
+  pos.y += leaderPos.y - lastY[leader];
+  pos.x += (targetX - pos.x) * lerp;
+  pos.y += (targetY - pos.y) * lerp;
+  piece.setPosition(pos);
+
+  // No clamp of its own. The body walls already hold the leader to a box the
+  // follower's own walls helped pick, so anywhere the leader can be leaves the
+  // follower inside its own — and clamping it here anyway is precisely how a
+  // wall used to push one piece of a pair through the other.
+
+  // Bleed off its own coast, which would only fight the carry above.
+  dampVelocity(piece, 1 - lerp);
+}
+
+/**
+ * Shift a piece and everything bonded to it by the same amount.
+ *
+ * A body is rigid, so a contact with any one of its pieces has to move all of
+ * them. Moving only the piece that was touched leaves it out of position, and
+ * the carry pass springs it straight back on the next frame — so a loose piece
+ * held against a bonded one used to buzz for as long as the contact lasted,
+ * pushed out and pulled back once per frame.
+ */
+function shiftBody(piece: number, dx: number, dy: number) {
+  for (let i = 0; i < PIECE_COUNT; i++) {
+    if (bodyOf[i] !== bodyOf[piece]) continue;
+    const pos = chain[i].getPosition(posC);
+    pos.x += dx;
+    pos.y += dy;
+    chain[i].setPosition(pos);
+    clampToBounds(chain[i]);
+  }
+}
+
+/**
+ * Resolve one pair of pieces from different bodies: separate them along the
+ * shallowest axis, then trade an impulse so the hit reads as a knock rather than
+ * a silent shove.
+ *
+ * Both sides are handled as whole bodies, not as the two pieces that happen to
+ * be touching — a contact moves everything bonded to the piece it landed on, and
+ * the impulse is read off and written back to the body's leader, which is where
+ * all of its motion lives.
+ *
+ * A held body is immovable and takes no impulse: the piece in the user's hand
+ * belongs to the cursor, and the pieces following it have to survive being
+ * bumped into.
+ */
+function resolvePair(ai: number, bi: number, aHeld: boolean, bHeld: boolean) {
+  const a = chain[ai];
+  const b = chain[bi];
+
   const polyA = a.getWorldPolygon();
   polygonBounds(polyA, boundsA);
   const polyB = b.getWorldPolygon();
@@ -485,60 +807,44 @@ function resolvePair(a: SpriteHandle, b: SpriteHandle) {
   const { depth, axisX, axisY } = satHit;
   if (depth <= CONTACT_SLOP) return;
 
-  const aDragging = a.isDragging();
-  const bDragging = b.isDragging();
-
-  if (!aDragging && !bDragging) {
-    const pa = a.getPosition(posA);
-    const pb = b.getPosition(posB);
-    pa.x -= axisX * depth * 0.5;
-    pa.y -= axisY * depth * 0.5;
-    pb.x += axisX * depth * 0.5;
-    pb.y += axisY * depth * 0.5;
-    a.setPosition(pa);
-    b.setPosition(pb);
-    clampToBounds(a);
-    clampToBounds(b);
-  } else if (aDragging) {
-    const pb = b.getPosition(posB);
-    pb.x += axisX * depth;
-    pb.y += axisY * depth;
-    b.setPosition(pb);
-    clampToBounds(b);
+  if (!aHeld && !bHeld) {
+    shiftBody(ai, -axisX * depth * 0.5, -axisY * depth * 0.5);
+    shiftBody(bi, axisX * depth * 0.5, axisY * depth * 0.5);
+  } else if (aHeld) {
+    shiftBody(bi, axisX * depth, axisY * depth);
   } else {
-    const pa = a.getPosition(posA);
-    pa.x -= axisX * depth;
-    pa.y -= axisY * depth;
-    a.setPosition(pa);
-    clampToBounds(a);
+    shiftBody(ai, -axisX * depth, -axisY * depth);
   }
 
-  const va = a.getVelocity(velA);
-  const vb = b.getVelocity(velB);
+  const aLead = chain[leaderOf[bodyOf[ai]]];
+  const bLead = chain[leaderOf[bodyOf[bi]]];
+
+  const va = aLead.getVelocity(velA);
+  const vb = bLead.getVelocity(velB);
   const impactSpeed = (va.x - vb.x) * axisX + (va.y - vb.y) * axisY;
   if (impactSpeed <= 0) return; // already separating
 
   // Equal masses share the impulse; a held piece is effectively infinitely
   // heavy, so the free one takes all of it and gets genuinely knocked away
   // rather than just displaced.
-  const held = aDragging || bDragging;
+  const held = aHeld || bHeld;
   const impulse = impactSpeed * (1 + COLLISION_RESTITUTION) * (held ? 1 : 0.5);
 
-  if (!aDragging) {
+  if (!aHeld) {
     va.x -= impulse * axisX;
     va.y -= impulse * axisY;
-    a.setVelocity(va);
+    aLead.setVelocity(va);
   }
-  if (!bDragging) {
+  if (!bHeld) {
     vb.x += impulse * axisX;
     vb.y += impulse * axisY;
-    b.setVelocity(vb);
+    bLead.setVelocity(vb);
   }
 }
 
 type Props = {
   ref: RefObject<THREE.Group | null>;
-  onGrabbing: (payload: null | "head" | "eyes" | "mouth") => void;
+  onGrabbing: (payload: PieceName | null) => void;
 };
 
 export default function Head({ ref, onGrabbing }: Props) {
@@ -566,7 +872,20 @@ export default function Head({ ref, onGrabbing }: Props) {
   const thirdEye = useRef<ThirdEyeHandle>(null);
 
   // ── Snap state ──────────────────────────────────────────────────────────────
-  const snap = useRef<SnapState>({ headEyes: false, eyesMouth: false });
+  const bonds = useRef<Bond[]>([
+    { locked: false, armed: true },
+    { locked: false, armed: true },
+  ]);
+
+  /**
+   * Where each piece was at the end of last frame, so a follower can be carried
+   * by exactly the step its leader just took. See `carry`.
+   */
+  const lastPos = useRef({
+    x: new Float64Array(PIECE_COUNT),
+    y: new Float64Array(PIECE_COUNT),
+    valid: false,
+  });
 
   const scale = useMemo<[number, number, number]>(() => {
     const size = 500;
@@ -602,17 +921,34 @@ export default function Head({ ref, onGrabbing }: Props) {
   );
 
   const handleGrab = useCallback(
-    (payload: null | "head" | "eyes" | "mouth") => {
+    (payload: PieceName | null) => {
       onGrabbing(payload);
 
-      // ── Un-snap on drag ────────────────────────────────────────────────────
-      // When the user grabs a piece, break any bond it participates in so it
-      // moves freely. The other piece keeps its current position and coasts.
-      if (payload === "head" || payload === "eyes") {
-        snap.current.headEyes = false;
-      }
-      if (payload === "eyes" || payload === "mouth") {
-        snap.current.eyesMouth = false;
+      // ── Break on grab, re-arm on release ───────────────────────────────────
+      //
+      // Grabbing a piece breaks every bond it is *holding* by and disarms them,
+      // which is what lets it be pulled clear of a face it currently sits flush
+      // inside: the pieces are still touching, so an armed bond would lock again
+      // on the very next frame and the face could never come apart. The bond
+      // re-arms itself once they are properly apart — or here, the moment the
+      // user lets go, because a nudge and a release should drop back into the
+      // face rather than leave it a few units out of true.
+      //
+      // A bond that wasn't holding anything is left armed, so it is free to
+      // snap mid-drag: nothing is being pulled out of it, and the drag that
+      // assembles the face for the first time is exactly this case.
+      //
+      // Both flags live in a ref and are written synchronously from
+      // `pointerdown`, so the frame loop never sees a stale bond.
+      const grabbed = payload === null ? -1 : PIECE_INDEX[payload];
+      for (let b = 0; b < BOND_COUNT; b++) {
+        const bond = bonds.current[b];
+        if (grabbed < 0) {
+          bond.armed = true;
+        } else if (bond.locked && (grabbed === b || grabbed === b + 1)) {
+          bond.locked = false;
+          bond.armed = false;
+        }
       }
 
       const headTarget =
@@ -637,7 +973,9 @@ export default function Head({ ref, onGrabbing }: Props) {
 
     if (phase.current === "done") return;
 
-    const snapState = snap.current;
+    chain[HEAD] = head;
+    chain[EYES] = eyes;
+    chain[MOUTH] = mouth;
 
     // Every per-frame factor below is tuned at 60Hz and rescaled to the real
     // frame time, so the snap feels the same on a 144Hz monitor as on a 60Hz
@@ -665,17 +1003,18 @@ export default function Head({ ref, onGrabbing }: Props) {
       headPos.lerpVectors(trip.from, HOME, easeInOut(progress));
       head.setPosition(headPos);
 
-      // Pinned, not lerped: the three are one rigid face by now, and the springy
-      // follow of step 2 would have it stretch out behind the head in flight.
-      // No clamp either — HOME is where the face belongs, walls or no walls.
+      // Pinned outright rather than carried and sprung like step 3 does it: the
+      // three are one rigid face by now and there is no gap left to close, so
+      // there is nothing for a spring to add but a little lag. No clamp either —
+      // HOME is where the face belongs, walls or no walls.
       const eyesPos = eyes.getPosition(posB);
-      eyesPos.x = headPos.x - EYES_OFFSET.x;
-      eyesPos.y = headPos.y - EYES_OFFSET.y;
+      eyesPos.x = headPos.x + CHAIN_STEP[HEAD].x;
+      eyesPos.y = headPos.y + CHAIN_STEP[HEAD].y;
       eyes.setPosition(eyesPos);
 
       const mouthPos = mouth.getPosition(posC);
-      mouthPos.x = eyesPos.x - MOUTH_OFFSET.x;
-      mouthPos.y = eyesPos.y - MOUTH_OFFSET.y;
+      mouthPos.x = eyesPos.x + CHAIN_STEP[EYES].x;
+      mouthPos.y = eyesPos.y + CHAIN_STEP[EYES].y;
       mouth.setPosition(mouthPos);
 
       if (progress >= 1) {
@@ -685,117 +1024,131 @@ export default function Head({ ref, onGrabbing }: Props) {
       return;
     }
 
-    // ── 1. Un-snap if the user is currently dragging a snapped piece ─────────
+    // ── 1. Who is in hand, and where everything was last frame ───────────────
     //
-    // handleGrab fires on pointerdown, which is enough for most cases, but
-    // re-checking isDragging() here is the safety net for rapid grabs where
-    // the React state hasn't flushed yet.
-    if (snapState.headEyes && (head.isDragging() || eyes.isDragging())) {
-      snapState.headEyes = false;
-    }
-    if (snapState.eyesMouth && (eyes.isDragging() || mouth.isDragging())) {
-      snapState.eyesMouth = false;
+    // Only ever one piece: the sprites hand the pointer to whoever presses
+    // first and the rest are locked out until it comes up.
+    let dragged = -1;
+    for (let i = 0; i < PIECE_COUNT; i++) {
+      if (chain[i].isDragging()) dragged = i;
     }
 
-    // ── 2. Drive snapped pieces toward their target offset ───────────────────
+    const last = lastPos.current;
+    if (!last.valid) {
+      // First frame through: nothing has moved yet, so seed the cache with where
+      // the pieces are and let this frame's carry steps come out as zero.
+      for (let i = 0; i < PIECE_COUNT; i++) {
+        const pos = chain[i].getPosition(posA);
+        last.x[i] = pos.x;
+        last.y[i] = pos.y;
+      }
+      last.valid = true;
+    }
+
+    // ── 2. Arm and lock the bonds ────────────────────────────────────────────
     //
-    // Only X and Y are driven — Z stays as-is (render layering).
-    // After lerping we clamp to bounds so invisible walls still apply.
-    if (snapState.headEyes) {
-      const headPos = head.getPosition(posA);
-      const eyesPos = eyes.getPosition(posB);
+    // Both halves of the hysteresis: a bond a grab broke stays disarmed until
+    // the pieces are properly apart, and only an armed bond inside the capture
+    // radius locks. Nothing here asks whether a piece is being dragged — a bond
+    // forming under the user's hand is the point, and the pass below sorts out
+    // which of the two then follows the other.
+    for (let b = 0; b < BOND_COUNT; b++) {
+      const bond = bonds.current[b];
+      bondJustLocked[b] = false;
+      bondGap[b] = measureBond(b);
 
-      // Target: head XY minus the offset (eyes sit *below* head, so Y is lower)
-      const targetX = headPos.x - EYES_OFFSET.x;
-      const targetY = headPos.y - EYES_OFFSET.y;
+      if (bond.locked) continue;
+      if (!bond.armed) {
+        if (bondGap[b] > SNAP_BREAK_DISTANCE) bond.armed = true;
+        continue;
+      }
+      if (bondGap[b] >= SNAP_DISTANCE) continue;
 
-      eyesPos.x += (targetX - eyesPos.x) * snapLerp;
-      eyesPos.y += (targetY - eyesPos.y) * snapLerp;
-      eyes.setPosition(eyesPos);
-      clampToBounds(eyes);
-
-      // Zero out throw velocity so it doesn't fight the lerp
-      const vel = eyes.getVelocity(velA);
-      vel.multiplyScalar(1 - snapLerp);
-      eyes.setVelocity(vel);
+      bond.locked = true;
+      bondJustLocked[b] = true;
     }
 
-    if (snapState.eyesMouth) {
-      const eyesPos = eyes.getPosition(posA);
-      const mouthPos = mouth.getPosition(posB);
-
-      const targetX = eyesPos.x - MOUTH_OFFSET.x;
-      const targetY = eyesPos.y - MOUTH_OFFSET.y;
-
-      mouthPos.x += (targetX - mouthPos.x) * snapLerp;
-      mouthPos.y += (targetY - mouthPos.y) * snapLerp;
-      mouth.setPosition(mouthPos);
-      clampToBounds(mouth);
-
-      const vel = mouth.getVelocity(velA);
-      vel.multiplyScalar(1 - snapLerp);
-      mouth.setVelocity(vel);
-    }
-
-    // ── 3. Proximity check → snap ─────────────────────────────────────────────
+    // ── 3. Carry each body, from its leader outward ──────────────────────────
     //
-    // We check XY distance only. Neither piece should be dragging when we
-    // snap — a drag will have already cleared the flag in step 1.
-    if (!snapState.headEyes && !head.isDragging() && !eyes.isDragging()) {
-      const hp = head.getPosition(posA);
-      const ep = eyes.getPosition(posB);
-      const dx = hp.x - ep.x - EYES_OFFSET.x; // distance from ideal position
-      const dy = hp.y - ep.y - EYES_OFFSET.y;
-      if (Math.sqrt(dx * dx + dy * dy) < SNAP_DISTANCE) {
-        snapState.headEyes = true;
-        // Kill velocity on the follower (eyes) so there's no pop
-        eyes.setVelocity(ZERO);
+    // Every run of locked bonds is one rigid body. Which piece leads it is not
+    // fixed — that was the old behaviour, and it is why a bond could only ever
+    // survive while the *upper* piece moved: with the head always leading, a
+    // dragged eyes had the snap lerp hauling it off the cursor, so the only way
+    // out was to break every bond the user touched and re-snap on release.
+    // Leading with whichever piece is actually being moved makes the same code
+    // work in both directions, and the bond can stay locked through the drag.
+    //
+    // Only X and Y are driven — Z stays as it is (render layering).
+    //
+    // A body is one run of locked bonds, so `lo … hi` are the pieces in it: the
+    // bonds are numbered by their upper piece, which makes the run of bonds
+    // starting at `lo` and the run of pieces it joins the same walk.
+    for (let lo = 0; lo < PIECE_COUNT; ) {
+      let hi = lo;
+      while (hi < BOND_COUNT && bonds.current[hi].locked) hi++;
+
+      const leader = pickLeader(lo, hi, dragged);
+      for (let i = lo; i <= hi; i++) bodyOf[i] = lo;
+      leaderOf[lo] = leader;
+
+      // Hand every piece the walls of the whole body, so the sprites' own drag
+      // and coast loops stop all of them together on the frames that follow.
+      // Cleared and rebuilt every frame: the screen walls move, and so does the
+      // leader whose frame they are expressed in.
+      if (hi > lo) applyBodyWalls(lo, hi, leader);
+      else chain[lo].setExtraBounds(null);
+
+      // Outward in both directions, so each piece is only ever carried by a
+      // neighbour that has already been moved this frame.
+      for (let i = leader - 1; i >= lo; i--) {
+        carry(i, i + 1, snapLerp, last.x, last.y);
+      }
+      for (let i = leader + 1; i <= hi; i++) {
+        carry(i, i - 1, snapLerp, last.x, last.y);
+      }
+
+      lo = hi + 1;
+    }
+
+    // ── 4. SAT collision, between bodies only ────────────────────────────────
+    //
+    // Pieces in the same body are meant to be overlapping at their face offset,
+    // so they never test against each other — that covers a locked pair, and
+    // also head↔mouth once the face is whole, which used to be tested every
+    // frame on the grounds that those two never snap *to each other*.
+    //
+    // Held now means the whole body the user is holding, not just the piece in
+    // the hand: a piece merely following the one in the hand is no more movable
+    // than the one in the hand is.
+    const heldBody = dragged < 0 ? -1 : bodyOf[dragged];
+
+    for (let i = 0; i < PIECE_COUNT; i++) {
+      for (let j = i + 1; j < PIECE_COUNT; j++) {
+        if (bodyOf[i] === bodyOf[j]) continue;
+        resolvePair(i, j, bodyOf[i] === heldBody, bodyOf[j] === heldBody);
       }
     }
 
-    if (!snapState.eyesMouth && !eyes.isDragging() && !mouth.isDragging()) {
-      const ep = eyes.getPosition(posA);
-      const mp = mouth.getPosition(posB);
-      const dx = ep.x - mp.x - MOUTH_OFFSET.x;
-      const dy = ep.y - mp.y - MOUTH_OFFSET.y;
-      if (Math.sqrt(dx * dx + dy * dy) < SNAP_DISTANCE) {
-        snapState.eyesMouth = true;
-        mouth.setVelocity(ZERO);
-      }
-    }
-
-    // ── 4. SAT collision — skip snapped pairs ─────────────────────────────────
+    // ── 5. Whole face, hands off and settled → send it home ──────────────────
     //
-    // When two sprites are snapped they're intentionally overlapping at their
-    // correct face position, so running SAT would immediately push them apart.
-    // We skip the pair entirely; unsnapped pairs still collide normally.
-    if (!snapState.headEyes) resolvePair(head, eyes);
-    if (!snapState.eyesMouth) resolvePair(eyes, mouth);
-    resolvePair(head, mouth); // head↔mouth never snap
+    // The hands-off half is new with the mid-drag snap: the face can now come
+    // together while the user is still holding a piece of it, and flying it out
+    // of their hand the instant the last bond clicked would be taking it off
+    // them. It leaves when they let go.
+    if (
+      bonds.current[HEAD].locked &&
+      bonds.current[EYES].locked &&
+      dragged < 0
+    ) {
+      const damp = Math.pow(1 - ASSEMBLED_DAMP, frames);
+      for (let i = 0; i < PIECE_COUNT; i++) dampVelocity(chain[i], damp);
 
-    // ── 5. All pairs snapped and settled → send the face home ────────────────
-    if (snapState.headEyes && snapState.eyesMouth) {
-      const SUPER_DAMP = 0.85; // tune: higher = stops faster (0–1), per 60Hz frame
-      const damp = Math.pow(1 - SUPER_DAMP, frames);
+      // Measured before this frame's carry, so it is one frame stale — which
+      // only ever means the trip leaves a frame later than it could have.
+      const settled =
+        bondGap[HEAD] < SETTLE_DISTANCE && bondGap[EYES] < SETTLE_DISTANCE;
 
-      dampVelocity(head, damp);
-      dampVelocity(eyes, damp);
-      dampVelocity(mouth, damp);
-
-      const headPos = head.getPosition(posA);
-      const eyesPos = eyes.getPosition(posB);
-      const mouthPos = mouth.getPosition(posC);
-
-      const dx1 = eyesPos.x - (headPos.x - EYES_OFFSET.x);
-      const dy1 = eyesPos.y - (headPos.y - EYES_OFFSET.y);
-      const dx2 = mouthPos.x - (eyesPos.x - MOUTH_OFFSET.x);
-      const dy2 = mouthPos.y - (eyesPos.y - MOUTH_OFFSET.y);
-
-      const allSettled =
-        Math.sqrt(dx1 * dx1 + dy1 * dy1) < 0.5 &&
-        Math.sqrt(dx2 * dx2 + dy2 * dy2) < 0.5;
-
-      if (allSettled) {
+      if (settled) {
         // Hands off from here either way: the face is whole, and neither the
         // flight home nor the reveal should be something you can grab a piece
         // out of.
@@ -808,6 +1161,10 @@ export default function Head({ ref, onGrabbing }: Props) {
         head.setVelocity(ZERO);
         eyes.setVelocity(ZERO);
         mouth.setVelocity(ZERO);
+
+        // Nothing rebuilds these once the loose phase is over, and the flight
+        // home answers to no walls anyway.
+        for (let i = 0; i < PIECE_COUNT; i++) chain[i].setExtraBounds(null);
 
         const trip = travel.current;
         head.getPosition(trip.from);
@@ -823,6 +1180,16 @@ export default function Head({ ref, onGrabbing }: Props) {
           trip.duration = distance / TRAVEL_SPEED;
         }
       }
+    }
+
+    // ── 6. Bank the positions the next frame's carry measures against ────────
+    //
+    // After the collision pass, so a piece knocked sideways passes that on to
+    // the pieces following it rather than springing back out of the body.
+    for (let i = 0; i < PIECE_COUNT; i++) {
+      const pos = chain[i].getPosition(posA);
+      last.x[i] = pos.x;
+      last.y[i] = pos.y;
     }
   });
 
