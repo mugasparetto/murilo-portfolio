@@ -170,12 +170,62 @@ const COLLISION_RESTITUTION = 0.55;
  */
 const CONTACT_SLOP = 0.5;
 
+// ─── The trip home ────────────────────────────────────────────────────────────
+//
+// The face snaps together wherever the user happened to assemble it, which is
+// almost never where it belongs. So the finished trio flies back to `HOME` as
+// one rigid body — the head leads, the other two ride along pinned at their snap
+// offsets — and the third eye only opens once it has landed.
+
+/** Beat between the last piece settling and the trip starting. */
+const TRAVEL_DELAY = 0.2;
+
+/**
+ * How fast the face flies home, in world units/sec, averaged over the trip.
+ *
+ * A speed rather than a duration, because the distance is entirely up to the
+ * user: assemble the face in the far corner and it has some six hundred units to
+ * cover, assemble it a nudge off its home spot and it has five. A fixed duration
+ * spends the same second on both, so the near case is a face sitting there
+ * apparently doing nothing while the eye waits on a trip that has already
+ * visually finished.
+ *
+ * This is the *mean* speed — the ease below peaks at three times it mid-flight —
+ * so read it as "the trip takes distance / TRAVEL_SPEED seconds".
+ */
+const TRAVEL_SPEED = 300;
+
+/**
+ * How far off `HOME` the face has to have been assembled for the trip to be
+ * worth making at all. Inside this it stays where it is and the eye opens on the
+ * spot.
+ *
+ * A short trip is worse than no trip: it is over in a couple of frames, so it
+ * reads as the face twitching rather than as it moving somewhere, and the beat
+ * before it buys nothing. Twice `SNAP_DISTANCE`, so a face assembled within the
+ * snap's own tolerance of home never twitches — and small next to the 500-unit
+ * pieces, so nobody can tell the difference between here and `HOME` anyway.
+ */
+const TRAVEL_RANGE = 80;
+
+/** Ease in and out, so the face leans into the trip and coasts to a stop. */
+function easeInOut(t: number) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
 // ─── Snap state ───────────────────────────────────────────────────────────────
 
 type SnapState = {
   headEyes: boolean; // eyes is locked relative to head
   eyesMouth: boolean; // mouth is locked relative to eyes
 };
+
+/**
+ * `loose` — the pieces are in play, being dragged, thrown and snapped.
+ * `homing` — the face is whole and flying back to `HOME`.
+ * `done` — parked, inert, eye open.
+ */
+type Phase = "loose" | "homing" | "done";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -505,7 +555,13 @@ export default function Head({ ref, onGrabbing }: Props) {
   const metaBallsMouthFront = useRef<MetaBallsHandle>(null);
   const metaBallsMouthBack = useRef<MetaBallsHandle>(null);
 
-  const isComplete = useRef(false);
+  const phase = useRef<Phase>("loose");
+  /** Where the head left from, how long that trip takes, and how far in it is. */
+  const travel = useRef({
+    elapsed: 0,
+    duration: 0,
+    from: new THREE.Vector3(),
+  });
 
   const thirdEye = useRef<ThirdEyeHandle>(null);
 
@@ -579,15 +635,55 @@ export default function Head({ ref, onGrabbing }: Props) {
     const mouth = mouthRef.current;
     if (!head || !eyes || !mouth) return;
 
-    if (isComplete.current) return;
+    if (phase.current === "done") return;
 
     const snapState = snap.current;
 
     // Every per-frame factor below is tuned at 60Hz and rescaled to the real
     // frame time, so the snap feels the same on a 144Hz monitor as on a 60Hz
     // one. Delta is capped so a hitch can't overshoot past the target.
-    const frames = Math.min(delta, 1 / 20) * 60;
+    const dt = Math.min(delta, 1 / 20);
+    const frames = dt * 60;
     const snapLerp = 1 - Math.pow(1 - SNAP_LERP, frames);
+
+    // ── 0. The trip home ─────────────────────────────────────────────────────
+    //
+    // Nothing else runs while this does: the face is whole, out of the user's
+    // hands, and the only two things left in the scene are already touching each
+    // other exactly as intended — so both the snap lerp and the collision pass
+    // would only fight the flight.
+    if (phase.current === "homing") {
+      const trip = travel.current;
+      trip.elapsed += dt;
+
+      const progress = Math.min(
+        Math.max(trip.elapsed - TRAVEL_DELAY, 0) / trip.duration,
+        1,
+      );
+
+      const headPos = head.getPosition(posA);
+      headPos.lerpVectors(trip.from, HOME, easeInOut(progress));
+      head.setPosition(headPos);
+
+      // Pinned, not lerped: the three are one rigid face by now, and the springy
+      // follow of step 2 would have it stretch out behind the head in flight.
+      // No clamp either — HOME is where the face belongs, walls or no walls.
+      const eyesPos = eyes.getPosition(posB);
+      eyesPos.x = headPos.x - EYES_OFFSET.x;
+      eyesPos.y = headPos.y - EYES_OFFSET.y;
+      eyes.setPosition(eyesPos);
+
+      const mouthPos = mouth.getPosition(posC);
+      mouthPos.x = eyesPos.x - MOUTH_OFFSET.x;
+      mouthPos.y = eyesPos.y - MOUTH_OFFSET.y;
+      mouth.setPosition(mouthPos);
+
+      if (progress >= 1) {
+        phase.current = "done";
+        thirdEye.current?.open();
+      }
+      return;
+    }
 
     // ── 1. Un-snap if the user is currently dragging a snapped piece ─────────
     //
@@ -677,7 +773,7 @@ export default function Head({ ref, onGrabbing }: Props) {
     if (!snapState.eyesMouth) resolvePair(eyes, mouth);
     resolvePair(head, mouth); // head↔mouth never snap
 
-    // ── 5. All pairs snapped → fire onComplete once ───────────────────
+    // ── 5. All pairs snapped and settled → send the face home ────────────────
     if (snapState.headEyes && snapState.eyesMouth) {
       const SUPER_DAMP = 0.85; // tune: higher = stops faster (0–1), per 60Hz frame
       const damp = Math.pow(1 - SUPER_DAMP, frames);
@@ -699,12 +795,33 @@ export default function Head({ ref, onGrabbing }: Props) {
         Math.sqrt(dx1 * dx1 + dy1 * dy1) < 0.5 &&
         Math.sqrt(dx2 * dx2 + dy2 * dy2) < 0.5;
 
-      if (!isComplete.current && allSettled) {
-        isComplete.current = true;
-        headRef.current?.setInteractable(false);
-        eyesRef.current?.setEnabled(false);
-        mouthRef.current?.setEnabled(false);
-        thirdEye.current?.open();
+      if (allSettled) {
+        // Hands off from here either way: the face is whole, and neither the
+        // flight home nor the reveal should be something you can grab a piece
+        // out of.
+        head.setInteractable(false);
+        eyes.setEnabled(false);
+        mouth.setEnabled(false);
+
+        // Whatever coast was left would keep adding to the position the trip is
+        // writing, and the head would arrive somewhere just past HOME.
+        head.setVelocity(ZERO);
+        eyes.setVelocity(ZERO);
+        mouth.setVelocity(ZERO);
+
+        const trip = travel.current;
+        head.getPosition(trip.from);
+        const distance = trip.from.distanceTo(HOME);
+
+        if (distance < TRAVEL_RANGE) {
+          // Already home, as far as anyone can see. Open on the spot.
+          phase.current = "done";
+          thirdEye.current?.open();
+        } else {
+          phase.current = "homing";
+          trip.elapsed = 0;
+          trip.duration = distance / TRAVEL_SPEED;
+        }
       }
     }
   });

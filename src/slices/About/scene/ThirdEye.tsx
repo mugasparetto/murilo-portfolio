@@ -103,7 +103,7 @@ const RIM_COLOR = "#ffffff";
 // ─── Timing ───────────────────────────────────────────────────────────────────
 
 /** Beat between the face finishing assembly and the eye starting to open. */
-const OPEN_DELAY = 0.9;
+const OPEN_DELAY = 0.3;
 const OPEN_DURATION = 1.2;
 /** Overshoot on the reveal, so it snaps wide and settles rather than easing in. */
 const OPEN_OVERSHOOT = 0.12;
