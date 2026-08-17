@@ -24,7 +24,6 @@ import Terrain from "./Terrain";
 import Mountains from "./Mountains";
 import Steps from "./Steps";
 import Door from "./Door";
-import HumanModel from "./HumanModel";
 import Sky from "./Sky";
 import HumanDestruction from "./HumanModelDestruction";
 import { useFluidMaterials } from "@/app/components/FluidMaterial";
@@ -184,7 +183,6 @@ export default function Scene({ scrollRef }: Props) {
             doorProjectionRef={doorProjectionRef}
             scrollWindow={{ startVh: 0, endVh: 75 }}
           >
-            {/* <HumanModel /> */}
             <HumanDestruction
               scale={80}
               position={[0, 25, -50]}

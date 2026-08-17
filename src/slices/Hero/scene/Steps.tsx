@@ -213,7 +213,7 @@ export default function Steps({
 
     stepsRoot.current.position.set(
       params.stepX,
-      !up.md ? params.stepY - 160 : params.stepY,
+      !up.md ? params.stepY - 60 : params.stepY,
       params.stepZ,
     );
     stepsPivot.current.rotation.y = params.rotY;
