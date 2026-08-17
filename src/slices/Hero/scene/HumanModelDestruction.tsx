@@ -329,6 +329,18 @@ export default function Model(props: JSX.IntrinsicElements["group"]) {
   }, [hovered, material, isAnimating]);
 
   /**
+   * <Steps /> drops the figure out of the scene once the staircase has scrolled
+   * away, and an unmounted mesh never gets its onPointerLeave — so the pointer
+   * cursor would stick for the rest of the page if it left mid-hover.
+   */
+  useEffect(
+    () => () => {
+      document.body.style.cursor = "default";
+    },
+    [],
+  );
+
+  /**
    * Keeps the pointer target (see the box below <HullOutline />) wrapped around
    * whatever pose three is drawing.
    *

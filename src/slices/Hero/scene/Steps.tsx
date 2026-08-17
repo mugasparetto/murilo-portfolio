@@ -1,6 +1,6 @@
 "use client";
 
-import { RefObject, useEffect, useMemo, useRef } from "react";
+import { RefObject, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { SceneParams } from "../scene-core/params";
 import { useThree, useFrame } from "@react-three/fiber";
@@ -23,6 +23,18 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 
 import type { DoorProjection } from "../scene-core/doorProjection";
+
+/**
+ * Scroll progress past which the figure, and then the staircase itself, leave
+ * the scene.
+ *
+ * They're unmounted rather than hidden. `visible = false` only skips the draw:
+ * neither three's raycaster nor R3F's event layer looks at it — R3F raycasts
+ * every object that carries a handler directly — so a hidden figure goes on
+ * hovering and answering clicks from what is, on screen, empty sky.
+ */
+const HUMAN_EXIT = 0.955;
+const STEPS_EXIT = 0.999;
 
 type Props = {
   params: SceneParams;
@@ -51,7 +63,19 @@ export default function Steps({
   const stepsRoot = useRef<THREE.Group>(null);
   const stepsPivot = useRef<THREE.Group>(null);
   const steps = useRef<THREE.Group>(null);
-  const humanRef = useRef<THREE.Group>(null);
+
+  // What's currently in the scene. The three groups above stay mounted either
+  // way — they carry the transforms the mount-time recentre measured, and
+  // rebuilding them would mean measuring a staircase that isn't there.
+  const [humanMounted, setHumanMounted] = useState(true);
+  const [stepsMounted, setStepsMounted] = useState(true);
+
+  /**
+   * Mirrors the two above so the frame loop can spot a crossing on its own.
+   * Pushing the state every frame and letting React bail out on the unchanged
+   * value would still cost a render attempt per frame.
+   */
+  const mounted = useRef({ human: true, steps: true });
 
   const scrollVh = useScrollVhAbsolute(scrollContainerRef);
 
@@ -272,8 +296,18 @@ export default function Steps({
   useFrame(() => {
     const t = progressInVhWindow(scrollVh.current, scrollWindow);
 
-    if (humanRef.current) humanRef.current.visible = t < 0.955;
-    if (stepsRoot.current) stepsRoot.current.visible = t < 0.999;
+    const human = t < HUMAN_EXIT;
+    const staircase = t < STEPS_EXIT;
+
+    if (mounted.current.human !== human) {
+      mounted.current.human = human;
+      setHumanMounted(human);
+    }
+
+    if (mounted.current.steps !== staircase) {
+      mounted.current.steps = staircase;
+      setStepsMounted(staircase);
+    }
 
     // ---- GLOBAL MOTION ----
     // how far the staircase travels overall
@@ -334,39 +368,43 @@ export default function Steps({
     <group ref={stepsRoot}>
       <group ref={stepsPivot}>
         <group ref={steps}>
-          <group ref={registerStepGroup} position={[0, 0, 0]}>
-            <OutlinedSolid
-              geometry={stepGeometry}
-              lineMaterial={stepLineMat}
-              position={[0, 0, 0]}
-              wireScale={1.002}
-              polygonOffset
-              polygonOffsetFactor={1}
-              polygonOffsetUnits={1}
-              fillMaterial={fillMat}
-              scale={[1, 1, 0.98]}
-            />
-            <group ref={humanRef}>{children}</group>
-          </group>
-          {Array.from({ length: stepCount - 1 }).map((_, i) => (
-            <group
-              key={i}
-              ref={registerStepGroup}
-              position={[0, (i + 1) * stepHeight, -(i + 1) * stepDepth]}
-            >
-              <OutlinedSolid
-                geometry={stepGeometry}
-                lineMaterial={stepLineMat}
-                position={[0, 0, 0]}
-                wireScale={1.002}
-                polygonOffset
-                polygonOffsetFactor={1}
-                polygonOffsetUnits={1}
-                fillMaterial={fillMat}
-                scale={[1, 1, 0.98]}
-              />
-            </group>
-          ))}
+          {stepsMounted && (
+            <>
+              <group ref={registerStepGroup} position={[0, 0, 0]}>
+                <OutlinedSolid
+                  geometry={stepGeometry}
+                  lineMaterial={stepLineMat}
+                  position={[0, 0, 0]}
+                  wireScale={1.002}
+                  polygonOffset
+                  polygonOffsetFactor={1}
+                  polygonOffsetUnits={1}
+                  fillMaterial={fillMat}
+                  scale={[1, 1, 0.98]}
+                />
+                {humanMounted && children}
+              </group>
+              {Array.from({ length: stepCount - 1 }).map((_, i) => (
+                <group
+                  key={i}
+                  ref={registerStepGroup}
+                  position={[0, (i + 1) * stepHeight, -(i + 1) * stepDepth]}
+                >
+                  <OutlinedSolid
+                    geometry={stepGeometry}
+                    lineMaterial={stepLineMat}
+                    position={[0, 0, 0]}
+                    wireScale={1.002}
+                    polygonOffset
+                    polygonOffsetFactor={1}
+                    polygonOffsetUnits={1}
+                    fillMaterial={fillMat}
+                    scale={[1, 1, 0.98]}
+                  />
+                </group>
+              ))}
+            </>
+          )}
 
           {/* <group
             ref={registerStepGroup}
