@@ -50,6 +50,20 @@ interface ShaderProps {
 }
 
 const PAD = 20;
+const TAU = Math.PI * 2;
+
+// Shortest signed turn from `a` to `b`, whatever range either one is in.
+//
+// JS `%` keeps the sign of its left operand, so the usual
+// `((b - a + 3PI) % 2PI) - PI` shorthand quietly breaks once the two angles
+// are more than a turn and a half apart: it then reports a turn of well over
+// half a circle, and the light takes the long way round at whatever rate the
+// smoothing below can manage. Both angles are kept wrapped now, but this
+// stays correct regardless of what it is handed.
+const shortestTurn = (a: number, b: number) => {
+  const d = (b - a) % TAU;
+  return d > Math.PI ? d - TAU : d < -Math.PI ? d + TAU : d;
+};
 
 const SIZES: Record<ButtonSize, string> = {
   sm: "text-[0.8rem] px-[16px] py-[8px]",
@@ -134,7 +148,7 @@ const SpecularButton = ({
   thickness = 1,
   speed = 0.35,
   followMouse = true,
-  proximity = 250,
+  proximity = 50,
   autoAnimate = false,
   disabled = false,
   onClick,
@@ -274,7 +288,11 @@ const SpecularButton = ({
     resize();
 
     // Scrolling moves the button without resizing it, so the observer above
-    // never hears about it.
+    // never hears about it — and neither does it hear about a transform, which
+    // is how a button carried by an animated overlay gets where it is drawn.
+    // <HeadlineOverlay /> is exactly that: laid out at the top of the viewport
+    // and translated down to the name's bottom edge every frame, hundreds of
+    // pixels from where the box was first read, with no event of any kind.
     const markRectDirty = () => {
       rectDirty = true;
     };
@@ -297,6 +315,12 @@ const SpecularButton = ({
       pointerX = e.clientX;
       pointerY = e.clientY;
       seenPointer = true;
+      // A move is the one moment the cached box is certain to be measured
+      // against something, so it is also the cue to refresh it — which covers
+      // the transform case above without watching for it. This is only the
+      // flag: the read itself still happens at most once per frame, in
+      // `update`, never at pointer rate from in here.
+      markRectDirty();
     };
     window.addEventListener("pointermove", onPointerMove);
 
@@ -339,14 +363,18 @@ const SpecularButton = ({
       if (rectDirty) readRect();
       aimAtPointer();
 
-      idleAngle += p.speed * dt;
+      // Wrapped rather than free-running: an idle sweep left alone for a few
+      // minutes piles up hundreds of radians, and the shader reads the angle
+      // as a single highp float, which loses angular precision as the
+      // magnitude climbs.
+      idleAngle = (idleAngle + p.speed * dt) % TAU;
       const steer =
         p.followMouse &&
         pointerAngle != null &&
         (!p.autoAnimate || proximityT > 0);
       const target = steer ? pointerAngle! : idleAngle;
-      const diff = ((target - angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-      angle += diff * (1 - Math.exp(-dt * 7));
+      angle += shortestTurn(angle, target) * (1 - Math.exp(-dt * 7));
+      angle = ((angle % TAU) + TAU) % TAU;
 
       // Shine fades in with pointer proximity unless autoAnimate keeps it on
       const brightTarget = p.autoAnimate ? 1 : proximityT;
