@@ -5,6 +5,7 @@ import { ReactLenis } from "lenis/react";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import SceneManager from "./SceneManager";
+import FrameCap from "./FrameCap";
 
 import { ScrollYProvider } from "@/app/hooks/ScrollY";
 import { SceneRegistryProvider } from "@/app/hooks/SceneRegistry";
@@ -28,6 +29,8 @@ export default function ClientProvider({
       <SceneRegistryProvider>
         <Canvas
           dpr={[1, 1.5]}
+          // <FrameCap /> below owns the loop; see there for why it's capped.
+          frameloop="never"
           gl={{ antialias: true, alpha: false, stencil: true }}
           eventSource={eventSourceRef}
           eventPrefix="client"
@@ -53,6 +56,8 @@ export default function ClientProvider({
             inset: 0,
           }}
         >
+          <FrameCap fps={82} />
+
           <ScrollYProvider>
             <SceneManager />
           </ScrollYProvider>
