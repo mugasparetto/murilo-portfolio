@@ -11,6 +11,8 @@ import { useGSAP } from "@gsap/react";
 import { useSceneRegistry } from "@/app/hooks/SceneRegistry";
 
 import Scene from "./scene/Scene";
+import AboutOverlay from "./scene/AboutOverlay";
+import AboutContent from "./scene/AboutContent";
 
 gsap.registerPlugin(useGSAP, SplitText);
 
@@ -78,7 +80,14 @@ const About: FC<AboutProps> = ({ slice }) => {
       data-slice-type={slice.slice_type}
       data-slice-variation={slice.variation}
       className="h-[350vh] relative"
-    ></section>
+    >
+      {/* DOM, so the composer's vignette and the pointer parallax can't reach
+          it; <AboutOverlayDriver /> inside the scene slides it with the
+          section */}
+      <AboutOverlay>
+        <AboutContent />
+      </AboutOverlay>
+    </section>
   );
 };
 

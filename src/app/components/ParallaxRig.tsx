@@ -88,9 +88,29 @@ export default function CameraParallaxRig({
       .addScaledVector(camUp, py)
       .multiplyScalar(strength / Math.max(viewport.width, viewport.height));
 
-    // smooth
+    // Smooth — and then land.
+    //
+    // The ease is exponential, so on its own it only ever *approaches* the
+    // target: the offset keeps changing in the sixth decimal place long after
+    // the pointer has stopped, and every frame it changes is a frame the camera
+    // moves. That isn't free anywhere downstream — the scene redraws against a
+    // new view matrix, and every DOM overlay that tracks the camera reprojects
+    // and rewrites itself. On a display with no frame budget to spare that is
+    // the difference between holding vsync and missing it.
+    //
+    // So snap once the remainder is too small to see. `viewport.factor` is
+    // pixels per world unit at the focus distance, and every consumer of this
+    // rig rounds to whole pixels before it writes anything, so a quarter of a
+    // pixel is already below what any of them can resolve — but it lets the
+    // offset reach the target exactly, which is what actually brings the camera
+    // to rest.
     const t = 1 - Math.exp(-damp * delta);
     offset.current.lerp(desired.current, t);
+
+    const settle = 0.25 / viewport.factor;
+    if (offset.current.distanceToSquared(desired.current) < settle * settle) {
+      offset.current.copy(desired.current);
+    }
 
     // final camera transform = base + offset
     finalPos.current.copy(pose.position).add(offset.current);

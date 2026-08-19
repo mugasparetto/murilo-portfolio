@@ -9,6 +9,7 @@ import { useFrame } from "@react-three/fiber";
 import { GLTF } from "three-stdlib";
 
 import HullOutline from "@/app/components/HullOutline";
+import { setPageCursor } from "@/app/helpers/cursor";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 
 type GLTFResult = GLTF & {
@@ -322,9 +323,9 @@ export default function Model(props: JSX.IntrinsicElements["group"]) {
     material.needsUpdate = true;
 
     if (hovered) {
-      document.body.style.cursor = "pointer";
+      setPageCursor("pointer");
     } else {
-      document.body.style.cursor = "default";
+      setPageCursor("default");
     }
   }, [hovered, material, isAnimating]);
 
@@ -335,7 +336,7 @@ export default function Model(props: JSX.IntrinsicElements["group"]) {
    */
   useEffect(
     () => () => {
-      document.body.style.cursor = "default";
+      setPageCursor("default");
     },
     [],
   );
@@ -403,7 +404,7 @@ export default function Model(props: JSX.IntrinsicElements["group"]) {
   const handleClick = useCallback(() => {
     if (isAnimating.current) return;
 
-    document.body.style.cursor = "default";
+    setPageCursor("default");
     isAnimating.current = true;
     unified.current!.visible = false;
     fractured.current!.visible = true;

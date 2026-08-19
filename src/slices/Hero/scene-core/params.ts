@@ -188,7 +188,7 @@ export const defaultParams: SceneParams = {
   mountainFadeFarZ: 0,
 
   stepX: 0,
-  stepY: 320,
+  stepY: 335,
   stepZ: -3530,
   rotY: 0,
   rotZ: 0.05,

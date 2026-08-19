@@ -11,6 +11,7 @@ import { ThreeElements, useFrame } from "@react-three/fiber";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import Head from "./Head";
 import Title from "./Title";
+import { AboutOverlayDriver } from "./AboutOverlay";
 import { KeyTextField } from "@prismicio/client";
 import {
   makeRanges,
@@ -71,7 +72,7 @@ function Lines({
       {...props}
     >
       <planeGeometry args={geoArgs} />
-      <primitive object={mat} attach="material" transparent opacity={0.1} />
+      <primitive object={mat} attach="material" transparent opacity={0.05} />
     </instancedMesh>
   );
 }
@@ -260,6 +261,9 @@ export default function Scene({ scrollWindow, content }: Props) {
       <Suspense fallback={null}>
         <Head ref={head} onGrabbing={handleGrabbing} />
       </Suspense>
+
+      {/* the section's HTML is a DOM overlay in <About />; this only drives it */}
+      <AboutOverlayDriver />
     </group>
   );
 }

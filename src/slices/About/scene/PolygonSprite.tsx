@@ -9,6 +9,8 @@ import {
 import { useThree, useFrame, type Size } from "@react-three/fiber";
 import * as THREE from "three";
 
+import { setPageCursor } from "@/app/helpers/cursor";
+
 // New exported handle type
 //
 // The readers all take an optional `out`. The collision loop calls them several
@@ -814,7 +816,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         if (!pointInPolygon(uv[0], uv[1], polygon)) return;
 
         isPressedRef.current = true;
-        document.body.style.cursor = "grabbing";
+        setPageCursor("grabbing");
         onPointerDown?.();
 
         if (!draggable) return;
@@ -896,7 +898,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         if (dragOwner === token) dragOwner = null;
 
         onPointerUp?.();
-        document.body.style.cursor = isInsideRef.current ? "grab" : "default";
+        setPageCursor(isInsideRef.current ? "grab" : "default");
       };
 
       const handlePointerMove = (event: PointerEvent) => {
@@ -927,12 +929,10 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         if (hit && !isInsideRef.current) {
           if (!enabledRef.current) return;
           isInsideRef.current = true;
-          document.body.style.cursor = interactable.current
-            ? "grab"
-            : "default";
+          setPageCursor(interactable.current ? "grab" : "default");
         } else if (!hit && isInsideRef.current) {
           isInsideRef.current = false;
-          document.body.style.cursor = "default";
+          setPageCursor("default");
         }
       };
 
@@ -946,7 +946,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         if (dragOwner === token) dragOwner = null;
 
         onPointerUp?.();
-        document.body.style.cursor = isInsideRef.current ? "grab" : "default";
+        setPageCursor(isInsideRef.current ? "grab" : "default");
 
         throwVelocity.current.set(0, 0, 0);
         if (!throwable || !wasDragging) {
@@ -1186,7 +1186,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
             velocitySamples.current.length = 0;
             if (dragOwner === dragToken.current) dragOwner = null;
             throwVelocity.current.set(0, 0, 0);
-            document.body.style.cursor = "default";
+            setPageCursor("default");
           }
         },
         getGroup: () => groupRef.current,

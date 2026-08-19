@@ -9,6 +9,7 @@ import {
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 
+import { setPageCursor } from "@/app/helpers/cursor";
 import { displayShader } from "@/app/components/fluidShader";
 import { defaultParams } from "@/slices/Hero/scene-core/params";
 
@@ -502,7 +503,7 @@ export default function ThirdEye({ ref, skin, spriteScale }: Props) {
   const handlePointerOver = useCallback(() => {
     if (state.current.phase !== "idle") return;
     hovering.current = true;
-    document.body.style.cursor = "pointer";
+    setPageCursor("pointer");
   }, []);
 
   const handlePointerOut = useCallback(() => {
@@ -510,7 +511,7 @@ export default function ThirdEye({ ref, skin, spriteScale }: Props) {
     hovering.current = false;
     // Back to what <PolygonSprite /> leaves over the head it is done with: by
     // the time the eye is clickable the face is assembled and no longer grabs.
-    document.body.style.cursor = "default";
+    setPageCursor("default");
   }, []);
 
   // The About scene unmounts when it goes inactive, and R3F drops a hovered

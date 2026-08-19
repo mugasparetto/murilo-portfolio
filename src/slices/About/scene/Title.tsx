@@ -154,7 +154,7 @@ export default function Title({ text = "ABOUT" }: { text?: string }) {
         anchorX="center"
         anchorY="top-baseline"
         color="#fff"
-        fillOpacity={0.2}
+        fillOpacity={0.05}
         onSync={onSync}
       >
         {text}
@@ -175,7 +175,7 @@ export default function Title({ text = "ABOUT" }: { text?: string }) {
           anchorY="top-baseline"
           position={[0, -echo.gap * cap, 0]}
           fillOpacity={0}
-          strokeOpacity={0.2}
+          strokeOpacity={0.05}
           strokeColor="#fff"
           strokeWidth={cap * ECHO_STROKE}
           clipRect={
