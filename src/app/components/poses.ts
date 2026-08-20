@@ -11,9 +11,22 @@
 export type Pose = {
   position: [number, number, number];
   lookAt: [number, number, number];
+  /**
+   * How much pointer sway this pose wants, as a fraction of <ParallaxRig />'s
+   * `strength`. Defaults to 1 — the full amount — and <ScrollRig /> eases
+   * between the two ends of a window along with the pose itself.
+   *
+   * It lives on the pose for the same reason the pose lives here: it is a fact
+   * about how a section is *looked at*, and it has to stay true no matter which
+   * other sections exist or what order the windows end up in.
+   */
+  parallax?: number;
 };
 
-/** The hero, looking up the steps at the door. */
+/**
+ * The hero, looking up the steps at the door. A wide shot, where a big sway
+ * reads as the scene having depth — so it takes the full parallax.
+ */
 export const HERO_POSE: Pose = {
   position: [0, 200, 3380],
   lookAt: [0, 820, 0],
@@ -30,4 +43,7 @@ export const HERO_POSE: Pose = {
 export const ABOUT_POSE: Pose = {
   position: [0, -800, 3380],
   lookAt: [0, -800, 0],
+  // a close-up with text held against it, where the hero's sway is just the
+  // words wobbling
+  parallax: 0.23,
 };

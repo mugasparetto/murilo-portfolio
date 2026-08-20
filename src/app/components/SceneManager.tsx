@@ -39,6 +39,10 @@ export default function SceneManager() {
     ),
   });
 
+  // the `parallax` of the pose <ScrollRig /> is holding, so <ParallaxRig />
+  // sways as much as the section being looked at wants
+  const parallaxIntensityRef = useRef(1);
+
   const ordered = Object.values(entries)
     .filter((e) => e.active)
     .sort((a, b) => a.priority - b.priority);
@@ -61,6 +65,7 @@ export default function SceneManager() {
           },
         ]}
         basePoseRef={poseRef}
+        intensityRef={parallaxIntensityRef}
         smoothing={-25}
         applyToCamera={!up.md}
         priority={0}
@@ -74,6 +79,7 @@ export default function SceneManager() {
           strength={100}
           damp={4}
           targetStrength={0.3}
+          intensityRef={parallaxIntensityRef}
         />
       )}
 

@@ -34,6 +34,15 @@ type Props = {
   damp?: number;
   targetStrength?: number;
   priority?: number;
+  /**
+   * <ScrollRig />'s `intensityRef`: what the pose being held this frame wants
+   * `strength` to be worth, as a fraction of itself. 1 — the default when no
+   * ref is passed — is the full sway; 0 stills the camera completely.
+   *
+   * Scaling `strength` scales the target sway with it, since `targetStrength`
+   * is a ratio of the same offset, so one number dials the whole effect.
+   */
+  intensityRef?: React.RefObject<number>;
 };
 
 export default function CameraParallaxRig({
@@ -43,6 +52,7 @@ export default function CameraParallaxRig({
   targetStrength = 0.15,
   priority = 10,
   cameraRef,
+  intensityRef,
 }: Props) {
   const { camera: defaultCamera, pointer, viewport } = useThree();
 
@@ -82,11 +92,16 @@ export default function CameraParallaxRig({
     camRight.copy(camForward).cross(worldUp).normalize();
     camUp.copy(camRight).cross(camForward).normalize();
 
+    // how much sway the pose being held this frame asked for
+    const scale = intensityRef?.current ?? 1;
+
     desired.current
       .copy(camRight)
       .multiplyScalar(px)
       .addScaledVector(camUp, py)
-      .multiplyScalar(strength / Math.max(viewport.width, viewport.height));
+      .multiplyScalar(
+        (strength * scale) / Math.max(viewport.width, viewport.height),
+      );
 
     // Smooth — and then land.
     //

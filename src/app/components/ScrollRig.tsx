@@ -8,6 +8,8 @@ import { CameraPose } from "./SceneManager";
 export type RigPose = {
   position: THREE.Vector3 | [number, number, number];
   lookAt: THREE.Vector3 | [number, number, number];
+  /** See `Pose.parallax` in ./poses — defaults to 1. */
+  parallax?: number;
 };
 
 export type PoseWindow = {
@@ -42,6 +44,17 @@ export type ScrollRigProps = {
   priority?: number;
 
   /**
+   * Optional: receives the `parallax` of whatever pose the rig is holding this
+   * frame, eased across a window exactly as the pose itself is, and held flat
+   * in the gaps between windows.
+   *
+   * <ParallaxRig /> multiplies its `strength` by it, which is how a section
+   * gets a calmer sway than the one before it without either of them having to
+   * know how many windows there are or where in the list they sit.
+   */
+  intensityRef?: React.RefObject<number>;
+
+  /**
    * Optional: use a custom scroll container instead of window/document.
    * If provided, we’ll read container.scrollTop.
    */
@@ -50,6 +63,10 @@ export type ScrollRigProps = {
 
 function toV3(v: THREE.Vector3 | [number, number, number]) {
   return Array.isArray(v) ? new THREE.Vector3(v[0], v[1], v[2]) : v;
+}
+
+function parallaxOf(p: RigPose | undefined) {
+  return p?.parallax ?? 1;
 }
 
 function progressInVhWindow(vh: number, w: VhWindow) {
@@ -80,6 +97,7 @@ export default function ScrollRig({
   smoothing = 0,
   applyToCamera,
   scrollContainerRef,
+  intensityRef,
 }: ScrollRigProps) {
   const { camera } = useThree();
 
@@ -128,6 +146,10 @@ export default function ScrollRig({
     () => toV3(sorted[0]?.from.lookAt ?? [0, 0, 0]).clone(),
     [sorted],
   );
+  const firstFromParallax = useMemo(
+    () => parallaxOf(sorted[0]?.from),
+    [sorted],
+  );
 
   const desiredPos = useRef(new THREE.Vector3());
   const desiredLook = useRef(new THREE.Vector3());
@@ -145,6 +167,7 @@ export default function ScrollRig({
     desiredLook.current.copy(firstFromLook);
 
     let resolved = false;
+    let intensity = firstFromParallax;
 
     for (let i = 0; i < sorted.length; i++) {
       const w = sorted[i];
@@ -156,6 +179,7 @@ export default function ScrollRig({
           const prev = sorted[i - 1];
           desiredPos.current.copy(toV3(prev.to.position));
           desiredLook.current.copy(toV3(prev.to.lookAt));
+          intensity = parallaxOf(prev.to);
         }
         resolved = true;
         break;
@@ -172,6 +196,11 @@ export default function ScrollRig({
           .copy(toV3(w.from.lookAt))
           .lerp(toV3(w.to.lookAt), t);
 
+        intensity = THREE.MathUtils.lerp(
+          parallaxOf(w.from),
+          parallaxOf(w.to),
+          t,
+        );
         resolved = true;
         break;
       }
@@ -181,7 +210,10 @@ export default function ScrollRig({
       const last = sorted[sorted.length - 1];
       desiredPos.current.copy(toV3(last.to.position));
       desiredLook.current.copy(toV3(last.to.lookAt));
+      intensity = parallaxOf(last.to);
     }
+
+    if (intensityRef) intensityRef.current = intensity;
 
     if (smoothing > 0) {
       currentPos.current.x = damp(
