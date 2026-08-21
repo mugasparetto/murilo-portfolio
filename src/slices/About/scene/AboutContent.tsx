@@ -36,11 +36,13 @@ type Props = {
  * ── Layout ────────────────────────────────────────────────────────────────
  *
  * The Figma frame is a single 1906 × 947 desktop composition, and the layer it
- * lands on is exactly one viewport, so from `lg` up the four blocks are placed
+ * lands on is exactly one viewport, so from `lg` up the blocks are placed
  * absolutely at the percentages the design puts them at. They're deliberately
- * four *independent* blocks rather than one flow: the two right-hand ones would
- * otherwise push each other around as the copy rewraps, and the skills list has
- * to stay level with the face regardless of how many lines the paragraph takes.
+ * *independent* blocks rather than one flow: they would otherwise push each
+ * other around as the copy rewraps, and the skills list has to stay level with
+ * the face regardless of how many lines the paragraph takes. The one pairing
+ * is the skills list and the meta list, which share a row so the meta list can
+ * sit at the foot of a list whose height the skill count decides.
  *
  * Below `lg` the same four blocks stack into a single column — the design has
  * no mobile frame, so that arrangement is an invention, not something traced.
@@ -284,68 +286,79 @@ export default function AboutContent({
         ))}
       </ul>
 
-      {/* — my skills ----------------------------------------------------- */}
-      {/* the eyebrow labels the list, so with nothing to label the whole block
-          goes rather than leaving a heading over an empty bordered box */}
-      {skills.length > 0 && (
-        <div
-          className={`lg:absolute lg:top-[56.1%] lg:right-[3.4%] lg:left-[64.8%]`}
-        >
-          <Eyebrow as="h3">my skills</Eyebrow>
+      {/* — my skills, and where and when --------------------------------- */}
+      {/* One row rather than two blocks placed independently: the meta list is
+          set against the foot of the skills list, and that list is as tall as
+          the skill count makes it, so the alignment has to come from a shared
+          container rather than a percentage traced off the design's three
+          rows. The row spans the stat cards' left edge to the skills list's
+          right, which is what puts the meta list under the cards.
 
-          {/* the rows sit edge to edge in the design, so the dividers are one
-              shared border rather than a gap. The list is narrower than the
-              column the headline sets — 549 of its 607 — so it stops short of
-              the paragraph's right edge exactly as the design has it. */}
-          <ul className="mt-2.5 border border-white rounded-sm lg:mt-3.5 lg:w-[90.4%]">
-            {skills.map(({ skill }, i) => (
-              <li
-                key={i}
-                className="flex h-10 items-stretch border-t border-white first:rounded-t-sm last:rounded-b-sm bg-black/40 backdrop-blur-lg first:border-t-0 lg:h-12 xl:h-14 2xl:h-16"
-              >
-                <span className="grid w-10 shrink-0 place-items-center border-r border-white text-white lg:w-12 xl:w-14 2xl:w-18">
-                  {/* the hero's solids, a different one on each row and each
-                      turning at its own rate — see <SolidIcon /> */}
-                  <SolidIcon
-                    kind={solidForRow(i)}
-                    seed={i}
-                    className="size-5 xl:size-7 2xl:size-9"
-                  />
-                </span>
-                <span
-                  className={`flex flex-1 items-center px-3 text-white ${CAPS} text-sm lg:px-4 lg:text-base xl:px-6 xl:text-xl 2xl:text-2xl`}
+          Below `lg` the wrapper is just another item in the column and the two
+          fall into it in source order, so the skills list still comes first. */}
+      <div className="flex flex-col gap-5 sm:gap-6 lg:absolute lg:top-[56.1%] lg:right-[3.4%] lg:left-[3.9%] lg:flex-row lg:items-end lg:gap-0">
+        {skills.length > 0 && (
+          // the design's right-hand column, 64.8%–96.6% of the frame, as a
+          // share of this row; `order` because it reads first in the DOM and
+          // sits second across
+          <div className="lg:order-2 lg:ml-auto lg:w-[34.3%]">
+            <Eyebrow as="h3">my skills</Eyebrow>
+
+            {/* the rows sit edge to edge in the design, so the dividers are
+                one shared border rather than a gap. The list is narrower than
+                the column the headline sets — 549 of its 607 — so it stops
+                short of the paragraph's right edge exactly as the design has
+                it. */}
+            <ul className="mt-2.5 border border-white rounded-sm lg:mt-3.5 lg:w-[90.4%]">
+              {skills.map(({ skill }, i) => (
+                <li
+                  key={i}
+                  className="flex h-10 items-stretch border-t border-white first:rounded-t-sm last:rounded-b-sm bg-black/40 backdrop-blur-lg first:border-t-0 lg:h-12 xl:h-14 2xl:h-16"
                 >
-                  {skill}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+                  <span className="grid w-10 shrink-0 place-items-center border-r border-white text-white lg:w-12 xl:w-14 2xl:w-18">
+                    {/* the hero's solids, a different one on each row and each
+                        turning at its own rate — see <SolidIcon /> */}
+                    <SolidIcon
+                      kind={solidForRow(i)}
+                      seed={i}
+                      className="size-5 xl:size-7 2xl:size-9"
+                    />
+                  </span>
+                  <span
+                    className={`flex flex-1 items-center px-3 text-white ${CAPS} text-sm lg:px-4 lg:text-base xl:px-6 xl:text-xl 2xl:text-2xl`}
+                  >
+                    {skill}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-      {/* — where and when ------------------------------------------------ */}
-      <ul
-        className={`space-y-2 lg:absolute lg:top-[75.5%] lg:left-[5.7%] lg:space-y-3`}
-      >
-        <li className="flex items-center gap-3.5">
-          <GlobeIcon className={`${iconSize} text-white`} />
-          <span className={metaText}>born in brazil / based in london</span>
-        </li>
-        <li className="flex items-center gap-3.5">
-          <PrismIcon className={`${iconSize} text-white`} />
-          <span className={metaText}>
-            local time{" "}
-            {/* the width is reserved so the row can't jog as the digits change */}
-            <span className="inline-block min-w-[7ch] tabular-nums">
-              {time ?? "--:--:--"}
+        {/* — where and when ---------------------------------------------- */}
+        {/* flush left with the stat cards' column and flush with the foot of
+            the skills list — the row's `items-end` does the second part */}
+        <ul className="space-y-2 lg:order-1 lg:space-y-3">
+          <li className="flex items-center gap-3.5">
+            <GlobeIcon className={`${iconSize} text-white`} />
+            <span className={metaText}>born in brazil / based in london</span>
+          </li>
+          <li className="flex items-center gap-3.5">
+            <PrismIcon className={`${iconSize} text-white`} />
+            <span className={metaText}>
+              local time{" "}
+              {/* the width is reserved so the row can't jog as the digits change */}
+              <span className="inline-block min-w-[7ch] tabular-nums">
+                {time ?? "--:--:--"}
+              </span>
             </span>
-          </span>
-        </li>
-        <li className="flex items-center gap-3.5">
-          <StarIcon className={`${iconSize} text-white`} />
-          <span className={metaText}>since 1993</span>
-        </li>
-      </ul>
+          </li>
+          <li className="flex items-center gap-3.5">
+            <StarIcon className={`${iconSize} text-white`} />
+            <span className={metaText}>since 1993</span>
+          </li>
+        </ul>
+      </div>
     </div>
   );
 }
