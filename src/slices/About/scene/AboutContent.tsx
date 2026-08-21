@@ -1,9 +1,23 @@
 "use client";
 
-import { CSSProperties, ReactNode, useEffect, useState } from "react";
+import {
+  CSSProperties,
+  ReactNode,
+  Ref,
+  RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { Content, KeyTextField } from "@prismicio/client";
 
+import gsap from "gsap";
+import SplitText from "gsap/SplitText";
+import { useGSAP } from "@gsap/react";
+
 import SolidIcon, { solidForRow } from "./SolidIcon";
+
+gsap.registerPlugin(useGSAP, SplitText);
 
 /**
  * The four fields the slice actually holds, taken one at a time rather than as
@@ -125,16 +139,312 @@ function useLocalTime() {
   return time;
 }
 
+/**
+ * What every tween here hands back as it finishes: the transform it was
+ * driving, removed outright.
+ *
+ * A tween that ends at `x: 0` does not end at *no* transform — it leaves
+ * `translate(0px, 0px)` sitting inline, and that alone is enough to make the
+ * element a containing block and take its whole subtree off the pixel grid the
+ * rest of the page is snapped to. A 1px white hairline is exactly the thing
+ * that can't survive that: the skills list is sized in percentages all the way
+ * up, so its right border lands mid-pixel and gets drawn at partial coverage —
+ * visibly fainter than the three edges that happen to fall on whole pixels, or
+ * missing altogether. Type set over a leftover transform goes soft the same
+ * way, for the same reason.
+ *
+ * Clearing it costs one write per element at the end of its tween and settles
+ * the whole class of problem: at rest the section paints exactly as it would
+ * with none of this on it, which is the only state worth guaranteeing.
+ *
+ * Transform only. The opacities stay — <Eyebrow /> is tweened to the 0.72 its
+ * own class already carries, so clearing that would be a no-op with a flash of
+ * 1 in the middle of it, and the elements the reveal fades to full are at the
+ * value the stylesheet gives them anyway.
+ */
+const CLEAR = "transform";
+
+/**
+ * How the title's words arrive: up from a full line box below their place,
+ * fading in, one after the next.
+ *
+ * Each word is masked — see the `mask` split below — so the rise is a word
+ * climbing out from under a hard edge cut at its own box, not a word drifting
+ * about in clear space. That's what makes the direction legible: the word is
+ * visibly *entering* rather than merely settling.
+ *
+ * A share of the word's own height rather than a px figure, because that's
+ * exactly what the mask is sized to: at 100 the word sits one full box below
+ * the clip and is hidden completely, so it reveals from nothing at every
+ * breakpoint the type steps through — where a fixed 16px would leave the tops
+ * of the glyphs showing at the large end and overshoot at the small.
+ *
+ * The stagger is what makes it read word-by-word rather than as a block, and
+ * it's short enough that a long title still finishes in about a second — the
+ * whole reveal is `stagger × (words - 1) + duration`.
+ */
+const REVEAL_RISE = 100;
+const REVEAL = {
+  duration: 0.6,
+  stagger: 0.06,
+  ease: "power2.out",
+  clearProps: CLEAR,
+} as const;
+
+/**
+ * What the title hands off to, once its last word has landed: the eyebrow above
+ * it drops into place and the paragraph below it rises, both fading in.
+ *
+ * The same distance with the sign flipped, so the two close on the title from
+ * opposite sides and the block reads as gathering around it rather than as a
+ * third and fourth thing arriving. They move together for the same reason.
+ *
+ * A px figure rather than the title's share of a line box: neither of these is
+ * masked, so there's no clip edge for a percentage to be measured against — the
+ * move is a short settle into place, not an entrance from out of sight, and it
+ * wants to look the same size at every step the type takes.
+ */
+const COPY_SHIFT = 16;
+const COPY = {
+  duration: 0.5,
+  ease: "power2.out",
+  clearProps: CLEAR,
+} as const;
+
+/**
+ * Where the eyebrow's fade stops — <Eyebrow /> is set at this in the markup,
+ * and an inline `opacity: 1` left on it at the end of the tween would beat the
+ * class and leave it brighter than the design has it. The one value that has to
+ * be written twice: Tailwind reads its arbitrary values out of the class text,
+ * so `opacity-[0.72]` can't be spelled from here.
+ */
+const EYEBROW_OPACITY = 0.72;
+
+/**
+ * The last beat: the two labelled blocks on either side of the section — the
+ * skills list on the right, the stat cards on the left — arriving once the
+ * copy around the title has settled.
+ *
+ * They come in from opposite sides, each *away* from the middle of the section
+ * it sits at the edge of: the skills list slides left off its own right edge,
+ * the cards right off their left. So the pair reads as the section filling in
+ * from the outside rather than as two lists sliding the same way, and neither
+ * crosses the face between them.
+ *
+ * The same 16px and the same {@link COPY} tween as the eyebrow and the
+ * paragraph, because it's the same kind of move — a short settle into place,
+ * not an entrance from out of sight — and the section should only ever be
+ * doing one size of movement at a time.
+ *
+ * The skills block travels whole, eyebrow and rows together, since it's a
+ * single labelled object arriving. The stat cards don't: they're a set of
+ * three, and a set is worth counting off. Their eyebrow leads, taking the same
+ * drop the "who i am" one takes, and the cards follow row by row.
+ */
+const BLOCK_SHIFT = 16;
+
+/**
+ * How the beat is spaced against the one before it.
+ *
+ * `BLOCK_LEAD` is measured from the *start* of the copy beat, so at 0.35
+ * against a 0.5s tween the blocks pick up while the paragraph is on its last
+ * fifth — clearly after it, still one continuous reveal rather than two
+ * sequences with a pause between them.
+ *
+ * `ROW_LEAD` does the same job inside the stats: the cards start while their
+ * eyebrow is still moving, which is what keeps the label and the set it labels
+ * reading as one thing. `ROW_STAGGER` is short enough that three cards are
+ * done well inside the tween's own half-second — it's a count-off, not a
+ * queue.
+ */
+const BLOCK_LEAD = 0.35;
+const ROW_LEAD = 0.35;
+const ROW_STAGGER = 0.2;
+
+/**
+ * When it fires. The layer this sits on is exactly one viewport tall and is
+ * slid up into place by <AboutOverlayDriver />, so "the section is visible" is
+ * just the title's own box entering the viewport — an IntersectionObserver
+ * reads the driver's transform for free, where a scroll position would have to
+ * be re-derived from the camera.
+ *
+ * The bottom margin is the whole of the timing: it lifts the root's bottom
+ * edge to the middle of the screen, so the section has to be most of the way
+ * in before the title crosses it — rather than starting the moment the block
+ * clears the bottom of the window, with nowhere yet to be seen rising into.
+ *
+ * Threshold stays at 0 deliberately. With the root cropped this hard, asking
+ * for a *share* of the title to be inside it couples the timing to how many
+ * lines the copy happens to take, and a title taller than what's left of the
+ * root would never reach the ratio at all. At 0 it's the top edge crossing
+ * that fires it, which is the same moment whatever the copy does.
+ */
+const REVEAL_ROOT_MARGIN = "0px 0px -75% 0px";
+const REVEAL_THRESHOLD = 0;
+
+/**
+ * The elements the reveal writes to. An object rather than six positional
+ * parameters: they are all `RefObject<HTMLElement | null>` at the call site,
+ * so a list of them is a list of things that would swap silently.
+ */
+type RevealRefs = {
+  title: RefObject<HTMLElement | null>;
+  eyebrow: RefObject<HTMLElement | null>;
+  description: RefObject<HTMLElement | null>;
+  skills: RefObject<HTMLElement | null>;
+  statsEyebrow: RefObject<HTMLElement | null>;
+  stats: RefObject<HTMLElement | null>;
+};
+
+/**
+ * Plays {@link REVEAL} over the words of `refs.title` the first time the
+ * section comes into view, {@link COPY} over the two blocks around it as that
+ * finishes, and {@link BLOCK_SHIFT} over the skills list and the stat cards
+ * behind that — once, and only then: the observer is dropped as it fires, so
+ * scrolling back up doesn't replay it.
+ *
+ * The split is made once, up front, and the words are parked at their start
+ * pose right away: waiting for the trigger to split would flash the finished
+ * title for a frame if the section were ever already on screen. Splitting into
+ * words rather than lines is also what makes it safe to do before the display
+ * face has swapped in — the masked words are inline-blocks and re-wrap on
+ * their own, where a line split would be measured against the fallback and
+ * stay that way.
+ *
+ * The copy is a dependency, so an edit in Prismic re-splits rather than
+ * animating spans that no longer hold it, and so is the card count — see the
+ * cards being read off the list below.
+ *
+ * The title is what the whole sequence hangs off — it carries the split, the
+ * observer and the timeline everything else is hung on — so with no title
+ * rendered there's nothing for the rest to follow and it all stays as typeset.
+ */
+function useCopyReveal(
+  refs: RevealRefs,
+  title: string,
+  description: string,
+  statCount: number,
+) {
+  useGSAP(
+    () => {
+      const el = refs.title.current;
+      if (!el) return;
+
+      // whoever asked not to see things move gets the title as typeset, with
+      // nothing split, parked or observed — same bargain as <SolidIcon />
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+      // `mask` wraps each word in its own `overflow: clip` box — the hard edge
+      // the words climb out from
+      const split = SplitText.create(el, { type: "words", mask: "words" });
+      gsap.set(split.words, { opacity: 0, yPercent: REVEAL_RISE });
+
+      // parked the same way and for the same reason, each on its own side of
+      // the title; the eyebrow is always there, the paragraph is a field
+      const eyebrow = refs.eyebrow.current;
+      const paragraph = refs.description.current;
+      if (eyebrow) gsap.set(eyebrow, { opacity: 0, y: -COPY_SHIFT });
+      if (paragraph) gsap.set(paragraph, { opacity: 0, y: COPY_SHIFT });
+
+      // The last beat's targets, parked the same way. The skills block is
+      // parked at the wrapper, so its eyebrow rides along inside it — the rule
+      // keeps the 0.72 its class gives it instead of being tweened to it, and
+      // the block arrives as one object.
+      //
+      // The cards are read off the list rather than collected through refs of
+      // their own: they are a `map` over a repeatable group, so the DOM
+      // already holds them in order and a ref array would only restate it.
+      // `statCount` is a dependency for exactly this reason — a card added in
+      // Prismic has to be picked up here, not left as the one row that never
+      // moves.
+      const skills = refs.skills.current;
+      const statsEyebrow = refs.statsEyebrow.current;
+      const cards = refs.stats.current
+        ? Array.from(refs.stats.current.children)
+        : [];
+
+      if (skills) gsap.set(skills, { opacity: 0, x: BLOCK_SHIFT });
+      if (statsEyebrow) gsap.set(statsEyebrow, { opacity: 0, y: -COPY_SHIFT });
+      if (cards.length) gsap.set(cards, { opacity: 0, x: -BLOCK_SHIFT });
+
+      const io = new IntersectionObserver(
+        ([entry]) => {
+          if (!entry.isIntersecting) return;
+          io.disconnect();
+
+          // a timeline rather than a delay, so the second beat starts where
+          // the first actually ends — a moment that moves with the word count.
+          // Two tweens off one label rather than one over both, because they
+          // fade to different places; the label is what keeps them together.
+          const tl = gsap.timeline();
+          tl.to(split.words, { opacity: 1, yPercent: 0, ...REVEAL });
+          tl.addLabel("settle");
+          if (eyebrow) {
+            tl.to(
+              eyebrow,
+              { opacity: EYEBROW_OPACITY, y: 0, ...COPY },
+              "settle",
+            );
+          }
+          if (paragraph) {
+            tl.to(paragraph, { opacity: 1, y: 0, ...COPY }, "settle");
+          }
+
+          // one label for the whole last beat, offset from the copy's rather
+          // than appended, so the three tweens hung off it stay related to
+          // each other however many words the title happens to hold
+          tl.addLabel("blocks", `settle+=${BLOCK_LEAD}`);
+          if (skills) {
+            tl.to(skills, { opacity: 1, x: 0, ...COPY }, "blocks");
+          }
+          if (statsEyebrow) {
+            tl.to(
+              statsEyebrow,
+              { opacity: EYEBROW_OPACITY, y: 0, ...COPY },
+              `blocks+=${ROW_LEAD}`,
+            );
+          }
+          if (cards.length) {
+            tl.to(
+              cards,
+              { opacity: 1, x: 0, ...COPY, stagger: ROW_STAGGER },
+              `blocks+=${ROW_LEAD + 0.2}`,
+            );
+          }
+        },
+        { threshold: REVEAL_THRESHOLD, rootMargin: REVEAL_ROOT_MARGIN },
+      );
+      io.observe(el);
+
+      return () => {
+        io.disconnect();
+        // puts the original text node back, taking the spans and everything
+        // set on them with it
+        split.revert();
+      };
+    },
+    { dependencies: [title, description, statCount], scope: refs.title },
+  );
+}
+
 /** A rule and a label — the design's section markers. */
 function Eyebrow({
   as: As = "p",
+  ref,
   children,
 }: {
   as?: "p" | "h3";
+  ref?: Ref<HTMLElement>;
   children: ReactNode;
 }) {
   return (
-    <As className="flex items-center gap-2.5 opacity-[0.72]">
+    <As
+      // `As` is a union, so TS wants a ref both elements accept; neither adds
+      // anything to HTMLElement that this — a GSAP target — could want
+      ref={ref as Ref<HTMLParagraphElement & HTMLHeadingElement>}
+      // the 0.72 is {@link EYEBROW_OPACITY} — keep the two in step
+      className="flex items-center gap-2.5 opacity-[0.72]"
+    >
       <span
         aria-hidden
         className="h-px w-6 shrink-0 bg-white xl:w-8 2xl:w-10"
@@ -199,6 +509,27 @@ export default function AboutContent({
 }: Props) {
   const time = useLocalTime();
 
+  const titleRef = useRef<HTMLParagraphElement>(null);
+  const eyebrowRef = useRef<HTMLElement>(null);
+  const descriptionRef = useRef<HTMLParagraphElement>(null);
+  const skillsRef = useRef<HTMLDivElement>(null);
+  const statsEyebrowRef = useRef<HTMLElement>(null);
+  const statsRef = useRef<HTMLUListElement>(null);
+
+  useCopyReveal(
+    {
+      title: titleRef,
+      eyebrow: eyebrowRef,
+      description: descriptionRef,
+      skills: skillsRef,
+      statsEyebrow: statsEyebrowRef,
+      stats: statsRef,
+    },
+    title ?? "",
+    description ?? "",
+    numbers.length,
+  );
+
   const iconSize = "size-4 shrink-0 xl:size-5 2xl:size-6";
   const metaText = `${CAPS} ${MUTED} text-[0.6875rem] lg:text-xs xl:text-[0.8125rem] 2xl:text-sm`;
 
@@ -215,7 +546,7 @@ export default function AboutContent({
         <div
           className={`lg:absolute lg:top-[10.7%] lg:right-[3.4%] lg:left-[64.8%]`}
         >
-          <Eyebrow>who i am</Eyebrow>
+          <Eyebrow ref={eyebrowRef}>who i am</Eyebrow>
 
           {/* the design breaks this over three lines, but a Text field is one
               line in the editor, so the breaks are the column's to make — it's
@@ -223,6 +554,7 @@ export default function AboutContent({
               author who does get a newline in. */}
           {title && (
             <p
+              ref={titleRef}
               className={`font-display mt-1 font-extrabold text-white ${CAPS} ${LEADING} text-base tracking-normal whitespace-pre-line sm:text-lg lg:text-xl xl:text-2xl 2xl:text-[1.75rem]`}
             >
               {title}
@@ -231,6 +563,7 @@ export default function AboutContent({
 
           {description && (
             <p
+              ref={descriptionRef}
               className={`mt-3 ${CAPS} ${MUTED} ${LEADING} text-xs tracking-normal lg:text-sm lg:max-w-[93%] xl:mt-5 xl:text-base 2xl:mt-6 2xl:text-lg`}
             >
               {description}
@@ -250,11 +583,14 @@ export default function AboutContent({
           `lg` both are static, so they fall into the column in source order. */}
       {numbers.length > 0 && (
         <div className="lg:absolute lg:top-[10.7%] lg:left-[3.9%] lg:w-[30%]">
-          <Eyebrow as="h3">my stats</Eyebrow>
+          <Eyebrow as="h3" ref={statsEyebrowRef}>
+            my stats
+          </Eyebrow>
         </div>
       )}
 
       <ul
+        ref={statsRef}
         // three across is what the design's count wants; a fourth card wraps
         // rather than squeezing the labels onto two lines
         className="grid grid-cols-3 gap-2 empty:hidden lg:absolute lg:top-[14.2%] lg:left-[3.9%] lg:block lg:w-[30%] lg:space-y-2"
@@ -301,19 +637,45 @@ export default function AboutContent({
           // the design's right-hand column, 64.8%–96.6% of the frame, as a
           // share of this row; `order` because it reads first in the DOM and
           // sits second across
-          <div className="lg:order-2 lg:ml-auto lg:w-[34.3%]">
+          <div ref={skillsRef} className="lg:order-2 lg:ml-auto lg:w-[34.3%]">
             <Eyebrow as="h3">my skills</Eyebrow>
 
             {/* the rows sit edge to edge in the design, so the dividers are
                 one shared border rather than a gap. The list is narrower than
                 the column the headline sets — 549 of its 607 — so it stops
                 short of the paragraph's right edge exactly as the design has
-                it. */}
-            <ul className="mt-2.5 border border-white rounded-sm lg:mt-3.5 lg:w-[90.4%]">
+                it.
+
+                The frame is drawn by the rows rather than around them — each
+                one carries its own left and right edge, the first the top and
+                the last the bottom, which adds up to the same 1px box with the
+                same shared dividers. The list itself is a bare `<ul>`: no
+                border, no radius, nothing to clip against.
+
+                That split is load-bearing, not style. Every row carries a
+                backdrop-filter, and a backdrop-filter clipped by its *own*
+                rounded box is the compositor's fast path — one blur, one
+                rounded rect, done. Give it a rounded, clipping *ancestor*
+                instead and the same blur needs a mask pass on a separate
+                render surface, which the layer this sits on pays for on every
+                frame it moves, since a backdrop-filter re-samples whenever it
+                shifts against its backdrop. A wrapper border plus
+                `overflow-clip` cost most of the section's frame budget for a
+                hairline.
+
+                It also settles the hairline at the source. A composited layer
+                is snapped out to whole pixels before it's drawn, and this list
+                is sized in percentages all the way up, so its box lands
+                mid-pixel; a wrapper frame is something the rows can round
+                themselves a fraction wider than and paint their blurred black
+                over — which is how the right border went missing while the
+                left, the top and the dividers stayed. Rows that carry their
+                own edges snap with them, and have nothing left to escape. */}
+            <ul className="mt-2.5 lg:mt-3.5 lg:w-[90.4%]">
               {skills.map(({ skill }, i) => (
                 <li
                   key={i}
-                  className="flex h-10 items-stretch border-t border-white first:rounded-t-sm last:rounded-b-sm bg-black/40 backdrop-blur-lg first:border-t-0 lg:h-12 xl:h-14 2xl:h-16"
+                  className="flex h-10 items-stretch border-x border-b border-white first:border-t first:rounded-t-sm last:rounded-b-sm bg-black/40 backdrop-blur-lg lg:h-12 xl:h-14 2xl:h-16"
                 >
                   <span className="grid w-10 shrink-0 place-items-center border-r border-white text-white lg:w-12 xl:w-14 2xl:w-18">
                     {/* the hero's solids, a different one on each row and each

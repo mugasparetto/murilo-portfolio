@@ -131,6 +131,12 @@ export default function AboutOverlay({ children }: { children?: ReactNode }) {
         // the driver reveals it once it has placed it, so it can't flash over
         // the hero first
         visibility: "hidden",
+        // A viewport below, which is where the driver will put it on its first
+        // frame anyway. Untransformed it would sit exactly over the viewport
+        // until then, and `visibility` doesn't hide that from geometry:
+        // anything inside watching for its own arrival — see <AboutContent />'s
+        // title reveal — would see itself on screen before the section is.
+        transform: "translate3d(0, 100vh, 0)",
       }}
     >
       {children}
