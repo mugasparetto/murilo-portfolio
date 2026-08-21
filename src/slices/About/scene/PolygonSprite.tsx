@@ -646,9 +646,10 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     const hasExtraBounds = useRef(false);
     const narrowedBox = useRef(new THREE.Box3());
     /**
-     * Where the piece was when the walls were last measured. Starts at NaN so
-     * the first frame's distance test is false and the piece counts as moving —
-     * there is no previous frame to have held still since.
+     * Where the piece was when the walls were last measured. NaN until the
+     * first measurement, which is seeded from the piece itself — see the walls
+     * loop for why a piece that has never moved is treated as parked rather
+     * than as moving.
      */
     const lastWallPos = useRef(new THREE.Vector3(NaN, NaN, NaN));
 
@@ -748,6 +749,21 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
       // the piece is ever stranded. Anything actually in motion — held, coasting
       // or carried along by a piece it is bonded to — is clamped as usual, which
       // is what keeps a piece pushed *into* a wall on the right side of it.
+      //
+      // The first measurement counts as held still, not as moving. A piece
+      // that has only just mounted has never been anywhere but where it was
+      // authored, so there is nothing for a wall to be catching up with — and
+      // the frame it mounts on is not necessarily one the camera is at rest
+      // for. The sprites appear only once their textures have loaded, so a
+      // reload partway down the page brings them up with the scroll rig
+      // already mid-flight: at the poses either side of the About one the
+      // screen floor sits a couple of hundred units above the parked mouth, so
+      // a wall taking its grip on that first frame hands the piece straight to
+      // the stranded walk-back, which walks it up the screen, through the
+      // capture radius, and snaps the face together with nobody having touched
+      // it.
+      if (Number.isNaN(lastWallPos.current.x)) lastWallPos.current.copy(pos);
+
       if (
         !isDraggingRef.current &&
         pos.distanceToSquared(lastWallPos.current) < PARKED_EPSILON ** 2
