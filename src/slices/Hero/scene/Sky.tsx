@@ -10,6 +10,7 @@ import { Stars } from "@react-three/drei";
 import OutlinedSolid from "../../../app/components/OutlinedSolid"; // adjust path if needed
 import InstancedStars from "./Star";
 import ShootingStars from "./ShootingStars";
+import { createSolidGeometries, SolidKind } from "@/app/components/solids";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import { defaultParams } from "../scene-core/params";
 
@@ -53,13 +54,6 @@ const DOME_RADIUS = 6000;
    and narrow and the field has to re-spread to stay visible, and pinned to
    hand-tuned world coordinates on the wide layouts it was composed against.
    ------------------------------------------------------------------------- */
-
-type SolidKind =
-  | "cube"
-  | "pyramid"
-  | "icosahedron"
-  | "octahedron"
-  | "tetrahedron";
 
 /** Authored against the frame: resolved to world space for the current aspect. */
 type FramedPlacement = {
@@ -199,18 +193,10 @@ export default function Sky() {
   const groupRefs = useRef<(THREE.Group | null)[]>([]);
 
   // --- geometries, one per kind and shared by every solid using it. All built
-  // at radius 1; the per-solid `size` is the group scale.
-  const geometries = useMemo<Record<SolidKind, THREE.BufferGeometry>>(
-    () => ({
-      cube: new THREE.BoxGeometry(1.15, 1.15, 1.15),
-      // square-base pyramid: a cone with 4 segments
-      pyramid: new THREE.ConeGeometry(1, 1.5, 4, 1),
-      icosahedron: new THREE.IcosahedronGeometry(1, 0),
-      octahedron: new THREE.OctahedronGeometry(1, 0),
-      tetrahedron: new THREE.TetrahedronGeometry(1, 0),
-    }),
-    [],
-  );
+  // at radius 1; the per-solid `size` is the group scale. Defined next to
+  // <SolidIcon />'s wireframes rather than here, since the About section's
+  // skill icons are these same solids drawn flat.
+  const geometries = useMemo(() => createSolidGeometries(), []);
 
   // --- edge geometries, also shared. <OutlinedSolid /> builds its own when it
   // isn't handed one, which would mean re-extracting the same edges sixteen

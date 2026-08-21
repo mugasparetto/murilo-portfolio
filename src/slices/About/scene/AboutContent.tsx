@@ -3,6 +3,8 @@
 import { CSSProperties, ReactNode, useEffect, useId, useState } from "react";
 import { Content, KeyTextField } from "@prismicio/client";
 
+import SolidIcon, { solidForRow } from "./SolidIcon";
+
 /**
  * The four fields the slice actually holds, taken one at a time rather than as
  * the whole slice — the same way <NameOverlay /> and <HeadlineOverlay /> take
@@ -141,30 +143,6 @@ function Eyebrow({
         {children}
       </span>
     </As>
-  );
-}
-
-/**
- * Wireframe icosahedron — the tile icon on every skill row.
- *
- * Drawn rather than exported: the design places a 72 × 64 crop of a reference
- * bitmap there, which at that size is already soft. These are the real solid's
- * 30 edges, projected down a face axis and with the 12 back ones culled, so it
- * stays crisp at any size and takes its colour from the row.
- */
-function IcosahedronIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={0.9}
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <path d="M6.33 8.72L17.67 8.72M6.33 8.72L12 18.55M6.33 8.72L12 1.4M6.33 8.72L2.82 17.3M6.33 8.72L2.82 6.7M17.67 8.72L12 18.55M17.67 8.72L12 1.4M17.67 8.72L21.18 17.3M17.67 8.72L21.18 6.7M12 18.55L2.82 17.3M12 18.55L21.18 17.3M12 18.55L12 22.6M12 1.4L2.82 6.7M12 1.4L21.18 6.7M2.82 17.3L2.82 6.7M2.82 17.3L12 22.6M21.18 17.3L21.18 6.7M21.18 17.3L12 22.6" />
-    </svg>
   );
 }
 
@@ -331,7 +309,13 @@ export default function AboutContent({
                 className="flex h-10 items-stretch border-t border-white first:rounded-t-sm last:rounded-b-sm bg-black/40 backdrop-blur-lg first:border-t-0 lg:h-12 xl:h-14 2xl:h-16"
               >
                 <span className="grid w-10 shrink-0 place-items-center border-r border-white text-white lg:w-12 xl:w-14 2xl:w-18">
-                  <IcosahedronIcon className="size-5 xl:size-7 2xl:size-8" />
+                  {/* the hero's solids, a different one on each row and each
+                      turning at its own rate — see <SolidIcon /> */}
+                  <SolidIcon
+                    kind={solidForRow(i)}
+                    seed={i}
+                    className="size-5 xl:size-7 2xl:size-9"
+                  />
                 </span>
                 <span
                   className={`flex flex-1 items-center px-3 text-white ${CAPS} text-sm lg:px-4 lg:text-base xl:px-6 xl:text-xl 2xl:text-2xl`}
