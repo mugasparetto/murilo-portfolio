@@ -47,3 +47,34 @@ export const ABOUT_POSE: Pose = {
   // words wobbling
   parallax: 0.23,
 };
+
+/**
+ * Where the viewport edges fall in world coordinates, for something sitting at
+ * depth `z` and viewed from `pose`.
+ *
+ * This is the bridge the note at the top of this file describes, written down:
+ * a mesh has no viewport, so anything that has to line up with the *screen* —
+ * the About title's margins, the falloff that fades its grid out — projects
+ * the frustum of the pose its section is held at rather than reading the live
+ * camera, which is only ever wherever the scroll and the parallax left it this
+ * frame.
+ *
+ * Only valid for a pose whose look direction is straight down -Z. That makes a
+ * plane at constant z parallel to the screen and the projection a plain
+ * `2 * tan(fov / 2) * distance`. {@link ABOUT_POSE} is one of those;
+ * {@link HERO_POSE}, which pitches up at the door, is not.
+ */
+export function poseFrame(pose: Pose, fov: number, aspect: number, z: number) {
+  const distance = pose.position[2] - z;
+  const halfFov = (fov * Math.PI) / 180 / 2;
+  const height = 2 * Math.tan(halfFov) * distance;
+
+  return {
+    height,
+    width: height * aspect,
+    /** world x/y the viewport is centred on */
+    center: [pose.position[0], pose.position[1]] as [number, number],
+    /** world y of the viewport's top edge */
+    top: pose.position[1] + height / 2,
+  };
+}

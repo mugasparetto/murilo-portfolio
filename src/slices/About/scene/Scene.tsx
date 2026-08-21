@@ -7,7 +7,7 @@ import {
   useState,
   useCallback,
 } from "react";
-import { ThreeElements, useFrame } from "@react-three/fiber";
+import { ThreeElements, useFrame, useThree } from "@react-three/fiber";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import Head from "./Head";
 import Title from "./Title";
@@ -21,33 +21,132 @@ import {
   VhWindow,
 } from "@/app/helpers/scroll";
 import { publishBackdrop } from "@/app/helpers/backdrop";
+import { ABOUT_POSE, poseFrame } from "@/app/components/poses";
 
 type LinePosition = {
   x: number;
   y: number;
 };
 
+/**
+ * A radial falloff applied to the grid's own alpha, so the lines don't just
+ * stop dead at the ends of their span.
+ *
+ * It lives on the lines rather than on a black plane laid over them, which is
+ * the other way to get the same picture. Masking at the source is exact — the
+ * falloff is on the thing being faded, not on whatever happens to sit in front
+ * of it — it can't be undone by transparency sort order, and it leaves the
+ * backdrop behind free for anything else. A wash could only ever paint over
+ * that too.
+ *
+ * Measured in world units, because the ellipse is a *screen* measurement: see
+ * {@link poseFrame} for how the two are bridged.
+ */
+type RadialMask = {
+  /** world x/y the ellipse is centred on */
+  center: [number, number];
+  /** the ellipse's half-width and half-height, in world units */
+  radius: [number, number];
+  /**
+   * Where the fade starts and finishes, as fractions of the ellipse. A ramp
+   * run across the whole of it (0 -> 1) spends nearly all its range out at the
+   * margins where the lines are already at full strength, so the visible part
+   * of the grid barely moves; pulling the stops in concentrates the whole
+   * falloff into a band you can actually see.
+   */
+  stops?: [number, number];
+};
+
 type LinesProps = {
   lines: LinePosition[];
   span: number; // height if vertical, width if horizontal
+  mask: RadialMask;
   orientation?: "vertical" | "horizontal";
   thickness?: number;
   z?: number;
   color?: THREE.ColorRepresentation;
+  /**
+   * How opaque the lines are at each end of the mask's falloff, as
+   * `[centre, edges]`. Neither end is special — swapping the two is what
+   * inverts the effect, so it replaces the old "which end is solid" flag
+   * rather than sitting alongside it. Holding the centre a little above zero
+   * leaves a ghost of the grid there instead of a hole.
+   */
+  opacity?: [number, number];
 } & Omit<ThreeElements["instancedMesh"], "args">;
+
+/**
+ * World position is the one thing the mask needs and the only reason this
+ * isn't a MeshBasicMaterial. Three declares `instanceMatrix` and defines
+ * USE_INSTANCING for any non-raw shader drawn by an InstancedMesh, but a
+ * hand-written vertex shader still has to apply it.
+ */
+const LINE_VERTEX = /* glsl */ `
+  varying vec2 vWorld;
+
+  void main() {
+    vec4 local = vec4(position, 1.0);
+
+    #ifdef USE_INSTANCING
+      local = instanceMatrix * local;
+    #endif
+
+    vec4 world = modelMatrix * local;
+
+    vWorld = world.xy;
+    gl_Position = projectionMatrix * viewMatrix * world;
+  }
+`;
+
+const LINE_FRAGMENT = /* glsl */ `
+  uniform vec3 uColor;
+  // x at the centre of the falloff, y at its edges
+  uniform vec2 uOpacity;
+  uniform vec2 uCenter;
+  uniform vec2 uRadius;
+  uniform vec2 uStops;
+
+  varying vec2 vWorld;
+
+  void main() {
+    // an ellipse inscribed in the viewport: 0 at the centre and 1 on all four
+    // edges whatever the aspect is
+    float d = length((vWorld - uCenter) / uRadius);
+
+    // smoothstep rather than the raw distance: it clamps at both ends, so the
+    // parts of a line that run off screen stay pinned at full strength, and it
+    // eases in and out instead of kinking where the ramp starts
+    float t = smoothstep(uStops.x, uStops.y, d);
+
+    gl_FragColor = vec4(uColor, mix(uOpacity.x, uOpacity.y, t));
+  }
+`;
 
 function Lines({
   lines,
   span,
+  mask,
   orientation = "vertical",
   thickness = 0.02,
   z = 0.001,
   color = "white",
+  opacity = [0, 0.05],
   ...props
 }: LinesProps) {
   const ref = useRef<THREE.InstancedMesh>(null!);
   const dummy = useMemo(() => new THREE.Object3D(), []);
-  const mat = useMemo(() => new THREE.MeshBasicMaterial({ color }), [color]);
+
+  // `mask` only changes on resize, so this is nowhere near per-frame work
+  const uniforms = useMemo(
+    () => ({
+      uColor: { value: new THREE.Color(color) },
+      uOpacity: { value: new THREE.Vector2(...opacity) },
+      uCenter: { value: new THREE.Vector2(...mask.center) },
+      uRadius: { value: new THREE.Vector2(...mask.radius) },
+      uStops: { value: new THREE.Vector2(...(mask.stops ?? [0, 1])) },
+    }),
+    [color, opacity, mask],
+  );
 
   const geoArgs: [number, number] =
     orientation === "vertical" ? [thickness, span] : [span, thickness];
@@ -72,7 +171,12 @@ function Lines({
       {...props}
     >
       <planeGeometry args={geoArgs} />
-      <primitive object={mat} attach="material" transparent opacity={0.05} />
+      <shaderMaterial
+        vertexShader={LINE_VERTEX}
+        fragmentShader={LINE_FRAGMENT}
+        uniforms={uniforms}
+        transparent
+      />
     </instancedMesh>
   );
 }
@@ -146,6 +250,30 @@ function useUCurvePlane(
   }, [width, height, curveDepth, segments]);
 }
 
+/** depth the backdrop plane sits at */
+const BACKDROP_Z = 2200;
+
+/** how far in front of it the grid sits, clear of z-fighting */
+const GRID_OFFSET = 0.1;
+
+/**
+ * The grid's alpha at each end of the falloff, `[centre, edges]`.
+ *
+ * This pair is the entire range the effect has to work in, so it's worth
+ * spending: the two numbers being close together is what makes a falloff read
+ * as nothing at all, especially under a Noise pass running at 0.4. Reverse
+ * them to fade the grid out into the margins instead of into the middle.
+ */
+const GRID_OPACITY: [number, number] = [0, 0.1];
+
+/**
+ * Where the fade runs, as fractions of the viewport ellipse: nothing at all
+ * until a quarter of the way out, all of it done by three quarters. That keeps
+ * the transition inside the part of the screen you're looking at instead of
+ * spreading it out to the corners.
+ */
+const GRID_FADE: [number, number] = [0.65, 1];
+
 type BulletContent = {
   title: KeyTextField;
   description: KeyTextField;
@@ -199,9 +327,32 @@ export default function Scene({ scrollWindow, content }: Props) {
   );
 
   const planePos = useMemo<[number, number, number]>(
-    () => [0, !up.md ? -1205 : -1005, 2200],
+    () => [0, !up.md ? -1205 : -1005, BACKDROP_Z],
     [up.md],
   );
+
+  const size = useThree((s) => s.size);
+  const fov = useThree((s) => (s.camera as THREE.PerspectiveCamera).fov);
+
+  /**
+   * The falloff the grid is drawn through: an ellipse inscribed in the
+   * viewport, sized at the grid's own depth so it tracks the screen edges
+   * rather than the backdrop's arbitrary 2000-unit span. Resize work only.
+   */
+  const gridMask = useMemo(() => {
+    const frame = poseFrame(
+      ABOUT_POSE,
+      fov,
+      size.width / size.height,
+      BACKDROP_Z + GRID_OFFSET,
+    );
+
+    return {
+      center: frame.center,
+      radius: [frame.width / 2, frame.height / 2] as [number, number],
+      stops: GRID_FADE,
+    };
+  }, [fov, size.width, size.height]);
 
   // the plane is the only thing in the page that can occlude the hero's DOM
   // overlays, so publish where it is; it never moves again, so once is enough
@@ -244,13 +395,22 @@ export default function Scene({ scrollWindow, content }: Props) {
       </mesh>
 
       <group position={planePos}>
-        <Lines lines={lines} span={2000} thickness={1.5} z={0.1} />
+        <Lines
+          lines={lines}
+          span={2000}
+          mask={gridMask}
+          opacity={GRID_OPACITY}
+          thickness={1.5}
+          z={GRID_OFFSET}
+        />
         <Lines
           lines={hLines}
           span={2000}
+          mask={gridMask}
+          opacity={GRID_OPACITY}
           orientation="horizontal"
           thickness={1.5}
-          z={0.1}
+          z={GRID_OFFSET}
         />
       </group>
 
