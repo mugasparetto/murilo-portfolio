@@ -1,6 +1,25 @@
 "use client";
 
-import { ReactNode, useEffect, useId, useState } from "react";
+import { CSSProperties, ReactNode, useEffect, useId, useState } from "react";
+import { Content, KeyTextField } from "@prismicio/client";
+
+/**
+ * The four fields the slice actually holds, taken one at a time rather than as
+ * the whole slice — the same way <NameOverlay /> and <HeadlineOverlay /> take
+ * theirs. This renders one composition, not a variation switch, so the props
+ * are worth spelling out: they say exactly which of the slice's fields reach
+ * the DOM. What isn't here — the eyebrows, the meta list under the cards — is
+ * design rather than copy, and stays hard-coded below.
+ *
+ * The two groups keep their generated item types, so a field added in Slice
+ * Machine turns up here rather than behind a cast.
+ */
+type Props = {
+  title: KeyTextField;
+  description: KeyTextField;
+  numbers: Content.AboutSliceDefaultPrimary["numbers"];
+  skills: Content.AboutSliceDefaultPrimary["skills"];
+};
 
 /**
  * The About section's copy, as laid out in Figma (node 1366-481).
@@ -54,28 +73,20 @@ const LEADING = "leading-[1.46]";
  * already puts behind the stat cards. The blur keeps the skin texture from
  * showing through the counters of the letters.
  */
-const PANEL =
-  "rounded-[4px] bg-black/65 p-4 backdrop-blur-[2px] lg:rounded-none lg:bg-transparent lg:p-0 lg:backdrop-blur-none";
-
-const STATS = [
-  { value: "8+", label: "years of experience" },
-  { value: "50+", label: "projects" },
-  { value: "30+", label: "happy clients" },
-] as const;
 
 /**
- * Each card is nudged right of the one above it, so the three read as a stair
- * stepping down towards the face. 64px on a 1906 frame, against a container
- * that spans the leftmost card's left edge to the rightmost's right edge.
+ * Each card is nudged right of the one above it, so they read as a stair
+ * stepping down towards the face: 64px a step on a 1906 frame, against a
+ * container that spans the leftmost card's left edge to the rightmost's right
+ * edge.
+ *
+ * A step per index rather than a fixed set of three classes, because the group
+ * is repeatable and the design's count isn't a promise. It goes through a
+ * custom property so the offset can be computed from `i` and still only apply
+ * from `lg` up — a plain inline `margin-left` has no breakpoint to hide behind,
+ * and would stagger the stacked column too.
  */
-const STAGGER = ["lg:ml-0", "lg:ml-[11.2%]", "lg:ml-[22.4%]"] as const;
-
-const SKILLS = [
-  "branding",
-  "web design",
-  "development",
-  "experiences",
-] as const;
+const STAGGER_STEP = 11.2;
 
 /** London, since the line above it says that's where the clock is. */
 const TIME_ZONE = "Europe/London";
@@ -219,7 +230,12 @@ function StarIcon({ className }: { className?: string }) {
   );
 }
 
-export default function AboutContent() {
+export default function AboutContent({
+  title,
+  description,
+  numbers,
+  skills,
+}: Props) {
   const time = useLocalTime();
 
   const iconSize = "size-4 shrink-0 xl:size-5 2xl:size-6";
@@ -232,86 +248,105 @@ export default function AboutContent() {
       <h2 className="sr-only">About</h2>
 
       {/* — who i am ------------------------------------------------------ */}
-      <div
-        className={`${PANEL} lg:absolute lg:top-[10.7%] lg:right-[3.4%] lg:left-[64.8%]`}
-      >
-        <Eyebrow>who i am</Eyebrow>
-
-        <p
-          className={`font-display mt-1 font-extrabold text-white ${CAPS} ${LEADING} text-base tracking-normal sm:text-lg lg:text-xl xl:text-2xl 2xl:text-[1.75rem]`}
+      {/* the eyebrow is a marker for the copy under it, so with neither field
+          filled the block goes rather than leaving a rule floating on its own */}
+      {(title || description) && (
+        <div
+          className={`lg:absolute lg:top-[10.7%] lg:right-[3.4%] lg:left-[64.8%]`}
         >
-          i design and build <br />
-          digital experiences <br />
-          that are bold, functional and future-focused.
-        </p>
+          <Eyebrow>who i am</Eyebrow>
 
-        <p
-          className={`mt-3 ${CAPS} ${MUTED} ${LEADING} text-xs tracking-normal lg:text-sm lg:max-w-[93%] xl:mt-5 xl:text-base 2xl:mt-6 2xl:text-lg`}
-        >
-          i specialise in branding, web design, and development. combining
-          aethetics with performance to create impactful solutions. my approach
-          is minimal, intentional and driven by purpose
-        </p>
-      </div>
+          {/* the design breaks this over three lines, but a Text field is one
+              line in the editor, so the breaks are the column's to make — it's
+              sized to wrap the copy the same way. `pre-line` is there for the
+              author who does get a newline in. */}
+          {title && (
+            <p
+              className={`font-display mt-1 font-extrabold text-white ${CAPS} ${LEADING} text-base tracking-normal whitespace-pre-line sm:text-lg lg:text-xl xl:text-2xl 2xl:text-[1.75rem]`}
+            >
+              {title}
+            </p>
+          )}
+
+          {description && (
+            <p
+              className={`mt-3 ${CAPS} ${MUTED} ${LEADING} text-xs tracking-normal lg:text-sm lg:max-w-[93%] xl:mt-5 xl:text-base 2xl:mt-6 2xl:text-lg`}
+            >
+              {description}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* — the numbers --------------------------------------------------- */}
-      <ul className="grid grid-cols-3 gap-2 lg:absolute lg:top-[18.9%] lg:left-[3.9%] lg:block lg:w-[30%] lg:space-y-2">
-        {STATS.map((stat, i) => (
+      <ul
+        // three across is what the design's count wants; a fourth card wraps
+        // rather than squeezing the labels onto two lines
+        className="grid grid-cols-3 gap-2 empty:hidden lg:absolute lg:top-[18.9%] lg:left-[3.9%] lg:block lg:w-[30%] lg:space-y-2"
+      >
+        {numbers.map(({ number, label }, i) => (
           <li
-            key={stat.value}
-            // The height is fixed from `lg` up so the three cards stay a set
-            // whatever the longest label does; the gap and the type are sized
-            // to keep that label on one line at the low end of each step, since
-            // the design's own 64px gap only fits once the viewport is as wide
-            // as the frame it was drawn on.
-            className={`flex flex-col items-center rounded-[4px] border-2 border-white bg-black/65 px-2 py-2.5 text-center lg:bg-black/20 ${STAGGER[i]} lg:h-16 lg:w-[77.6%] lg:flex-row lg:items-center lg:gap-8 lg:px-3 lg:py-0 lg:text-left xl:h-20 xl:gap-12 xl:px-4 2xl:h-24 2xl:gap-16 2xl:px-5 min-[1800px]:h-25 min-[1800px]:px-6`}
+            // a group item carries no id of its own, and position is the only
+            // thing that identifies a card here
+            key={i}
+            style={{ "--stagger": `${i * STAGGER_STEP}%` } as CSSProperties}
+            // The height is fixed from `lg` up so the cards stay a set whatever
+            // the longest label does; the gap and the type are sized to keep
+            // that label on one line at the low end of each step, since the
+            // design's own 64px gap only fits once the viewport is as wide as
+            // the frame it was drawn on.
+            className={`flex flex-col items-center rounded-sm border-2 border-white bg-black/40 backdrop-blur-lg px-2 py-2.5 text-center lg:ml-(--stagger) lg:h-16 lg:w-[77.6%] lg:flex-row lg:items-center lg:gap-8 lg:px-3 lg:py-0 lg:text-left xl:h-20 xl:gap-12 xl:px-4 2xl:h-24 2xl:gap-16 2xl:px-5 min-[112rem]:h-25 min-[112rem]:px-6`}
           >
             <span
-              className={`font-display font-extrabold text-white ${LEADING} text-xl lg:text-2xl xl:text-3xl 2xl:text-4xl min-[1800px]:text-[2.75rem]`}
+              className={`font-display font-extrabold text-white ${LEADING} text-xl lg:text-2xl xl:text-3xl 2xl:text-4xl min-[112rem]:text-[2.75rem]`}
             >
-              {stat.value}
+              {number}
             </span>
             <span
-              className={`${CAPS} ${MUTED} ${LEADING} text-[0.5625rem] lg:text-[0.625rem] xl:text-[0.6875rem] 2xl:text-[0.8125rem] min-[1800px]:text-base`}
+              className={`${CAPS} ${MUTED} ${LEADING} text-[0.5625rem] lg:text-[0.625rem] xl:text-[0.6875rem] 2xl:text-[0.8125rem] min-[112rem]:text-base`}
             >
-              {stat.label}
+              {label}
             </span>
           </li>
         ))}
       </ul>
 
       {/* — my skills ----------------------------------------------------- */}
-      <div
-        className={`${PANEL} lg:absolute lg:top-[56.1%] lg:right-[3.4%] lg:left-[64.8%]`}
-      >
-        <Eyebrow as="h3">my skills</Eyebrow>
+      {/* the eyebrow labels the list, so with nothing to label the whole block
+          goes rather than leaving a heading over an empty bordered box */}
+      {skills.length > 0 && (
+        <div
+          className={`lg:absolute lg:top-[56.1%] lg:right-[3.4%] lg:left-[64.8%]`}
+        >
+          <Eyebrow as="h3">my skills</Eyebrow>
 
-        {/* the rows sit edge to edge in the design, so the dividers are one
-            shared border rather than a gap. The list is narrower than the
-            column the headline sets — 549 of its 607 — so it stops short of the
-            paragraph's right edge exactly as the design has it. */}
-        <ul className="mt-2.5 border border-white bg-black lg:mt-3.5 lg:w-[90.4%]">
-          {SKILLS.map((skill) => (
-            <li
-              key={skill}
-              className="flex h-10 items-stretch border-t border-white first:border-t-0 lg:h-12 xl:h-14 2xl:h-16"
-            >
-              <span className="grid w-10 shrink-0 place-items-center border-r border-white text-white lg:w-12 xl:w-14 2xl:w-18">
-                <IcosahedronIcon className="size-5 xl:size-7 2xl:size-8" />
-              </span>
-              <span
-                className={`flex flex-1 items-center px-3 text-white ${CAPS} text-sm lg:px-4 lg:text-base xl:px-6 xl:text-xl 2xl:text-2xl`}
+          {/* the rows sit edge to edge in the design, so the dividers are one
+              shared border rather than a gap. The list is narrower than the
+              column the headline sets — 549 of its 607 — so it stops short of
+              the paragraph's right edge exactly as the design has it. */}
+          <ul className="mt-2.5 border border-white rounded-sm lg:mt-3.5 lg:w-[90.4%]">
+            {skills.map(({ skill }, i) => (
+              <li
+                key={i}
+                className="flex h-10 items-stretch border-t border-white first:rounded-t-sm last:rounded-b-sm bg-black/40 backdrop-blur-lg first:border-t-0 lg:h-12 xl:h-14 2xl:h-16"
               >
-                {skill}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
+                <span className="grid w-10 shrink-0 place-items-center border-r border-white text-white lg:w-12 xl:w-14 2xl:w-18">
+                  <IcosahedronIcon className="size-5 xl:size-7 2xl:size-8" />
+                </span>
+                <span
+                  className={`flex flex-1 items-center px-3 text-white ${CAPS} text-sm lg:px-4 lg:text-base xl:px-6 xl:text-xl 2xl:text-2xl`}
+                >
+                  {skill}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* — where and when ------------------------------------------------ */}
       <ul
-        className={`space-y-2 ${PANEL} lg:absolute lg:top-[75.5%] lg:left-[5.7%] lg:space-y-3`}
+        className={`space-y-2 lg:absolute lg:top-[75.5%] lg:left-[5.7%] lg:space-y-3`}
       >
         <li className="flex items-center gap-3.5">
           <GlobeIcon className={`${iconSize} text-white`} />

@@ -34,25 +34,7 @@ const About: FC<AboutProps> = ({ slice }) => {
     register({
       id,
       priority: 20,
-      node: (
-        <Scene
-          scrollWindow={{ startVh: 345, endVh: 500 }}
-          content={{
-            head: {
-              title: slice.primary.head_title,
-              description: slice.primary.head_description,
-            },
-            eyes: {
-              title: slice.primary.eyes_title,
-              description: slice.primary.eyes_description,
-            },
-            mouth: {
-              title: slice.primary.mouth_title,
-              description: slice.primary.mouth_description,
-            },
-          }}
-        />
-      ),
+      node: <Scene scrollWindow={{ startVh: 345, endVh: 500 }} />,
       active: true,
     });
 
@@ -85,7 +67,12 @@ const About: FC<AboutProps> = ({ slice }) => {
           it; <AboutOverlayDriver /> inside the scene slides it with the
           section */}
       <AboutOverlay>
-        <AboutContent />
+        <AboutContent
+          title={slice.primary.title}
+          description={slice.primary.description}
+          numbers={slice.primary.numbers}
+          skills={slice.primary.skills}
+        />
       </AboutOverlay>
     </section>
   );

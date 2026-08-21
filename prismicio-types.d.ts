@@ -209,68 +209,88 @@ export type PageDocument<Lang extends string = string> =
 export type AllDocumentTypes = HomepageDocument | PageDocument;
 
 /**
+ * Item in *About → Default → Primary → Numbers*
+ */
+export interface AboutSliceDefaultPrimaryNumbersItem {
+  /**
+   * Number field in *About → Default → Primary → Numbers*
+   *
+   * - **Field Type**: Text
+   * - **Placeholder**: *None*
+   * - **API ID Path**: about.default.primary.numbers[].number
+   * - **Documentation**: https://prismic.io/docs/fields/text
+   */
+  number: prismic.KeyTextField;
+
+  /**
+   * Label field in *About → Default → Primary → Numbers*
+   *
+   * - **Field Type**: Text
+   * - **Placeholder**: *None*
+   * - **API ID Path**: about.default.primary.numbers[].label
+   * - **Documentation**: https://prismic.io/docs/fields/text
+   */
+  label: prismic.KeyTextField;
+}
+
+/**
+ * Item in *About → Default → Primary → Skills*
+ */
+export interface AboutSliceDefaultPrimarySkillsItem {
+  /**
+   * Skill field in *About → Default → Primary → Skills*
+   *
+   * - **Field Type**: Text
+   * - **Placeholder**: *None*
+   * - **API ID Path**: about.default.primary.skills[].skill
+   * - **Documentation**: https://prismic.io/docs/fields/text
+   */
+  skill: prismic.KeyTextField;
+}
+
+/**
  * Primary content in *About → Default → Primary*
  */
 export interface AboutSliceDefaultPrimary {
   /**
-   * Head title field in *About → Default → Primary*
+   * Title field in *About → Default → Primary*
    *
    * - **Field Type**: Text
    * - **Placeholder**: *None*
-   * - **API ID Path**: about.default.primary.head_title
+   * - **API ID Path**: about.default.primary.title
    * - **Documentation**: https://prismic.io/docs/fields/text
    */
-  head_title: prismic.KeyTextField;
+  title: prismic.KeyTextField;
 
   /**
-   * Head description field in *About → Default → Primary*
+   * Description field in *About → Default → Primary*
    *
    * - **Field Type**: Text
    * - **Placeholder**: *None*
-   * - **API ID Path**: about.default.primary.head_description
+   * - **API ID Path**: about.default.primary.description
    * - **Documentation**: https://prismic.io/docs/fields/text
    */
-  head_description: prismic.KeyTextField;
+  description: prismic.KeyTextField;
 
   /**
-   * Eyes title field in *About → Default → Primary*
+   * Numbers field in *About → Default → Primary*
    *
-   * - **Field Type**: Text
+   * - **Field Type**: Group
    * - **Placeholder**: *None*
-   * - **API ID Path**: about.default.primary.eyes_title
-   * - **Documentation**: https://prismic.io/docs/fields/text
+   * - **API ID Path**: about.default.primary.numbers[]
+   * - **Documentation**: https://prismic.io/docs/fields/repeatable-group
    */
-  eyes_title: prismic.KeyTextField;
+  numbers: prismic.GroupField<Simplify<AboutSliceDefaultPrimaryNumbersItem>>;
 
   /**
-   * Eyes description field in *About → Default → Primary*
+   * Skills field in *About → Default → Primary*
    *
-   * - **Field Type**: Text
+   * - **Field Type**: Group
    * - **Placeholder**: *None*
-   * - **API ID Path**: about.default.primary.eyes_description
-   * - **Documentation**: https://prismic.io/docs/fields/text
+   * - **API ID Path**: about.default.primary.skills[]
+   * - **Documentation**: https://prismic.io/docs/fields/repeatable-group
    */
-  eyes_description: prismic.KeyTextField;
-
-  /**
-   * Mouth title field in *About → Default → Primary*
-   *
-   * - **Field Type**: Text
-   * - **Placeholder**: *None*
-   * - **API ID Path**: about.default.primary.mouth_title
-   * - **Documentation**: https://prismic.io/docs/fields/text
-   */
-  mouth_title: prismic.KeyTextField;
-
-  /**
-   * Mouth description field in *About → Default → Primary*
-   *
-   * - **Field Type**: Text
-   * - **Placeholder**: *None*
-   * - **API ID Path**: about.default.primary.mouth_description
-   * - **Documentation**: https://prismic.io/docs/fields/text
-   */
-  mouth_description: prismic.KeyTextField;
+  skills: prismic.GroupField<Simplify<AboutSliceDefaultPrimarySkillsItem>>;
 }
 
 /**
@@ -446,6 +466,8 @@ declare module "@prismicio/client" {
       PageDocumentDataSlicesSlice,
       AllDocumentTypes,
       AboutSlice,
+      AboutSliceDefaultPrimaryNumbersItem,
+      AboutSliceDefaultPrimarySkillsItem,
       AboutSliceDefaultPrimary,
       AboutSliceVariation,
       AboutSliceDefault,

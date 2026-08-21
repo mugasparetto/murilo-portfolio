@@ -12,46 +12,57 @@
       "description": "Default",
       "imageUrl": "",
       "primary": {
-        "head_title": {
+        "title": {
           "type": "Text",
           "config": {
-            "label": "Head title",
+            "label": "Title",
             "placeholder": ""
           }
         },
-        "head_description": {
+        "description": {
           "type": "Text",
           "config": {
-            "label": "Head description",
+            "label": "Description",
             "placeholder": ""
           }
         },
-        "eyes_title": {
-          "type": "Text",
+        "numbers": {
+          "type": "Group",
           "config": {
-            "label": "Eyes title",
-            "placeholder": ""
+            "label": "Numbers",
+            "repeat": true,
+            "fields": {
+              "number": {
+                "type": "Text",
+                "config": {
+                  "label": "Number",
+                  "placeholder": ""
+                }
+              },
+              "label": {
+                "type": "Text",
+                "config": {
+                  "label": "Label",
+                  "placeholder": ""
+                }
+              }
+            }
           }
         },
-        "eyes_description": {
-          "type": "Text",
+        "skills": {
+          "type": "Group",
           "config": {
-            "label": "Eyes description",
-            "placeholder": ""
-          }
-        },
-        "mouth_title": {
-          "type": "Text",
-          "config": {
-            "label": "Mouth title",
-            "placeholder": ""
-          }
-        },
-        "mouth_description": {
-          "type": "Text",
-          "config": {
-            "label": "Mouth description",
-            "placeholder": ""
+            "label": "Skills",
+            "repeat": true,
+            "fields": {
+              "skill": {
+                "type": "Text",
+                "config": {
+                  "label": "Skill",
+                  "placeholder": ""
+                }
+              }
+            }
           }
         }
       },

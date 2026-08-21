@@ -274,21 +274,11 @@ const GRID_OPACITY: [number, number] = [0, 0.1];
  */
 const GRID_FADE: [number, number] = [0.65, 1];
 
-type BulletContent = {
-  title: KeyTextField;
-  description: KeyTextField;
-};
-
 type Props = {
   scrollWindow: VhWindow;
-  content: {
-    head: BulletContent;
-    eyes: BulletContent;
-    mouth: BulletContent;
-  };
 };
 
-export default function Scene({ scrollWindow, content }: Props) {
+export default function Scene({ scrollWindow }: Props) {
   const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
   const head = useRef<THREE.Group | null>(null);
 

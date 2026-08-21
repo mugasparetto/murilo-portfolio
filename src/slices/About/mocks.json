@@ -3,35 +3,140 @@
 		"__TYPE__": "SharedSliceContent",
 		"variation": "default",
 		"primary": {
-			"head_title": {
+			"title": {
 				"__TYPE__": "FieldContent",
-				"value": "husband",
+				"value": "i design and build digital experiences that are bold, functional and future-focused.",
 				"type": "Text"
 			},
-			"head_description": {
+			"description": {
 				"__TYPE__": "FieldContent",
-				"value": "why",
+				"value": "i specialise in branding, web design, and development. combining aethetics with performance to create impactful solutions. my approach is minimal, intentional and driven by purpose",
 				"type": "Text"
 			},
-			"eyes_title": {
-				"__TYPE__": "FieldContent",
-				"value": "beauty",
-				"type": "Text"
+			"numbers": {
+				"__TYPE__": "GroupContentType",
+				"value": [
+					{
+						"__TYPE__": "GroupItemContent",
+						"value": [
+							[
+								"number",
+								{
+									"__TYPE__": "FieldContent",
+									"value": "8+",
+									"type": "Text"
+								}
+							],
+							[
+								"label",
+								{
+									"__TYPE__": "FieldContent",
+									"value": "years of experience",
+									"type": "Text"
+								}
+							]
+						]
+					},
+					{
+						"__TYPE__": "GroupItemContent",
+						"value": [
+							[
+								"number",
+								{
+									"__TYPE__": "FieldContent",
+									"value": "50+",
+									"type": "Text"
+								}
+							],
+							[
+								"label",
+								{
+									"__TYPE__": "FieldContent",
+									"value": "projects",
+									"type": "Text"
+								}
+							]
+						]
+					},
+					{
+						"__TYPE__": "GroupItemContent",
+						"value": [
+							[
+								"number",
+								{
+									"__TYPE__": "FieldContent",
+									"value": "30+",
+									"type": "Text"
+								}
+							],
+							[
+								"label",
+								{
+									"__TYPE__": "FieldContent",
+									"value": "happy clients",
+									"type": "Text"
+								}
+							]
+						]
+					}
+				]
 			},
-			"eyes_description": {
-				"__TYPE__": "FieldContent",
-				"value": "fully",
-				"type": "Text"
-			},
-			"mouth_title": {
-				"__TYPE__": "FieldContent",
-				"value": "west",
-				"type": "Text"
-			},
-			"mouth_description": {
-				"__TYPE__": "FieldContent",
-				"value": "friendly",
-				"type": "Text"
+			"skills": {
+				"__TYPE__": "GroupContentType",
+				"value": [
+					{
+						"__TYPE__": "GroupItemContent",
+						"value": [
+							[
+								"skill",
+								{
+									"__TYPE__": "FieldContent",
+									"value": "branding",
+									"type": "Text"
+								}
+							]
+						]
+					},
+					{
+						"__TYPE__": "GroupItemContent",
+						"value": [
+							[
+								"skill",
+								{
+									"__TYPE__": "FieldContent",
+									"value": "web design",
+									"type": "Text"
+								}
+							]
+						]
+					},
+					{
+						"__TYPE__": "GroupItemContent",
+						"value": [
+							[
+								"skill",
+								{
+									"__TYPE__": "FieldContent",
+									"value": "development",
+									"type": "Text"
+								}
+							]
+						]
+					},
+					{
+						"__TYPE__": "GroupItemContent",
+						"value": [
+							[
+								"skill",
+								{
+									"__TYPE__": "FieldContent",
+									"value": "experiences",
+									"type": "Text"
+								}
+							]
+						]
+					}
+				]
 			}
 		},
 		"items": []
