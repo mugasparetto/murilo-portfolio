@@ -238,10 +238,24 @@ export default function AboutContent({
       )}
 
       {/* — the numbers --------------------------------------------------- */}
+      {/* the eyebrow labels the cards, so with no numbers to label it goes too
+          rather than leaving a rule over nothing.
+
+          It's placed on its own rather than wrapped around the list: sitting at
+          the same 10.7% as "who i am", it reads as one line across the section
+          with the block on the right, and the cards stay at the height the
+          design puts them at instead of being pushed down by it. Stacked below
+          `lg` both are static, so they fall into the column in source order. */}
+      {numbers.length > 0 && (
+        <div className="lg:absolute lg:top-[10.7%] lg:left-[3.9%] lg:w-[30%]">
+          <Eyebrow as="h3">my stats</Eyebrow>
+        </div>
+      )}
+
       <ul
         // three across is what the design's count wants; a fourth card wraps
         // rather than squeezing the labels onto two lines
-        className="grid grid-cols-3 gap-2 empty:hidden lg:absolute lg:top-[18.9%] lg:left-[3.9%] lg:block lg:w-[30%] lg:space-y-2"
+        className="grid grid-cols-3 gap-2 empty:hidden lg:absolute lg:top-[14.2%] lg:left-[3.9%] lg:block lg:w-[30%] lg:space-y-2"
       >
         {numbers.map(({ number, label }, i) => (
           <li
