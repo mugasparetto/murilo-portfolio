@@ -13,6 +13,15 @@ export type SceneEntry = {
   node: React.ReactNode;
   active: boolean;
   priority: number;
+  /**
+   * A stable, human-readable handle for the group this entry is mounted into.
+   *
+   * `id` comes from `useId`, so it changes shape between builds and says
+   * nothing about which section it is. Anything that has to find a section's
+   * geometry in the scene graph — <Diagnostics />'s bisect toggles — needs a
+   * name that survives both. Falls back to `id` when a caller doesn't set one.
+   */
+  name?: string;
 };
 
 type SceneRegistry = {
@@ -22,6 +31,7 @@ type SceneRegistry = {
     node: React.ReactNode;
     priority?: number;
     active?: boolean;
+    name?: string;
   }) => void;
   remove: (id: string) => void;
   setActive: (id: string, active: boolean) => void;
@@ -51,6 +61,7 @@ export function SceneRegistryProvider({
       node: React.ReactNode;
       priority?: number;
       active?: boolean;
+      name?: string;
     }) => {
       setEntries((prev) => {
         const prevEntry = prev[e.id];
@@ -59,6 +70,7 @@ export function SceneRegistryProvider({
           node: e.node,
           priority: e.priority ?? prevEntry?.priority ?? 0,
           active: e.active ?? prevEntry?.active ?? false,
+          name: e.name ?? prevEntry?.name,
         };
 
         // ✅ avoid pointless updates if nothing changed (helps a lot)
@@ -66,7 +78,8 @@ export function SceneRegistryProvider({
           prevEntry &&
           prevEntry.node === nextEntry.node &&
           prevEntry.priority === nextEntry.priority &&
-          prevEntry.active === nextEntry.active
+          prevEntry.active === nextEntry.active &&
+          prevEntry.name === nextEntry.name
         ) {
           return prev;
         }

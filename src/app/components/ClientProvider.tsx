@@ -31,7 +31,14 @@ export default function ClientProvider({
           dpr={[1, 1.5]}
           // <FrameCap /> below owns the loop; see there for why it's capped.
           frameloop="never"
-          gl={{ antialias: true, alpha: false, stencil: true }}
+          // Both buffers the composer makes redundant. The scene is drawn
+          // into <Postprocessing />'s own render targets and only the final
+          // fullscreen pass reaches the default framebuffer, so MSAA there
+          // resolves two triangles and antialiases nothing — <SMAA /> is what
+          // actually does it. The stencil went with the hero's mask: the name
+          // hides behind the door through a `clip-path` cut-out now, and
+          // nothing else has ever asked for one.
+          gl={{ antialias: false, alpha: false, stencil: false }}
           eventSource={eventSourceRef}
           eventPrefix="client"
           camera={{

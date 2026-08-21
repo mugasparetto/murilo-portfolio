@@ -26,6 +26,7 @@ const Hero: FC<HeroProps> = ({ slice }) => {
   useEffect(() => {
     register({
       id,
+      name: "scene-hero",
       priority: 10,
       node: <Scene scrollRef={heroRef} />,
       active: true,

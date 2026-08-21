@@ -9,6 +9,7 @@ import {
   defaultParams,
   type SceneParams,
 } from "@/slices/Hero/scene-core/params";
+import Diagnostics from "./Diagnostics";
 import ParallaxRig from "./ParallaxRig";
 import ScrollRig from "./ScrollRig";
 import { ABOUT_POSE, HERO_POSE } from "./poses";
@@ -50,7 +51,9 @@ export default function SceneManager() {
   return (
     <>
       {ordered.map((e) => (
-        <group key={e.id}>{e.node}</group>
+        <group key={e.id} name={e.name ?? e.id}>
+          {e.node}
+        </group>
       ))}
 
       <ScrollRig
@@ -83,7 +86,14 @@ export default function SceneManager() {
         />
       )}
 
-      <Stats />
+      {/* both are development instrumentation — `<Stats />` was shipping a
+          DOM panel and a per-frame canvas redraw to production */}
+      {process.env.NODE_ENV !== "production" && (
+        <>
+          <Stats />
+          <Diagnostics />
+        </>
+      )}
     </>
   );
 }

@@ -33,6 +33,7 @@ const About: FC<AboutProps> = ({ slice }) => {
   useEffect(() => {
     register({
       id,
+      name: "scene-about",
       priority: 20,
       node: <Scene scrollWindow={{ startVh: 345, endVh: 500 }} />,
       active: true,
