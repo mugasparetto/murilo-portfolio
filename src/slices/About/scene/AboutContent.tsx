@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, ReactNode, useEffect, useId, useState } from "react";
+import { CSSProperties, ReactNode, useEffect, useState } from "react";
 import { Content, KeyTextField } from "@prismicio/client";
 
 import SolidIcon, { solidForRow } from "./SolidIcon";
@@ -147,56 +147,37 @@ function Eyebrow({
 }
 
 /**
- * Filled globe with the graticule cut out of it, as in the design.
+ * The globe, traced from the design's vector (node 1390-552).
  *
- * The lines are a mask rather than strokes painted in the page's black, so the
- * icon carries no assumption about what's behind it.
+ * Figma draws it as sixteen separate wedges rather than a disc with strokes cut
+ * out of it, so the graticule is the gaps between them and the icon carries no
+ * assumption about what colour sits behind it. They're disjoint, so the sixteen
+ * subpaths merge into one `d` and fill as a single shape.
  */
 function GlobeIcon({ className }: { className?: string }) {
-  // React's generated ids carry delimiters that aren't valid in `url(#…)`
-  const mask = `globe-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden>
-      <mask id={mask}>
-        <circle cx="12" cy="12" r="11" fill="#fff" />
-        <g stroke="#000" strokeWidth="1.4" fill="none">
-          <path d="M1 12h22M12 1v22M3.4 6.4h17.2M3.4 17.6h17.2" />
-          <ellipse cx="12" cy="12" rx="5.2" ry="11" />
-        </g>
-      </mask>
-      <circle
-        cx="12"
-        cy="12"
-        r="11"
-        fill="currentColor"
-        mask={`url(#${mask})`}
-      />
-    </svg>
-  );
-}
-
-/** Three bonded nodes — the design's marker for the clock line. */
-function NodeIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden>
       <path
-        d="M12 4.2L3.6 18.2H20.4Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="4"
-        strokeLinejoin="round"
+        fill="currentColor"
+        d="M12.45 0.02L12.45 7.167C14.257 7.126 15.986 6.837 17.538 6.319C16.546 2.791 14.652 0.32 12.45 0.02ZM12.45 23.98C14.652 23.68 16.546 21.209 17.538 17.681C15.986 17.163 14.257 16.874 12.45 16.833L12.45 23.98ZM21.818 5.092C20.892 5.813 19.809 6.414 18.611 6.883C18.949 8.316 19.142 9.888 19.175 11.551L24 11.551C23.909 9.155 23.115 6.932 21.818 5.092ZM21.269 19.633C20.433 18.982 19.466 18.427 18.387 17.994C17.695 20.411 16.596 22.362 15.238 23.564C17.634 22.893 19.729 21.502 21.269 19.633ZM12.45 15.927C14.327 15.969 16.13 16.269 17.761 16.804C18.069 15.462 18.25 13.992 18.283 12.449L12.45 12.449L12.45 15.927ZM21.269 4.368C19.729 2.499 17.634 1.107 15.238 0.432C16.596 1.638 17.695 3.59 18.387 6.006C19.466 5.574 20.433 5.018 21.269 4.368ZM12.45 11.551L18.283 11.551C18.25 10.008 18.069 8.538 17.761 7.196C16.13 7.731 14.327 8.032 12.45 8.073L12.45 11.551ZM24 12.449L19.175 12.449C19.142 14.112 18.949 15.684 18.611 17.117C19.809 17.586 20.892 18.187 21.818 18.908C23.115 17.068 23.909 14.845 24 12.449ZM8.757 23.564C7.403 22.358 6.304 20.411 5.612 17.994C4.533 18.427 3.562 18.982 2.726 19.633C4.27 21.502 6.365 22.893 8.757 23.564ZM2.182 18.908C3.108 18.187 4.191 17.586 5.385 17.117C5.051 15.684 4.854 14.112 4.825 12.449L0 12.449C0.086 14.845 0.881 17.064 2.182 18.908ZM11.546 12.449L5.717 12.449C5.746 13.992 5.931 15.462 6.236 16.804C7.866 16.269 9.669 15.969 11.546 15.927L11.546 12.449ZM0 11.551L4.825 11.551C4.854 9.888 5.051 8.316 5.385 6.883C4.191 6.414 3.108 5.813 2.182 5.092C0.881 6.936 0.086 9.155 0 11.551ZM6.464 6.319C8.02 6.837 9.749 7.126 11.552 7.167L11.552 0.02C9.354 0.32 7.46 2.791 6.464 6.319ZM11.552 23.98L11.552 16.833C9.749 16.874 8.02 17.163 6.464 17.681C7.46 21.209 9.354 23.68 11.552 23.98ZM11.546 8.073C9.669 8.032 7.866 7.731 6.236 7.196C5.931 8.538 5.746 10.008 5.717 11.551L11.546 11.551L11.546 8.073ZM8.757 0.432C6.365 1.107 4.27 2.499 2.726 4.368C3.562 5.018 4.533 5.574 5.612 6.006C6.304 3.59 7.403 1.638 8.757 0.432Z"
       />
-      <g fill="currentColor">
-        <circle cx="12" cy="4.2" r="3.4" />
-        <circle cx="3.6" cy="18.2" r="3.4" />
-        <circle cx="20.4" cy="18.2" r="3.4" />
-      </g>
     </svg>
   );
 }
 
-/** The four-point sparkle, exactly as the design's vector draws it. */
+/** The three-faced pyramid, as the design's vector draws it (node 1390-574). */
+function PrismIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden>
+      <path
+        fill="currentColor"
+        d="M6.574 16.513L10.777 9.235L10.777 1.479L0 20.144L6.574 16.513ZM13.22 9.236L17.423 16.514L24 20.144L13.22 1.476L13.22 9.236ZM16.392 18.734L7.605 18.734L0.744 22.524L23.253 22.524L16.392 18.734Z"
+      />
+    </svg>
+  );
+}
+
+/** The four-point sparkle, as the design's vector draws it (node 1390-573). */
 function StarIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden>
@@ -337,7 +318,7 @@ export default function AboutContent({
           <span className={metaText}>born in brazil / based in london</span>
         </li>
         <li className="flex items-center gap-3.5">
-          <NodeIcon className={`${iconSize} text-white`} />
+          <PrismIcon className={`${iconSize} text-white`} />
           <span className={metaText}>
             local time{" "}
             {/* the width is reserved so the row can't jog as the digits change */}
