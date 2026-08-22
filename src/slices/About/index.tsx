@@ -67,7 +67,7 @@ const About: FC<AboutProps> = ({ slice }) => {
       {/* DOM, so the composer's vignette and the pointer parallax can't reach
           it; <AboutOverlayDriver /> inside the scene slides it with the
           section */}
-      <AboutOverlay>
+      <AboutOverlay sectionRef={aboutRef}>
         <AboutContent
           title={slice.primary.title}
           description={slice.primary.description}

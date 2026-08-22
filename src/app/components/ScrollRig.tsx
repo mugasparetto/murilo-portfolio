@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { CameraPose } from "./SceneManager";
+import { pxToVh } from "@/app/helpers/viewport";
 
 export type RigPose = {
   position: THREE.Vector3 | [number, number, number];
@@ -89,6 +90,11 @@ function damp(current: number, target: number, lambda: number, dt: number) {
  * Example:
  *   startVh: 100, endVh: 120
  * means: camera animates while scrollTop is between 1.0 and 1.2 viewport heights.
+ *
+ * A "viewport height" here is the CSS `vh` unit the sections themselves are
+ * sized in — see {@link pxToVh} — so a window can be quoted straight off the
+ * page (`endVh: 250` is the foot of a 250vh hero) and land on the same pixel
+ * the DOM does.
  */
 export default function ScrollRig({
   windows,
@@ -112,11 +118,10 @@ export default function ScrollRig({
     };
 
     const update = () => {
-      const vh =
-        window.innerHeight > 0
-          ? (getScrollTopPx() / window.innerHeight) * 100
-          : 0;
-      scrollVhRef.current = vh;
+      // `cssVh`, never `innerHeight` — the windows below are quoted against
+      // section heights written in CSS `vh`, and on iOS those are two different
+      // numbers whenever the address bar is out. See the helper.
+      scrollVhRef.current = pxToVh(getScrollTopPx());
     };
 
     update();

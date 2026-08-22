@@ -16,6 +16,7 @@ import SplitText from "gsap/SplitText";
 import { useGSAP } from "@gsap/react";
 
 import SolidIcon, { solidForRow } from "./SolidIcon";
+import { publishFaceSlot } from "./AboutOverlay";
 
 gsap.registerPlugin(useGSAP, SplitText);
 
@@ -58,11 +59,25 @@ type Props = {
  * is the skills list and the meta list, which share a row so the meta list can
  * sit at the foot of a list whose height the skill count decides.
  *
- * Below `lg` the same four blocks stack into a single column — the design has
- * no mobile frame, so that arrangement is an invention, not something traced.
- * The stat cards are the one block that changes shape rather than just size:
- * stacked number-over-label and three across, they cost ~80px instead of ~180,
- * which is what makes the whole column fit a phone without dropping anything.
+ * Below `lg` the blocks stack into a single column, traced off the mobile draft
+ * (node 1398-689, a 375 x 1417 frame): who i am, the stat cards, the face, then
+ * the skills list with the meta list under it. The stat cards are the one block
+ * that changes shape rather than just size — stacked number-over-label and
+ * three across, they cost ~80px instead of ~180.
+ *
+ * That column is about 1.7 screens tall on a phone, and it is meant to be. The
+ * face sits in the middle of it at the draft's proportions, and the whole thing
+ * scrolls through the section rather than being pinned to one viewport: see
+ * <AboutOverlay />, whose layer is sized by this column below `lg` and travels
+ * with the page scroll, and <Scene />, which puts the head in the box reserved
+ * for it here. Everything only fits one pinned screen if the head is shrunk to
+ * about a thumbnail, which is not what the draft asks for — measured against
+ * the real faces, the four blocks of copy already take ~630px of the ~700 a
+ * phone has.
+ *
+ * The foot of the column clears <SiteNav /> — a bar across the bottom at `md`,
+ * a hamburger in the corner below it — so the meta list can't land on top of it
+ * at the end of the travel.
  *
  * Sizes step at the breakpoints rather than scaling with the viewport, matching
  * <HeadlineOverlay />: nothing here reads the window, so the server renders what
@@ -534,7 +549,7 @@ export default function AboutContent({
   const metaText = `${CAPS} ${MUTED} text-[0.6875rem] lg:text-xs xl:text-[0.8125rem] 2xl:text-sm`;
 
   return (
-    <div className="relative flex h-full w-full flex-col justify-center gap-5 px-(--block-inset) py-[6vh] sm:gap-6 lg:block lg:gap-0 lg:px-0 lg:py-0">
+    <div className="relative flex min-h-screen w-full flex-col justify-center gap-5 px-(--block-inset) pt-[6vh] pb-[calc(6vh+2.5rem)] sm:gap-6 lg:block lg:h-full lg:min-h-0 lg:gap-0 lg:px-0 lg:pt-0 lg:pb-0">
       {/* "ABOUT" itself is <Title /> in the scene, where no reader can get at
           it, so the section's heading lives here */}
       <h2 className="sr-only">About</h2>
@@ -544,7 +559,7 @@ export default function AboutContent({
           filled the block goes rather than leaving a rule floating on its own */}
       {(title || description) && (
         <div
-          className={`lg:absolute lg:top-[10.7%] lg:right-[3.4%] lg:left-[64.8%]`}
+          className={`lg:absolute lg:top-[10.7%] lg:right-[3.4%] lg:left-[64.8%] mb-6 lg:mb-0`}
         >
           <Eyebrow ref={eyebrowRef}>who i am</Eyebrow>
 
@@ -555,7 +570,7 @@ export default function AboutContent({
           {title && (
             <p
               ref={titleRef}
-              className={`font-display mt-1 font-extrabold text-white ${CAPS} ${LEADING} text-base tracking-normal whitespace-pre-line sm:text-lg lg:text-xl xl:text-2xl 2xl:text-[1.75rem]`}
+              className={`font-display mt-2 font-extrabold text-white ${CAPS} ${LEADING} text-base tracking-normal whitespace-pre-line sm:text-lg lg:text-xl xl:text-2xl 2xl:text-[1.75rem]`}
             >
               {title}
             </p>
@@ -593,7 +608,7 @@ export default function AboutContent({
         ref={statsRef}
         // three across is what the design's count wants; a fourth card wraps
         // rather than squeezing the labels onto two lines
-        className="grid grid-cols-3 gap-2 empty:hidden lg:absolute lg:top-[14.2%] lg:left-[3.9%] lg:block lg:w-[30%] lg:space-y-2"
+        className="grid grid-cols-3 gap-2 empty:hidden lg:absolute lg:top-[14.2%] lg:left-[3.9%] lg:block lg:w-[30%] lg:space-y-2 -mt-2"
       >
         {numbers.map(({ number, label }, i) => (
           <li
@@ -621,6 +636,38 @@ export default function AboutContent({
           </li>
         ))}
       </ul>
+
+      {/* — the face ------------------------------------------------------ */}
+      {/* The head is scene geometry — <Head />, over in the R3F tree — and this
+          is the hole it sits in: an empty box that <Scene /> measures and
+          matches the face to every frame, so the two can't drift apart as the
+          copy above it rewraps. Nothing is drawn here; the canvas shows through.
+
+          The draft's numbers: 203 of 375 across, which is the 54vw below, and
+          the texture's own 784 x 1519 aspect, which is what makes the box the
+          same shape as the thing filling it. The margins are the draft's 49px
+          above and 31px below, less the column's own gap, and in `vw` for the
+          same reason the width is — they are proportions of the frame, not
+          measurements of one phone.
+
+          The `vh` half of that `min` is a ceiling, not a second opinion. The
+          face is nearly twice as tall as it is wide, so a width traced off a
+          375px frame turns into 150vh of head on a landscape phone or a small
+          laptop window, where 54vw is half of something much wider — a face
+          you could never see at once however far you scrolled. 31vh of width
+          is 60vh of height, which is the most that leaves the whole of it on
+          screen at a glance. On anything shaped like the frame it was drawn
+          for, the `vw` side wins and the draft's proportions stand.
+
+          Gone from `lg` up, where the face is back to the world position it is
+          authored at and the blocks are placed around it. `display: none` is
+          what the scene reads as "no column to sit in", so the two halves stay
+          in step through a resize across the breakpoint. */}
+      <div
+        ref={publishFaceSlot}
+        aria-hidden
+        className="mt-[8vw] mb-[3vw] aspect-[784/1519] w-[min(66vw,37vh)] shrink-0 self-center lg:hidden"
+      />
 
       {/* — my skills, and where and when --------------------------------- */}
       {/* One row rather than two blocks placed independently: the meta list is
@@ -671,7 +718,7 @@ export default function AboutContent({
                 over — which is how the right border went missing while the
                 left, the top and the dividers stayed. Rows that carry their
                 own edges snap with them, and have nothing left to escape. */}
-            <ul className="mt-2.5 lg:mt-3.5 lg:w-[90.4%]">
+            <ul className="mt-2.5 lg:mt-3.5 mb-6 lg:mb-0 lg:w-[90.4%]">
               {skills.map(({ skill }, i) => (
                 <li
                   key={i}

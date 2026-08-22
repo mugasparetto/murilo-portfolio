@@ -427,6 +427,7 @@ EMPTY_MASK.needsUpdate = true;
 // projection on every frame, and a fresh Ray plus two vectors each time is pure
 // garbage — nothing here outlives the call that writes it.
 const meshWorldPos = new THREE.Vector3();
+const meshWorldScale = new THREE.Vector3();
 const pointerRay = new THREE.Ray();
 const pointerNdc = new THREE.Vector3();
 const pointerAnim = { x: 0, y: 0 };
@@ -770,9 +771,13 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
           const worldY = pointerRay.origin.y + pointerRay.direction.y * hit;
 
           // Convert world coords → animation-space:
-          // The mesh is a unit plane scaled by props.scale, so
-          // animationSize world-units span props.scale[0] world-units → scale factor
-          const worldUnitsPerAnimUnit = props.scale[0] / props.animationSize;
+          // The mesh is a unit plane, so its *world* scale is how many world
+          // units the plane spans — `props.scale` only while nothing above it
+          // is scaled, which the face is between `lg` and `xl` and below `lg`
+          // (see <Scene />). Read off the mesh, the cursor keeps landing where
+          // the cursor is at any size.
+          meshRef.current.getWorldScale(meshWorldScale);
+          const worldUnitsPerAnimUnit = meshWorldScale.x / props.animationSize;
           pointerAnim.x = (worldX - meshWorldPos.x) / worldUnitsPerAnimUnit;
           pointerAnim.y = (worldY - meshWorldPos.y) / worldUnitsPerAnimUnit;
           mouse = pointerAnim;

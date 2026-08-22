@@ -180,6 +180,15 @@ const MOUTH_BOUNDS: SpriteBounds = {
 };
 
 /**
+ * The same boxes with the screen tracking off, for a `still` head — see the
+ * prop. What's left is the authored pair, which the parked pieces sit well
+ * inside, so nothing is ever clamped and the per-frame wall measurement stops
+ * happening at all.
+ */
+const STILL_BOUNDS: SpriteBounds = { ...PIECE_BOUNDS, viewport: false };
+const STILL_MOUTH_BOUNDS: SpriteBounds = { ...MOUTH_BOUNDS, viewport: false };
+
+/**
  * World-unit XY distance below which two neighbours snap together.
  *
  * This is a capture radius the user aims at with the piece in hand, not a
@@ -388,8 +397,21 @@ const MOUTH_POLYGON: UV[] = [
 //
 // None of it outlives the frame it is written in.
 
+/**
+ * Where the assembled face sits, and how tall it is: the two numbers everything
+ * inside this file is laid out against, and the two <Scene /> needs to put the
+ * face somewhere else.
+ *
+ * Below `lg` the head is scaled down and moved into the hole the column leaves
+ * for it, which is done by transforming the whole group rather than by
+ * rewriting anything in here — so the scene has to know which point of the
+ * group to land on the slot's middle, and what a scale of 1 is worth in height.
+ */
+export const FACE_HEIGHT = 500;
+export const FACE_HOME = new THREE.Vector3(0, -800, 2600);
+
 /** Where the assembled face sits. */
-const HOME = new THREE.Vector3(0, -800, 2600);
+const HOME = FACE_HOME;
 const ZERO = new THREE.Vector3();
 
 const posA = new THREE.Vector3();
@@ -845,9 +867,23 @@ function resolvePair(ai: number, bi: number, aHeld: boolean, bHeld: boolean) {
 type Props = {
   ref: RefObject<THREE.Group | null>;
   onGrabbing: (payload: PieceName | null) => void;
+  /**
+   * A face nobody can take apart: no drag, no throw, and — because those are
+   * the only things that ever move a piece — no walls to hold the pieces in.
+   *
+   * Set below `lg`, where the head is a block in a scrolling column rather than
+   * a thing on a page: a touch drag there is the page pan, which the browser
+   * takes over mid-gesture anyway, and the walls are worse than useless. They
+   * are measured against the screen in world units — see {@link PIECE_BOUNDS} —
+   * and the group is scaled and moved to sit in the column below `lg`, so a
+   * piece's own coordinates no longer say where it is on screen. Turning them
+   * off is exactly right rather than merely cheap: with nothing to move the
+   * pieces, there is nothing for a wall to catch.
+   */
+  still?: boolean;
 };
 
-export default function Head({ ref, onGrabbing }: Props) {
+export default function Head({ ref, onGrabbing, still = false }: Props) {
   const bottom = useTexture("/textures/head/bottom.webp");
   const middle = useTexture("/textures/head/middle.webp");
   const top = useTexture("/textures/head/top.webp");
@@ -888,7 +924,7 @@ export default function Head({ ref, onGrabbing }: Props) {
   });
 
   const scale = useMemo<[number, number, number]>(() => {
-    const size = 500;
+    const size = FACE_HEIGHT;
     const img = bottom.image as HTMLImageElement;
     const aspect = img.naturalWidth / img.naturalHeight;
     return [size * aspect, size, 1];
@@ -1248,11 +1284,11 @@ export default function Head({ ref, onGrabbing }: Props) {
         position={[0, -800, 2600]}
         scale={scale}
         ref={headRef}
-        draggable
-        throwable
-        bounds={PIECE_BOUNDS}
-        onPointerDown={() => handleGrab("head")}
-        onPointerUp={() => handleGrab(null)}
+        draggable={!still}
+        throwable={!still}
+        bounds={still ? STILL_BOUNDS : PIECE_BOUNDS}
+        onPointerDown={still ? undefined : () => handleGrab("head")}
+        onPointerUp={still ? undefined : () => handleGrab(null)}
       >
         {/* Rides the skull cap, so it stays put through the float, the drag and
             the throw — and only shows itself once the face is whole. */}
@@ -1328,12 +1364,12 @@ export default function Head({ ref, onGrabbing }: Props) {
         polygon={EYES_POLYGON}
         position={[0, -800, 2600]}
         scale={scale}
-        draggable
+        draggable={!still}
         ref={eyesRef}
-        throwable
-        bounds={PIECE_BOUNDS}
-        onPointerDown={() => handleGrab("eyes")}
-        onPointerUp={() => handleGrab(null)}
+        throwable={!still}
+        bounds={still ? STILL_BOUNDS : PIECE_BOUNDS}
+        onPointerDown={still ? undefined : () => handleGrab("eyes")}
+        onPointerUp={still ? undefined : () => handleGrab(null)}
       >
         <HalfCircleWithDisk
           radius={122}
@@ -1413,12 +1449,12 @@ export default function Head({ ref, onGrabbing }: Props) {
         polygon={MOUTH_POLYGON}
         position={[0, -800, 2600]}
         scale={scale}
-        draggable
-        throwable
+        draggable={!still}
+        throwable={!still}
         ref={mouthRef}
-        bounds={MOUTH_BOUNDS}
-        onPointerDown={() => handleGrab("mouth")}
-        onPointerUp={() => handleGrab(null)}
+        bounds={still ? STILL_MOUTH_BOUNDS : MOUTH_BOUNDS}
+        onPointerDown={still ? undefined : () => handleGrab("mouth")}
+        onPointerUp={still ? undefined : () => handleGrab(null)}
       >
         <HalfCircleWithDisk
           radius={122}

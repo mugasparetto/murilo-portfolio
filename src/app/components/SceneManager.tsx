@@ -91,7 +91,7 @@ export default function SceneManager() {
       {process.env.NODE_ENV !== "production" && (
         <>
           <Stats />
-          <Diagnostics />
+          {/* <Diagnostics /> */}
         </>
       )}
     </>

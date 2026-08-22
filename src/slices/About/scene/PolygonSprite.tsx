@@ -212,6 +212,60 @@ const hitPoint = new THREE.Vector3();
 const scaleProbe = new THREE.Vector3();
 /** Nearest point inside the walls, for the stranded check in the coast loop. */
 const insideWalls = new THREE.Vector3();
+/** Scratch for the world <-> parent-frame conversions below. */
+const parentProbe = new THREE.Vector3();
+const parentScaleProbe = new THREE.Vector3();
+
+/**
+ * Everything the pointer measures comes back in **world** units — the drag
+ * plane, the pixel exchange rate, the frustum the walls are cut from — while a
+ * piece's own `position`, its authored bounds and its polygon extents are all
+ * in its **parent's**. The two are the same numbers only while nothing above
+ * the piece is transformed, which is why this never came up when the face hung
+ * in the world at 1:1.
+ *
+ * It no longer always does: <Scene /> scales the whole face down between `lg`
+ * and `xl`, and below `lg` it scales *and* moves it to sit in the copy column.
+ * A world delta written straight to a local position then moves the piece by a
+ * fraction of it — the piece trails the cursor by exactly the amount the face
+ * was shrunk — and walls cut from the world frustum land somewhere other than
+ * the screen edge.
+ *
+ * So the pointer's answers are brought into the piece's frame before they meet
+ * anything the piece stores. Both helpers are identities on an untransformed
+ * parent, which is what they are for the hero-sized face.
+ */
+function toParentFrame(
+  group: THREE.Object3D,
+  world: THREE.Vector3,
+): THREE.Vector3 {
+  return group.parent ? group.parent.worldToLocal(world) : world;
+}
+
+/** How many world units one of the piece's own units covers. */
+function parentScale(group: THREE.Object3D): number {
+  if (!group.parent) return 1;
+  return group.parent.getWorldScale(parentScaleProbe).x || 1;
+}
+
+/**
+ * The XY span in {@link visibleSpanAtZ}, brought into `parent`'s frame. The
+ * face is only ever scaled and moved, never rotated, so min stays min and the
+ * two corners can be converted independently.
+ */
+function spanToParentFrame(
+  parent: THREE.Object3D,
+  worldZ: number,
+  span: THREE.Box2,
+) {
+  parentProbe.set(span.min.x, span.min.y, worldZ);
+  parent.worldToLocal(parentProbe);
+  span.min.set(parentProbe.x, parentProbe.y);
+
+  parentProbe.set(span.max.x, span.max.y, worldZ);
+  parent.worldToLocal(parentProbe);
+  span.max.set(parentProbe.x, parentProbe.y);
+}
 
 /**
  * Which sprite currently owns the pointer.
@@ -501,8 +555,13 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     type Sample = { x: number; y: number; t: number };
     const velocitySamples = useRef<Sample[]>([]);
     const throwVelocity = useRef(new THREE.Vector3());
-    /** Pixels → world units on the drag plane, measured once per grab. */
-    const worldPerPixel = useRef(1);
+    /**
+     * Pixels → the piece's own units on the drag plane, measured once per grab.
+     * Measured in world units and divided down by the parent's scale, because
+     * the velocity it feeds is integrated into `position` — see
+     * {@link toParentFrame}.
+     */
+    const unitsPerPixel = useRef(1);
     /** Last pointer position, so the frame loop can re-aim a held piece. */
     const pointerPx = useRef<{ x: number; y: number } | null>(null);
     /**
@@ -525,8 +584,8 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     }, []);
 
     /**
-     * Pointer velocity in world units/sec over the last `VELOCITY_WINDOW_MS`,
-     * written into `out`.
+     * Pointer velocity in the piece's own units/sec over the last
+     * `VELOCITY_WINDOW_MS`, written into `out`.
      *
      * Measured as one displacement over one span rather than as a mean of
      * per-event velocities: coalesced events can land a millisecond apart, and
@@ -553,7 +612,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         const span = newest.t - oldest.t;
         if (span < MIN_VELOCITY_SPAN_MS) return out;
 
-        const k = worldPerPixel.current / (span / 1000);
+        const k = unitsPerPixel.current / (span / 1000);
         // Screen Y grows downward, world Y upward.
         return out.set(
           (newest.x - oldest.x) * k,
@@ -700,8 +759,17 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
 
       // Measured at the piece's own depth, not at some nominal plane: the
       // pieces sit tens of units apart in Z and the frustum widens between them.
+      // The depth goes out in world units and the span comes back in the piece's
+      // own, since that is what the authored box and the extents below are in —
+      // see {@link toParentFrame}.
       const pos = groupRef.current.position;
-      if (!visibleSpanAtZ(pos.z, camera, visibleSpan)) return; // keep last good walls
+      const parent = groupRef.current.parent;
+
+      parentProbe.copy(pos);
+      if (parent) parent.localToWorld(parentProbe);
+
+      if (!visibleSpanAtZ(parentProbe.z, camera, visibleSpan)) return; // keep last good walls
+      if (parent) spanToParentFrame(parent, parentProbe.z, visibleSpan);
 
       const pad = bounds?.padding ?? 0;
 
@@ -857,20 +925,20 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         );
         if (!worldHit) return;
 
+        const hit = toParentFrame(groupRef.current, worldHit);
+
         dragOffset.current.set(
-          worldHit.x - groupRef.current.position.x,
-          worldHit.y - groupRef.current.position.y,
-          worldHit.z - groupRef.current.position.z,
+          hit.x - groupRef.current.position.x,
+          hit.y - groupRef.current.position.y,
+          hit.z - groupRef.current.position.z,
         );
 
         // The plane is pinned to the camera axis at grab time, so it never
         // tilts mid-drag: Z stays exactly where it was and the pixel→world
         // scale measured here holds for the whole drag.
-        worldPerPixel.current = worldUnitsPerPixel(
-          dragPlane.current,
-          camera,
-          size,
-        );
+        unitsPerPixel.current =
+          worldUnitsPerPixel(dragPlane.current, camera, size) /
+          parentScale(groupRef.current);
 
         velocitySamples.current.length = 0;
         pointerPx.current = { x: event.clientX, y: event.clientY };
@@ -1060,10 +1128,12 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
       );
       if (!worldHit) return;
 
+      const hit = toParentFrame(groupRef.current, worldHit);
+
       groupRef.current.position.set(
-        worldHit.x - dragOffset.current.x,
-        worldHit.y - dragOffset.current.y,
-        worldHit.z - dragOffset.current.z,
+        hit.x - dragOffset.current.x,
+        hit.y - dragOffset.current.y,
+        hit.z - dragOffset.current.z,
       );
 
       // Clamp to the inset centre box during drag

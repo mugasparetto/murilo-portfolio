@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 
 import { postBypassed, setPostBypassed } from "./diagFlags";
+import { pxToVh } from "@/app/helpers/viewport";
 
 /**
  * A frame profiler and a bisect harness, for finding where a dropped frame
@@ -330,7 +331,8 @@ export default function Diagnostics() {
       const fps = interval > 0 ? 1000 / interval : 0;
       const js = mean(state.js);
       const other = Math.max(0, interval - js);
-      const vh = (window.scrollY / window.innerHeight) * 100;
+      // same unit the rig reads, so the readout can be trusted on iOS too
+      const vh = pxToVh(window.scrollY);
 
       const gpuLine = state.gpuOk
         ? `gpu    ${fmt(mean(state.gpu))}  p95 ${fmt(p95(state.gpu))}`

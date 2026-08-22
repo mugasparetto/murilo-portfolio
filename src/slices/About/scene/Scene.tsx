@@ -9,9 +9,9 @@ import {
 } from "react";
 import { ThreeElements, useFrame, useThree } from "@react-three/fiber";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
-import Head from "./Head";
+import Head, { FACE_HEIGHT, FACE_HOME } from "./Head";
 import Title from "./Title";
-import { AboutOverlayDriver } from "./AboutOverlay";
+import { AboutOverlayDriver, columnOffset, readFaceSlot } from "./AboutOverlay";
 import { KeyTextField } from "@prismicio/client";
 import {
   makeRanges,
@@ -21,6 +21,7 @@ import {
   VhWindow,
 } from "@/app/helpers/scroll";
 import { publishBackdrop } from "@/app/helpers/backdrop";
+import { useScrollY } from "@/app/hooks/ScrollY";
 import { ABOUT_POSE, poseFrame } from "@/app/components/poses";
 
 type LinePosition = {
@@ -274,6 +275,49 @@ const GRID_OPACITY: [number, number] = [0, 0.1];
  */
 const GRID_FADE: [number, number] = [0.65, 1];
 
+/**
+ * The plane the face is authored on, as a plane the pointer maths can hit.
+ * `n dot p + c = 0` with n = +Z solves to `p.z = -c`, so the constant is the
+ * depth negated.
+ */
+const facePlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -FACE_HOME.z);
+
+/**
+ * How much of its authored size the face keeps between `lg` and `xl`, where
+ * the copy column beside it is at its narrowest — see the placement in
+ * `useFrame`.
+ */
+const LG_FACE_SCALE = 0.8;
+
+const faceRay = new THREE.Raycaster();
+const faceNdc = new THREE.Vector2();
+const slotTop = new THREE.Vector3();
+const slotBottom = new THREE.Vector3();
+const slotMid = new THREE.Vector3();
+
+/**
+ * Where a point on the screen lands on {@link facePlane}, written into `out`.
+ *
+ * A ray through the live camera rather than a formula off the fov, because the
+ * camera is only square-on to the plane at the rest pose: it is still pitching
+ * on its way into the section, and the parallax rig sways it about at `md` and
+ * up. A ray is right in every one of those states, which is what keeps the face
+ * *in* its hole rather than near it.
+ */
+function screenToFacePlane(
+  x: number,
+  y: number,
+  camera: THREE.Camera,
+  width: number,
+  height: number,
+  out: THREE.Vector3,
+) {
+  faceNdc.set((x / width) * 2 - 1, -(y / height) * 2 + 1);
+  faceRay.setFromCamera(faceNdc, camera);
+
+  return faceRay.ray.intersectPlane(facePlane, out);
+}
+
 type Props = {
   scrollWindow: VhWindow;
 };
@@ -281,6 +325,9 @@ type Props = {
 export default function Scene({ scrollWindow }: Props) {
   const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
   const head = useRef<THREE.Group | null>(null);
+  // the page position Lenis has eased to this frame — the same one the layer
+  // the head is being fitted into is placed by
+  const { scrollY } = useScrollY();
 
   const [grabbing, setGrabbing] = useState<null | "head" | "eyes" | "mouth">(
     null,
@@ -362,11 +409,101 @@ export default function Scene({ scrollWindow }: Props) {
     return () => publishBackdrop(null);
   }, [planeOutline, planePos]);
 
-  useFrame((_, delta) => {
-    if (head.current && grabbing == null && shouldFloat.current) {
+  useFrame((state, delta) => {
+    const group = head.current;
+    if (!group) return;
+
+    if (grabbing == null && shouldFloat.current) {
       timeRef.current += delta;
-      head.current.position.y = Math.sin(timeRef.current * 0.35) * 10;
     }
+    const float = Math.sin(timeRef.current * 0.35) * 10;
+
+    // ── From `lg` up: the authored world placement, floating in place ───────
+    //
+    // The placement is authored at `xl` and up, where the column beside the
+    // face has all the width it wants. Between `lg` and `xl` that column is
+    // narrower and the face crowds it, so the face is stepped down a little —
+    // scaled about FACE_HOME rather than about the group's own origin, which
+    // is a long way below and in front of it, so it shrinks where it stands
+    // instead of sliding towards the middle of the world. The float rides on
+    // top scaled, same as below `lg`: a smaller face bobs by proportionally
+    // less.
+    if (up.lg) {
+      const scale = up.xl ? 1 : LG_FACE_SCALE;
+
+      group.scale.setScalar(scale);
+      group.position.set(
+        (1 - scale) * FACE_HOME.x,
+        (1 - scale) * FACE_HOME.y + scale * float,
+        (1 - scale) * FACE_HOME.z,
+      );
+      group.visible = true;
+      return;
+    }
+
+    // ── Below `lg`: a block in the column, wherever the column has got to ───
+    //
+    // The head is the one part of this section that is geometry rather than
+    // type, and below `lg` it is set *in* the type — see <AboutContent />,
+    // which reserves a box for it between the stat cards and the skills list.
+    // So the group is put where that box is, at the size that box is, every
+    // frame: the column scrolls, and the face goes with it because it is being
+    // read off the column rather than merely started in the same place.
+    //
+    // Both ends of the box are traced onto the face's own plane, which gives
+    // the middle to sit on and the height to scale by in one pair of rays.
+    const slot = readFaceSlot();
+    if (!slot) {
+      // measured before the layer has been laid out, or across a resize past
+      // the breakpoint: better nowhere than a full-size face over the copy
+      group.visible = false;
+      return;
+    }
+
+    const offset = columnOffset(
+      state.camera,
+      fov,
+      size.height,
+      scrollY.current,
+    );
+    const x = slot.left + slot.width / 2;
+
+    if (
+      !screenToFacePlane(
+        x,
+        offset + slot.top,
+        state.camera,
+        size.width,
+        size.height,
+        slotTop,
+      ) ||
+      !screenToFacePlane(
+        x,
+        offset + slot.top + slot.height,
+        state.camera,
+        size.width,
+        size.height,
+        slotBottom,
+      )
+    ) {
+      return; // the plane is behind the camera; keep the last good placement
+    }
+
+    const scale = slotTop.distanceTo(slotBottom) / FACE_HEIGHT;
+    slotMid.addVectors(slotTop, slotBottom).multiplyScalar(0.5);
+
+    // The group is scaled about its own origin, so the anchor has to be scaled
+    // with it: this is the transform that puts FACE_HOME — the point the whole
+    // face is laid out around — on the middle of the slot. The float rides on
+    // top of it, scaled too, so a smaller face bobs by proportionally less
+    // rather than swimming in its hole.
+    group.scale.setScalar(scale);
+    group.position.set(
+      slotMid.x - scale * FACE_HOME.x,
+      slotMid.y - scale * (FACE_HOME.y - float),
+      slotMid.z - scale * FACE_HOME.z,
+    );
+    group.visible = true;
   });
 
   const handleGrabbing = useCallback(
@@ -404,12 +541,19 @@ export default function Scene({ scrollWindow }: Props) {
         />
       </group>
 
-      <Suspense fallback={null}>
-        <Title />
-      </Suspense>
+      {/* The mobile draft has no giant "ABOUT" behind the column, and there is
+          nowhere for one to be: it is a fixed piece of world geometry, so it
+          would hang in the middle of the screen while the column scrolled past
+          it. The <h2> in <AboutContent /> is the heading either way. */}
+      {up.lg && (
+        <Suspense fallback={null}>
+          <Title />
+        </Suspense>
+      )}
 
       <Suspense fallback={null}>
-        <Head ref={head} onGrabbing={handleGrabbing} />
+        {/* no hands on it below `lg` — see the prop */}
+        <Head ref={head} onGrabbing={handleGrabbing} still={!up.lg} />
       </Suspense>
 
       {/* the section's HTML is a DOM overlay in <About />; this only drives it */}

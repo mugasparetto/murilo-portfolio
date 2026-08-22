@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { RefObject, useRef, useMemo, useEffect } from "react";
 
+import { cssVh } from "./viewport";
+
 export const easeCos = (x: number) => 0.5 - 0.5 * Math.cos(Math.PI * x);
 
 // Convert weights (e.g. [0.25,0.5,0.25]) into cumulative ranges in 0..1
@@ -45,7 +47,8 @@ export function progressInVhWindow(vh: number, w: VhWindow) {
  *    - uses el.clientHeight as the "vh reference"
  * - Otherwise:
  *    - reads window/document scrollTop
- *    - uses window.innerHeight
+ *    - uses the CSS `vh` unit — see {@link cssVh} for why that is not
+ *      `window.innerHeight`
  */
 export function useScrollVhAbsolute(
   scrollContainerRef?: RefObject<HTMLElement | null>,
@@ -55,7 +58,7 @@ export function useScrollVhAbsolute(
   useEffect(() => {
     const getViewportH = () => {
       const el = scrollContainerRef?.current;
-      return el ? el.clientHeight || 1 : window.innerHeight || 1;
+      return el ? el.clientHeight || 1 : cssVh();
     };
 
     const getScrollTop = () => {
