@@ -8,6 +8,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { Content, KeyTextField } from "@prismicio/client";
 
@@ -17,6 +18,11 @@ import { useGSAP } from "@gsap/react";
 
 import SolidIcon, { solidForRow } from "./SolidIcon";
 import { publishFaceSlot } from "./AboutOverlay";
+import {
+  aboutOnScreen,
+  aboutOnScreenOnServer,
+  onAboutVisibility,
+} from "./aboutVisibility";
 
 gsap.registerPlugin(useGSAP, SplitText);
 
@@ -97,15 +103,42 @@ const CAPS = "uppercase tracking-[0.1em]";
 const LEADING = "leading-[1.46]";
 
 /**
- * Backing for the two blocks that are nothing but type.
+ * The translucent black behind the stat cards and the skills rows.
  *
- * On the desktop composition they sit over black and need none — the design
- * gives them no background and they get none here. Stacked on a phone they land
- * squarely on the face, and white caps over the holographic bands are simply
- * not readable, so below `lg` they take the same translucent black the design
- * already puts behind the stat cards. The blur keeps the skin texture from
- * showing through the counters of the letters.
+ * ── No backdrop-filter here, and it must not come back ────────────────────
+ *
+ * The design draws these as frosted glass, and they were `backdrop-blur-lg`
+ * until it turned out to be most of the section's frame budget. The reason is
+ * structural rather than a matter of degree: this layer is DOM over a canvas
+ * that fills the viewport, so a backdrop-filter's backdrop *is* the scene. A
+ * backdrop-filter is a draw-time compositor operation with no cross-frame
+ * cache — if a frame is produced and the element is in it, the filter runs.
+ * Whether the element moved is irrelevant, so <AboutOverlayDriver />'s careful
+ * "skip the write if nothing changed" buys nothing at all here. And a frame is
+ * always produced: <Postprocessing /> ends on `<Noise />`, which reseeds every
+ * pixel on the canvas every frame, for ever, even with the camera at rest.
+ *
+ * Seven of them, at 82fps, each re-sampling its own box grown by three sigma
+ * on every side — `blur(16px)` is sigma, not a radius, so that's ±48px — and
+ * at the browser's device scale factor, which `dpr={[1, 1.5]}` doesn't clamp:
+ * that only sizes the WebGL drawing buffer. Which is also why the harness's
+ * `5` can't shift this cost, and why it lands in `other` rather than `js` or
+ * `gpu` — see <Diagnostics />.
+ *
+ * Opacity does the legible half of the job on its own, which is the half that
+ * matters. From `lg` up the cards sit at the left edge and the skills at the
+ * right, over the black backdrop plane, a grid that fades to 0.1 out there and
+ * the vignette's darkest band — blurring near-black returns near-black, so the
+ * design's own 40% stands and nothing visible changed. Below `lg` the column
+ * stacks squarely onto the face, where white caps over the holographic bands
+ * need the extra 20% to read.
+ *
+ * NB the two blocks that are nothing but type — "who i am" and the stats
+ * eyebrow — still carry no backing at any width, which on a phone puts them
+ * straight onto the face. That predates this and is a design call, not a
+ * performance one; if they should have a plate below `lg`, this is it.
  */
+const PLATE = "bg-black/60 lg:bg-black/40";
 
 /**
  * Each card is nudged right of the one above it, so they read as a stair
@@ -125,33 +158,73 @@ const STAGGER_STEP = 11.2;
 const TIME_ZONE = "Europe/London";
 
 /**
+ * Built once. The section crosses on and off screen many times a page, and the
+ * effect below now runs on every crossing — rebuilding a formatter each time
+ * would be work for nothing.
+ */
+const TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+/**
  * The design shows a fixed "14:32:53", which only means anything if it's
  * actually the time — so it ticks.
  *
  * Null until the first client tick: the server has no business guessing a
- * clock, and rendering one would be a hydration mismatch on every load.
+ * clock, and rendering one would be a hydration mismatch on every load. The
+ * store's server snapshot is `false` for the same reason, so SSR and the first
+ * client render agree on the placeholder.
+ *
+ * Only while the section is on screen. A second's drift on a clock nobody is
+ * looking at is not drift, and `tick` runs again on the way back in, so the
+ * first frame of the section is already right.
  */
 function useLocalTime() {
   const [time, setTime] = useState<string | null>(null);
 
-  useEffect(() => {
-    const format = new Intl.DateTimeFormat("en-GB", {
-      timeZone: TIME_ZONE,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
+  const onScreen = useSyncExternalStore(
+    onAboutVisibility,
+    aboutOnScreen,
+    aboutOnScreenOnServer,
+  );
 
-    const tick = () => setTime(format.format(new Date()));
+  useEffect(() => {
+    if (!onScreen) return;
+
+    const tick = () => setTime(TIME_FORMAT.format(new Date()));
 
     tick();
     const id = setInterval(tick, 1000);
 
     return () => clearInterval(id);
-  }, []);
+  }, [onScreen]);
 
   return time;
+}
+
+/**
+ * The clock, on its own so that its tick re-renders a text node rather than the
+ * section.
+ *
+ * <AboutContent /> holds three cards, four rows, four turning solids and three
+ * inline icons, none of which have anything to say about the time — and every
+ * one of them was being reconciled once a second, for ever, to change eight
+ * characters. Held down here, the rest of the tree re-renders only when the
+ * copy changes, which at runtime is never.
+ */
+function LocalTime() {
+  const time = useLocalTime();
+
+  return (
+    // the width is reserved so the row can't jog as the digits change
+    <span className="inline-block min-w-[7ch] tabular-nums">
+      {time ?? "--:--:--"}
+    </span>
+  );
 }
 
 /**
@@ -522,8 +595,6 @@ export default function AboutContent({
   numbers,
   skills,
 }: Props) {
-  const time = useLocalTime();
-
   const titleRef = useRef<HTMLParagraphElement>(null);
   const eyebrowRef = useRef<HTMLElement>(null);
   const descriptionRef = useRef<HTMLParagraphElement>(null);
@@ -621,7 +692,7 @@ export default function AboutContent({
             // that label on one line at the low end of each step, since the
             // design's own 64px gap only fits once the viewport is as wide as
             // the frame it was drawn on.
-            className={`flex flex-col items-center rounded-sm border-2 border-white bg-black/40 backdrop-blur-lg px-2 py-2.5 text-center lg:ml-(--stagger) lg:h-16 lg:w-[77.6%] lg:flex-row lg:items-center lg:gap-8 lg:px-3 lg:py-0 lg:text-left xl:h-20 xl:gap-12 xl:px-4 2xl:h-24 2xl:gap-16 2xl:px-5 min-[112rem]:h-25 min-[112rem]:px-6`}
+            className={`flex flex-col items-center rounded-sm border-2 border-white ${PLATE} px-2 py-2.5 text-center lg:ml-(--stagger) lg:h-16 lg:w-[77.6%] lg:flex-row lg:items-center lg:gap-8 lg:px-3 lg:py-0 lg:text-left xl:h-20 xl:gap-12 xl:px-4 2xl:h-24 2xl:gap-16 2xl:px-5 min-[112rem]:h-25 min-[112rem]:px-6`}
           >
             <span
               className={`font-display font-extrabold text-white ${LEADING} text-xl lg:text-2xl xl:text-3xl 2xl:text-4xl min-[112rem]:text-[2.75rem]`}
@@ -699,30 +770,28 @@ export default function AboutContent({
                 same shared dividers. The list itself is a bare `<ul>`: no
                 border, no radius, nothing to clip against.
 
-                That split is load-bearing, not style. Every row carries a
-                backdrop-filter, and a backdrop-filter clipped by its *own*
-                rounded box is the compositor's fast path — one blur, one
-                rounded rect, done. Give it a rounded, clipping *ancestor*
-                instead and the same blur needs a mask pass on a separate
-                render surface, which the layer this sits on pays for on every
-                frame it moves, since a backdrop-filter re-samples whenever it
-                shifts against its backdrop. A wrapper border plus
-                `overflow-clip` cost most of the section's frame budget for a
-                hairline.
+                That split is load-bearing, not style: it settles the hairline
+                at the source. A composited layer is snapped out to whole pixels
+                before it's drawn, and this list is sized in percentages all the
+                way up, so its box lands mid-pixel; a wrapper frame is something
+                the rows can round themselves a fraction wider than and paint
+                their black over — which is how the right border went missing
+                while the left, the top and the dividers stayed. Rows that carry
+                their own edges snap with them, and have nothing left to escape.
 
-                It also settles the hairline at the source. A composited layer
-                is snapped out to whole pixels before it's drawn, and this list
-                is sized in percentages all the way up, so its box lands
-                mid-pixel; a wrapper frame is something the rows can round
-                themselves a fraction wider than and paint their blurred black
-                over — which is how the right border went missing while the
-                left, the top and the dividers stayed. Rows that carry their
-                own edges snap with them, and have nothing left to escape. */}
+                It used to carry a second reason — the rows were frosted, and a
+                rounded, clipping *ancestor* over a backdrop-filter forces a
+                mask pass on its own render surface, which cost most of the
+                section's frame budget. The filters are gone now (see
+                {@link PLATE}), so that half no longer applies. Keep the shape
+                anyway: the hairline reason stands on its own, and the rule the
+                mask pass taught still holds for anything that comes back —
+                nothing on this layer wants a clipping ancestor. */}
             <ul className="mt-2.5 lg:mt-3.5 mb-6 lg:mb-0 lg:w-[90.4%]">
               {skills.map(({ skill }, i) => (
                 <li
                   key={i}
-                  className="flex h-10 items-stretch border-x border-b border-white first:border-t first:rounded-t-sm last:rounded-b-sm bg-black/40 backdrop-blur-lg lg:h-12 xl:h-14 2xl:h-16"
+                  className={`flex h-10 items-stretch border-x border-b border-white first:border-t first:rounded-t-sm last:rounded-b-sm ${PLATE} lg:h-12 xl:h-14 2xl:h-16`}
                 >
                   <span className="grid w-10 shrink-0 place-items-center border-r border-white text-white lg:w-12 xl:w-14 2xl:w-18">
                     {/* the hero's solids, a different one on each row and each
@@ -755,11 +824,7 @@ export default function AboutContent({
           <li className="flex items-center gap-3.5">
             <PrismIcon className={`${iconSize} text-white`} />
             <span className={metaText}>
-              local time{" "}
-              {/* the width is reserved so the row can't jog as the digits change */}
-              <span className="inline-block min-w-[7ch] tabular-nums">
-                {time ?? "--:--:--"}
-              </span>
+              local time <LocalTime />
             </span>
           </li>
           <li className="flex items-center gap-3.5">

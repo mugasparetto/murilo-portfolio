@@ -7,6 +7,7 @@ import {
   SOLID_KINDS,
   solidWireframe,
 } from "@/app/components/solids";
+import { aboutOnScreen, onAboutVisibility } from "./aboutVisibility";
 
 /**
  * One of the sky's solids, turning, as an SVG — the tile icon on every row of
@@ -104,9 +105,10 @@ function frame(now: number) {
 }
 
 function run() {
-  if (raf || !subscribers.size || document.hidden) return;
-  // the clock restarts with the loop, so a tab left in the background comes
-  // back where it was rather than snapping forward by however long it was away
+  if (raf || !subscribers.size || document.hidden || !aboutOnScreen()) return;
+  // the clock restarts with the loop, so a tab left in the background — or a
+  // section scrolled away from — comes back where it was rather than snapping
+  // forward by however long it was away
   started = -1;
   last = -Infinity;
   raf = requestAnimationFrame(frame);
@@ -131,6 +133,14 @@ if (typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () =>
     document.hidden ? halt() : run(),
   );
+
+  // The rows ride <AboutOverlay />'s layer, and the layer spends most of the
+  // page off screen. Same bargain as a backgrounded tab: the section is a
+  // couple of screenfuls away, nobody can see the solids turn, and the work is
+  // landing in frames the hero is trying to hold. `run` restarts the clock, so
+  // they come back at the pose they left rather than snapping forward by
+  // however far the page was scrolled.
+  onAboutVisibility(() => (aboutOnScreen() ? run() : halt()));
 }
 
 /* ------------------------------------------------------------------------ */
@@ -288,6 +298,15 @@ export default function SolidIcon({ kind, seed = 0, className }: Props) {
       className={className}
       aria-hidden
     >
+      {/* The ticker owns `d` after the first paint, and React must not take it
+          back. It won't, as long as `initial` keeps its identity: React diffs
+          against its own previous prop, not the live DOM, so an unchanged
+          `initial` means the attribute is never written and the pose the ticker
+          last set survives the render. That holds because the `useMemo` above
+          depends only on `kind`, `motion` and `scratch`, all of which are
+          stable for the life of the row — but it is a contract, not an
+          accident: anything that hands this a fresh string would snap every
+          icon back to its t = 0 pose on the next parent render. */}
       <path ref={path} d={initial} />
     </svg>
   );

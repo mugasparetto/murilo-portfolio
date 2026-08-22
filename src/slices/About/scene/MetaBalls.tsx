@@ -322,6 +322,61 @@ const fragmentShader = /* glsl */ `
   }
 
   void main() {
+    // ── Coverage first ─────────────────────────────────────────────────
+    //
+    // The plane is deliberately much bigger than the goo on it — it has to be,
+    // or the strands would be cut off before they finished falling — so most
+    // of what this shader is asked to draw is nothing at all. The holographic
+    // fill below is the expensive half by a long way (a trig loop per fragment,
+    // then three pow calls and a hash), and until this was reordered every one
+    // those empty fragments paid for it in full before the field was even
+    // consulted.
+    //
+    // The field is the cheap half and it is what decides whether the fragment
+    // exists, so it goes first and the empties leave. Four of these planes
+    // overlap across the middle of the About section, which is four viewports'
+    // worth of fill in a frame budget that was already spoken for.
+    vec2 coord = (vUv - 0.5) * iAnimationSize;
+
+    float mbField        = 0.0;
+    float mbVisibleField = 0.0;
+
+    for (int i = 0; i < 50; i++) {
+      if (float(i) >= iBallCount) break;
+      float k = mb(iMetaBalls[i], coord);
+      mbField        += k;
+      mbVisibleField += k;
+    }
+
+    for (int i = 0; i < 16; i++) {
+      if (float(i) >= iAnchorCount) break;
+      float k = mb_anchor(
+        iAnchors[i].xy, iAnchors[i].z,
+        iAnchorRoundness[i], iAnchorStrength[i], iAnchorYScale[i],
+        coord
+      );
+      mbField += k;
+      if (iAnchorVisible[i] > 0.5) mbVisibleField += k;
+    }
+
+    float edgeHi = uFieldThreshold * (1.0 + uFieldEdge);
+    float fAll     = smoothstep(uFieldThreshold, edgeHi, mbField);
+    float fVisible = smoothstep(uFieldThreshold, edgeHi, mbVisibleField);
+
+    // Sampled here, outside any branch, so the sampler still gets the
+    // derivatives it needs from the neighbouring fragments in the quad.
+    float mask = fieldMask(vUv);
+
+    float alpha =
+      (enableTransparency > 0.5 ? fVisible : 1.0)
+      * fVisible * uOpacity * mask;
+
+    // Nothing writes depth here and the pass is already the transparent one,
+    // so a discard costs nothing but the fragments it saves. The threshold is
+    // half a step of an 8-bit channel: below it the blend is a no-op anyway.
+    if (alpha < 0.002) discard;
+
+    // ── Holographic fill ───────────────────────────────────────────────
     vec2 fragCoord = vUv * uResolution;
     float mr = min(uResolution.x, uResolution.y);
     vec2 uv = (fragCoord * 2.0 - uResolution.xy) / mr;
@@ -359,33 +414,6 @@ const fragmentShader = /* glsl */ `
     float grain = hash21(gl_FragCoord.xy + floor(uTime * 6.0));
     col += (grain - 0.5) * uGrainAmount;
 
-    vec2 coord = (vUv - 0.5) * iAnimationSize;
-
-    float mbField        = 0.0;
-    float mbVisibleField = 0.0;
-
-    for (int i = 0; i < 50; i++) {
-      if (float(i) >= iBallCount) break;
-      float k = mb(iMetaBalls[i], coord);
-      mbField        += k;
-      mbVisibleField += k;
-    }
-
-    for (int i = 0; i < 16; i++) {
-      if (float(i) >= iAnchorCount) break;
-      float k = mb_anchor(
-        iAnchors[i].xy, iAnchors[i].z,
-        iAnchorRoundness[i], iAnchorStrength[i], iAnchorYScale[i],
-        coord
-      );
-      mbField += k;
-      if (iAnchorVisible[i] > 0.5) mbVisibleField += k;
-    }
-
-    float edgeHi = uFieldThreshold * (1.0 + uFieldEdge);
-    float fAll     = smoothstep(uFieldThreshold, edgeHi, mbField);
-    float fVisible = smoothstep(uFieldThreshold, edgeHi, mbVisibleField);
-
     col *= 0.85 + 0.15 * fAll;
 
     // ── Volume shading ─────────────────────────────────────────────────
@@ -407,8 +435,7 @@ const fragmentShader = /* glsl */ `
     // Flat multiplier separating stacked layers front-to-back.
     col *= uShade;
 
-    float alpha = enableTransparency > 0.5 ? fVisible : 1.0;
-    gl_FragColor = vec4(col, alpha * fVisible * uOpacity * fieldMask(vUv));
+    gl_FragColor = vec4(col, alpha);
   }
 `;
 

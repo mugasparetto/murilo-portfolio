@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 
-import { postBypassed, setPostBypassed } from "./diagFlags";
+import { postBypassed, setPostBypassed, swayOn, setSwayOn } from "./diagFlags";
 import { pxToVh } from "@/app/helpers/viewport";
 
 /**
@@ -39,16 +39,48 @@ import { pxToVh } from "@/app/helpers/viewport";
  * goes with it.
  *
  *   1  hero scene      2  about scene     3  DOM overlays
- *   4  postprocessing  5  dpr 1 / native  0  reset counters
+ *   4  postprocessing  5  dpr 1 / native  6  pointer sway
+ *   0  reset counters
  *
  * The scenes go by `visible`, so nothing unmounts and no geometry is rebuilt —
- * the toggle costs a frame, not a hitch. The overlays go by `visibility` on
- * `<main>`, which keeps the document's height and so the scroll positions the
- * whole page is keyed to.
+ * the toggle costs a frame, not a hitch.
+ *
+ * The overlays go by `visibility` on the bands themselves, matched by their
+ * `data-overlay-band` attribute through a stylesheet this file injects. Three
+ * things about that are deliberate:
+ *
+ * - **The bands, not `<main>`.** `<main>` is the <Canvas />'s `eventSource`,
+ *   and a hidden element is not a hit-test target — hiding it stops the pointer
+ *   listeners, freezes `state.pointer` and leaves <ParallaxRig /> holding an
+ *   arbitrary camera offset. That folded a cost driver, and a wrong pose, into
+ *   a toggle labelled "DOM". The sway is key 6 now, on its own.
+ * - **`!important`.** Each driver writes `band.style.visibility = "visible"`
+ *   inline the moment its band comes on screen, and a style attribute outranks
+ *   any ordinary rule. An important author declaration is the one thing above
+ *   it, so this is the only mechanism the drivers can't undo mid-scroll.
+ * - **`visibility`, not `display`.** `display: none` zeroes the band's box, and
+ *   <AboutOverlay />'s `measure()` reads exactly that box: the column's height
+ *   and the face's slot. With the slot gone <Scene /> reads "no column" and
+ *   hides the head, which would put scene cost in the DOM bucket. Hidden boxes
+ *   keep their geometry, so every measurement stays honest while raster, render
+ *   surface and composited draw all go.
+ *
+ * What key 3 does *not* take out: the drivers keep running, computing their
+ * offset and writing `transform` to a hidden band. That's the point — they cost
+ * a projection and a string, and the question this toggle asks is about paint.
+ * <SiteNav /> also stays, being mounted outside `<main>` and opaque anyway.
  *
  * Dev-only: <SceneManager /> mounts it behind `NODE_ENV`, so none of this
  * reaches a build.
  */
+
+/**
+ * Hides the overlay bands for key 3. See the toggle notes above for why it is
+ * `visibility`, why it is `!important`, and why it matches the bands rather
+ * than `<main>`.
+ */
+const DOM_OFF_RULE =
+  '[data-diag-dom="off"] [data-overlay-band]{visibility:hidden!important}';
 
 /** how often the panel is written, in ms — DOM work, so not every frame */
 const PANEL_INTERVAL = 250;
@@ -195,6 +227,10 @@ export default function Diagnostics() {
     document.body.appendChild(el);
     panel.current = el;
 
+    const sheet = document.createElement("style");
+    sheet.textContent = DOM_OFF_RULE;
+    document.head.appendChild(sheet);
+
     let observer: PerformanceObserver | null = null;
     try {
       observer = new PerformanceObserver((list) => {
@@ -211,6 +247,10 @@ export default function Diagnostics() {
     return () => {
       observer?.disconnect();
       el.remove();
+      sheet.remove();
+      // the attribute outlives the sheet otherwise, and would hide every band
+      // the moment the harness came back
+      delete document.documentElement.dataset.diagDom;
       panel.current = null;
     };
   }, [state]);
@@ -234,11 +274,8 @@ export default function Diagnostics() {
           break;
         }
         case "3": {
-          const main = document.querySelector("main");
-          if (main instanceof HTMLElement) {
-            main.style.visibility =
-              main.style.visibility === "hidden" ? "" : "hidden";
-          }
+          const root = document.documentElement;
+          root.dataset.diagDom = root.dataset.diagDom === "off" ? "on" : "off";
           break;
         }
         case "4":
@@ -247,6 +284,9 @@ export default function Diagnostics() {
         case "5":
           state.lowDpr = !state.lowDpr;
           setDpr(state.lowDpr ? 1 : nativeDpr);
+          break;
+        case "6":
+          setSwayOn(!swayOn());
           break;
         case "0":
           state.longTasks = 0;
@@ -338,9 +378,7 @@ export default function Diagnostics() {
         ? `gpu    ${fmt(mean(state.gpu))}  p95 ${fmt(p95(state.gpu))}`
         : "gpu        —  (no timer ext)";
 
-      const main = document.querySelector("main");
-      const domOn =
-        main instanceof HTMLElement ? main.style.visibility !== "hidden" : true;
+      const domOn = document.documentElement.dataset.diagDom !== "off";
       const hero = scene.getObjectByName("scene-hero")?.visible ?? true;
       const about = scene.getObjectByName("scene-about")?.visible ?? true;
 
@@ -357,7 +395,8 @@ export default function Diagnostics() {
         "",
         `1 hero ${on(hero)}  2 about ${on(about)}`,
         `3 dom  ${on(domOn)}  4 post ${on(!postBypassed())}`,
-        `5 dpr ${state.lowDpr ? "1.0" : nativeDpr.toFixed(1)}   0 reset`,
+        `5 dpr ${state.lowDpr ? "1.0" : nativeDpr.toFixed(1)}  6 sway ${on(swayOn())}`,
+        "0 reset",
       ].join("\n");
     }, PANEL_INTERVAL);
 

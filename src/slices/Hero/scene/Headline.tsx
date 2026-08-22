@@ -102,6 +102,9 @@ export default function HeadlineOverlay({
   return (
     <div
       ref={band}
+      // <Diagnostics />'s key 3 hides every band by this attribute — see the
+      // toggle table there. Nothing but the harness reads it.
+      data-overlay-band=""
       // the sizes step at the breakpoints and nothing here reads the viewport,
       // so they're media queries rather than a measured table: no re-render on
       // resize, and the server renders what the client hydrates. The gap under

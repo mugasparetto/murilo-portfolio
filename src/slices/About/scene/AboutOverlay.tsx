@@ -8,6 +8,7 @@ import { toBaseFrame } from "@/app/components/ParallaxRig";
 import { useScrollY } from "@/app/hooks/ScrollY";
 import { ABOUT_POSE } from "@/app/components/poses";
 import { blockInset } from "@/slices/Hero/scene/Name";
+import { setAboutOnScreen } from "./aboutVisibility";
 
 /**
  * The About section's HTML layer — the place to put type, links and buttons
@@ -307,6 +308,9 @@ export default function AboutOverlay({
       ref={(el) => {
         overlay.band = el;
       }}
+      // <Diagnostics />'s key 3 hides every band by this attribute — see the
+      // toggle table there. Nothing but the harness reads it.
+      data-overlay-band=""
       // Auto height below `lg`, where the column is taller than the screen and
       // the layer is sized by what's inside it; exactly one viewport from `lg`
       // up, which is what the absolutely-placed blocks in there are positioned
@@ -314,6 +318,10 @@ export default function AboutOverlay({
       className="pointer-events-none fixed top-0 left-0 z-1 w-full lg:h-screen"
       style={{
         ...blockInset,
+        // `layout style` and never `paint`: a paint containment is a clip, and
+        // a clipping ancestor is the one thing nothing on this layer can
+        // afford — see the note on the skills list in <AboutContent />. Same
+        // goes for an `overflow` on anything between here and a leaf.
         contain: "layout style",
         // moved every frame and never re-laid-out, so keep it on its own
         // compositor layer
@@ -352,9 +360,20 @@ export function AboutOverlayDriver() {
   const lastY = useRef(NaN);
   const lastHidden = useRef<boolean | null>(null);
 
+  // Nothing placed is nothing on screen. A slice that unmounted mid-scroll
+  // would otherwise leave the work hung off the flag running behind it.
+  useEffect(() => () => setAboutOnScreen(false), []);
+
   useFrame(() => {
     const band = overlay.band;
-    if (!band) return;
+    if (!band) {
+      setAboutOnScreen(false);
+      // and forget the last answer with it: a band that comes back would
+      // otherwise match a stale `lastHidden`, skip the branch below, and leave
+      // the flag reading false over a layer that is plainly on screen
+      lastHidden.current = null;
+      return;
+    }
 
     const y = columnOffset(camera, fov, size.height, scrollY.current);
 
@@ -367,6 +386,11 @@ export function AboutOverlayDriver() {
     if (hidden !== lastHidden.current) {
       band.style.visibility = hidden ? "hidden" : "visible";
       lastHidden.current = hidden;
+      // Published on the flip, never per frame. The 30fps tick that turns the
+      // row icons and the 1Hz one that runs the clock both hang off it —
+      // `visibility` stops them painting, not running. A store rather than a
+      // poke because one of the two readers is React.
+      setAboutOnScreen(!hidden);
     }
     if (hidden) return;
 

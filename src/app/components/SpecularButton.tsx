@@ -52,6 +52,21 @@ interface ShaderProps {
 const PAD = 20;
 const TAU = Math.PI * 2;
 
+/**
+ * Rate the shine is drawn at.
+ *
+ * This is a second WebGL context with a frame loop of its own, and until it was
+ * capped that loop ran at the panel's refresh rate — on a 165Hz display, three
+ * draws for every one the scene got, since <FrameCap /> only owns the R3F loop.
+ * The two contexts then trade places on the GPU three times as often as
+ * anything asked them to, and the rect read below landed at the same rate.
+ *
+ * Same reasoning <FrameCap /> and <SolidIcon />'s shared ticker are capped for:
+ * a slow specular sweep has nothing to spend the extra frames on, and they come
+ * out of a budget the scene has already spoken for.
+ */
+const FPS = 60;
+
 // Shortest signed turn from `a` to `b`, whatever range either one is in.
 //
 // JS `%` keeps the sign of its left operand, so the usual
@@ -287,6 +302,40 @@ const SpecularButton = ({
     ro.observe(btn);
     resize();
 
+    // ── Whether anyone can actually see this ────────────────────────────
+    //
+    // Neither half of this is optional, because there are two quite different
+    // ways for the button to be on the page and not on screen, and each one is
+    // invisible to the check that catches the other.
+    //
+    // Scrolled away is the observer's job. Hidden outright is not: an
+    // IntersectionObserver reports geometry, and a `visibility: hidden`
+    // ancestor still has a box, so it goes on intersecting exactly as if it
+    // were in view. That is not a corner case here — <HeadlineOverlay /> mounts
+    // hidden and stays that way until <HeadlineDriver /> has placed it, and the
+    // driver lives in the hero *scene*. Switch that scene off and the band is
+    // hidden for the life of the page while everything inside it carries on
+    // running: a WebGL context redrawing an invisible canvas every refresh, and
+    // a `getBoundingClientRect` on every pointer move and every scroll.
+    //
+    // Ordered cheap-first — the flag is free, and `checkVisibility` is a style
+    // question, so it is only asked about a button that is at least in view.
+    let onScreen = true;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        onScreen = entry.isIntersecting;
+      },
+      { rootMargin: "20% 0px" },
+    );
+    io.observe(btn);
+
+    const isLive = () =>
+      onScreen &&
+      (btn.checkVisibility?.({
+        visibilityProperty: true,
+        contentVisibilityAuto: true,
+      }) ?? true);
+
     // Scrolling moves the button without resizing it, so the observer above
     // never hears about it — and neither does it hear about a transform, which
     // is how a button carried by an animated overlay gets where it is drawn.
@@ -350,10 +399,24 @@ const SpecularButton = ({
     let idleAngle = 2.4;
     let bright = 0;
     let last = performance.now();
+    let lastDraw = -Infinity;
     let raf = 0;
 
     const update = (now: number) => {
       raf = requestAnimationFrame(update);
+
+      // Ahead of everything, so a skipped refresh costs one comparison. `last`
+      // is deliberately left alone: `dt` is then measured from the frame that
+      // actually drew, and the sweep runs at the speed it is authored at
+      // whatever the cap or the panel happen to be.
+      if (now - lastDraw < 1000 / FPS) return;
+      lastDraw = now;
+
+      // Nothing below is worth doing for a button nobody can see — and the two
+      // expensive parts of it, the layout read and the draw, are exactly the
+      // two that were still happening. See `isLive` above.
+      if (!isLive()) return;
+
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
       const p = propsRef.current;
@@ -404,6 +467,7 @@ const SpecularButton = ({
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      io.disconnect();
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("scroll", markRectDirty);
       window.removeEventListener("resize", markRectDirty);
@@ -422,14 +486,20 @@ const SpecularButton = ({
       type={type}
       disabled={disabled}
       onClick={onClick}
-      className={`relative m-0 inline-flex cursor-pointer items-center justify-center border-none font-medium leading-none tracking-[0.01em] outline-none transition-transform duration-150 active:scale-[0.97] disabled:cursor-default disabled:opacity-55 disabled:active:scale-100 [color:var(--sb-text-color)] [border-radius:var(--sb-radius)] [background:color-mix(in_srgb,var(--sb-tint)_calc(var(--sb-tint-opacity)*100%),transparent)] [backdrop-filter:blur(var(--sb-blur))] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_24px_rgba(0,0,0,0.25)] focus-visible:outline-2 focus-visible:outline-offset-[3px] ${SIZES[size] || SIZES.md}${className ? ` ${className}` : ""}`}
+      className={`relative m-0 inline-flex cursor-pointer items-center justify-center border-none font-medium leading-none tracking-[0.01em] outline-none transition-transform duration-150 active:scale-[0.97] disabled:cursor-default disabled:opacity-55 disabled:active:scale-100 [color:var(--sb-text-color)] [border-radius:var(--sb-radius)] [background:color-mix(in_srgb,var(--sb-tint)_calc(var(--sb-tint-opacity)*100%),transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_24px_rgba(0,0,0,0.25)] focus-visible:outline-2 focus-visible:outline-offset-[3px] ${SIZES[size] || SIZES.md}${className ? ` ${className}` : ""}`}
       style={
         {
           "--sb-radius": `${radius}px`,
           "--sb-tint": tint,
           "--sb-tint-opacity": tintOpacity,
-          "--sb-blur": `${blur}px`,
           "--sb-text-color": textColor,
+          // Emitted only when it would do something. `blur(0px)` is still a
+          // non-empty filter list, so the browser gives the button a render
+          // surface and captures the backdrop behind it — over a canvas that
+          // redraws every frame, for a blur of nothing. The default is 0 and
+          // the one call site (<HeadlineOverlay />) is opaque black anyway, so
+          // this was pure cost.
+          ...(blur > 0 ? { backdropFilter: `blur(${blur}px)` } : null),
         } as CSSProperties
       }
     >

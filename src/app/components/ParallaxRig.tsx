@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 
+import { swayOn } from "./diagFlags";
+
 export type CameraPose = {
   position: THREE.Vector3;
   target: THREE.Vector3;
@@ -84,8 +86,17 @@ export default function CameraParallaxRig({
     const cam = cameraRef?.current ?? defaultCamera;
 
     // pointer is normalized [-1..1]
-    const px = pointer.x * viewport.width * 0.5;
-    const py = pointer.y * viewport.height * 0.5;
+    //
+    // <Diagnostics />'s key 6 drives the sway to nothing rather than skipping
+    // the frame: the settle below then lands the offset exactly on zero and
+    // brings the camera — and everything projecting against it — to rest, where
+    // bailing early would strand it wherever the pointer last left it. The rig
+    // can't simply be unmounted either; at `md` and up it is the only thing
+    // writing the camera, since <SceneManager /> hands <ScrollRig /> a false
+    // `applyToCamera` there.
+    const live = swayOn();
+    const px = live ? pointer.x * viewport.width * 0.5 : 0;
+    const py = live ? pointer.y * viewport.height * 0.5 : 0;
 
     // build a stable camera basis from BASE pose
     camForward.copy(pose.target).sub(pose.position).normalize();

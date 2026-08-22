@@ -360,6 +360,9 @@ export default function NameOverlay({
       ref={(el) => {
         overlay.band = el;
       }}
+      // <Diagnostics />'s key 3 hides every band by this attribute — see the
+      // toggle table there. Nothing but the harness reads it.
+      data-overlay-band=""
       style={{
         position: "fixed",
         top: 0,
