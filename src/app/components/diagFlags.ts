@@ -65,3 +65,33 @@ export function swayOn() {
 export function setSwayOn(next: boolean) {
   sway = next;
 }
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What <FrameCap /> is actually doing this frame: the refresh interval it has
+ * measured, and how many refreshes it is leaving between rendered frames.
+ *
+ * <Diagnostics /> reads it to report the *ladder* the frame rate is quantised
+ * onto. Without it the panel shows 82.5 falling to 55 with no indication that
+ * those are neighbouring rungs rather than points on a slope, which is exactly
+ * the misreading that sends someone hunting through the scene for a cost that
+ * is not there.
+ *
+ * Plain module state, written once per rendered frame and read at the panel's
+ * own 4Hz: there is one frame loop, nothing re-renders from it, and dev-only
+ * wiring should not cost the app a context.
+ */
+let refreshMs = 0;
+let strideRefreshes = 0;
+let slipRate = 0;
+
+export function publishPacing(refresh: number, stride: number, slip: number) {
+  refreshMs = refresh;
+  strideRefreshes = stride;
+  slipRate = slip;
+}
+
+export function pacing() {
+  return { refreshMs, stride: strideRefreshes, slip: slipRate };
+}

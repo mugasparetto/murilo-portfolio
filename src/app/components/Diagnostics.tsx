@@ -3,7 +3,13 @@
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 
-import { postBypassed, setPostBypassed, swayOn, setSwayOn } from "./diagFlags";
+import {
+  postBypassed,
+  setPostBypassed,
+  swayOn,
+  setSwayOn,
+  pacing,
+} from "./diagFlags";
 import { pxToVh } from "@/app/helpers/viewport";
 
 /**
@@ -12,7 +18,7 @@ import { pxToVh } from "@/app/helpers/viewport";
  *
  * `<Stats />` reports one number, and one number can't tell a scene that costs
  * too much to draw apart from a main thread that never got round to drawing
- * it. This reports the three buckets that can:
+ * it. This reports the buckets that can:
  *
  * - **js** — everything between the first `useFrame` and the last, which is
  *   every scene callback plus the composer's own render dispatch. Main-thread
@@ -20,9 +26,24 @@ import { pxToVh } from "@/app/helpers/viewport";
  * - **gpu** — wall time the GPU spent on the frame, where the driver exposes
  *   `EXT_disjoint_timer_query_webgl2`. Absent on plenty of machines, which is
  *   what the third bucket is for.
- * - **other** — the frame interval less `js`. Style, layout, paint, compositing,
- *   backdrop-filter re-samples, and any GPU time the CPU ended up waiting on.
- *   Big here and small in `js` means the cost isn't in this file's language.
+ * - **pace** — the refresh interval <FrameCap /> has measured, the stride it is
+ *   holding, and the rate those two produce. The rate is *quantised*: at 165Hz a
+ *   stride of 2 is 82.5 and a stride of 3 is 55, with nothing in between, so a
+ *   number that halves has moved one rung and need not mean anything doubled.
+ *   The neighbouring rungs are printed for exactly that reason.
+ * - **slip** — the share of rendered frames whose following refresh arrived
+ *   late, i.e. that overran their deadline. This is the leading indicator, and
+ *   the one the panel used to lack: it climbs while `js` stays flat, because it
+ *   counts the *whole* frame — style, layout, paint, compositing, the driver
+ *   blocking on a queued GPU frame — and not just the R3F callbacks. Watch this
+ *   rather than `fps`; it moves smoothly, and `fps` does not.
+ *
+ * There used to be an `other` bucket here, reported as the frame interval less
+ * `js` and described as style, layout and paint. Under a frame cap that figure
+ * is idle wait: it read ~11.5ms of a 12.1ms frame whatever the page was doing,
+ * because the loop's whole job is to not render for most of the interval. It
+ * invited exactly the wrong conclusion — that the DOM was costing eleven
+ * milliseconds a frame — and it is gone.
  *
  * `long` counts `longtask` entries — main-thread blocks over 50ms, from
  * anywhere on the page, R3F or not.
@@ -370,9 +391,13 @@ export default function Diagnostics() {
       const interval = mean(state.interval);
       const fps = interval > 0 ? 1000 / interval : 0;
       const js = mean(state.js);
-      const other = Math.max(0, interval - js);
       // same unit the rig reads, so the readout can be trusted on iOS too
       const vh = pxToVh(window.scrollY);
+
+      const { refreshMs, stride, slip } = pacing();
+      // the wall-clock rate a given stride produces on this display
+      const rung = (n: number) =>
+        refreshMs > 0 && n > 0 ? 1000 / (refreshMs * n) : 0;
 
       const gpuLine = state.gpuOk
         ? `gpu    ${fmt(mean(state.gpu))}  p95 ${fmt(p95(state.gpu))}`
@@ -387,7 +412,10 @@ export default function Diagnostics() {
         `frame  ${fmt(interval)}  p95 ${fmt(p95(state.interval))}`,
         `js     ${fmt(js)}  p95 ${fmt(p95(state.js))}`,
         gpuLine,
-        `other  ${fmt(other)}`,
+        `pace   ${refreshMs.toFixed(2)}ms x${stride} = ${rung(stride).toFixed(1)}`,
+        `rungs  ${stride > 1 ? rung(stride - 1).toFixed(1) : "  —"} / ` +
+          `${rung(stride).toFixed(1)} / ${rung(stride + 1).toFixed(1)}`,
+        `slip   ${(slip * 100).toFixed(0).padStart(4)}%  (frames over deadline)`,
         `long   ${String(state.longTasks).padStart(5)}  ${state.longMs.toFixed(0)}ms`,
         `calls  ${String(state.calls).padStart(5)}  tris ${(state.tris / 1e6).toFixed(2)}M`,
         `progs  ${String(state.programs).padStart(5)}  peak ${state.peakPrograms}`,
