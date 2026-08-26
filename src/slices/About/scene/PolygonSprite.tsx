@@ -305,6 +305,24 @@ function spanToParentFrame(
 }
 
 /**
+ * One world-unit Y wall in `parent`'s frame, read on the plane at `worldZ`.
+ *
+ * A wall left at ±Infinity comes back untouched: there is no frame for it to be
+ * in, and putting it through the matrix returns NaN.
+ */
+function yToParentFrame(
+  parent: THREE.Object3D,
+  worldZ: number,
+  y: number,
+): number {
+  if (!isFinite(y)) return y;
+
+  parentProbe.set(0, y, worldZ);
+  parent.worldToLocal(parentProbe);
+  return parentProbe.y;
+}
+
+/**
  * Which sprite currently owns the pointer.
  *
  * All three listen on `document` and their polygons overlap in world space once
@@ -808,7 +826,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     // the same camera — the one the rig left behind at the end of last frame,
     // which is also the one the pointer is aimed through.
     useFrame(() => {
-      if (!tracksViewport || !worldBox || !groupRef.current) return;
+      if (!tracksViewport || !bounds || !worldBox || !groupRef.current) return;
 
       const box = liveBox.current;
       // Z is never anything but the authored pair — the screen has nothing to
@@ -826,11 +844,40 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
 
       parentProbe.copy(pos);
       if (parent) parent.localToWorld(parentProbe);
+      // Held, because `spanToParentFrame` and `yToParentFrame` both borrow
+      // `parentProbe` for their own conversions.
+      const worldZ = parentProbe.z;
 
-      if (!visibleSpanAtZ(parentProbe.z, camera, visibleSpan)) return; // keep last good walls
-      if (parent) spanToParentFrame(parent, parentProbe.z, visibleSpan);
+      if (!visibleSpanAtZ(worldZ, camera, visibleSpan)) return; // keep last good walls
+      if (parent) spanToParentFrame(parent, worldZ, visibleSpan);
 
-      const pad = bounds?.padding ?? 0;
+      const pad = bounds.padding ?? 0;
+
+      // ── The authored ceiling and floor take the same trip as the span ──────
+      //
+      // They are world-unit walls — see PIECE_BOUNDS — and they are only the
+      // piece's own units as well while nothing above it is scaled. <Scene />
+      // scales the face to 0.8 between `lg` and `xl`, and by `faceFit` on any
+      // window narrower than the design, at which point the authored 600-unit
+      // band is 600 units of a frame whose units are 0.8 of a world one: 480
+      // units of world, 60 short at each end. Since the screen walls *are*
+      // converted, the authored pair is then the tighter of the two and wins,
+      // and the pieces stop short of the top and bottom edges with nothing
+      // there to show why. X never shows it: it is handed to the screen
+      // outright, and ±Infinity is the same wall in either frame.
+      //
+      // Read off `bounds` rather than off `worldBox`, whose pair has the
+      // extents inset already folded in — that inset is measured on the piece,
+      // in the piece's own units, so it is applied after the trip, not scaled
+      // along with the wall.
+      const authoredMinY =
+        (parent
+          ? yToParentFrame(parent, worldZ, bounds.min[1])
+          : bounds.min[1]) - extents.minY;
+      const authoredMaxY =
+        (parent
+          ? yToParentFrame(parent, worldZ, bounds.max[1])
+          : bounds.max[1]) - extents.maxY;
 
       // Same inset the authored box gets: the walls hold the piece's centre, so
       // pull each one in by how far the polygon reaches that way and the
@@ -848,8 +895,8 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
       resolveWall(
         visibleSpan.min.y - extents.minY + pad,
         visibleSpan.max.y - extents.maxY - pad,
-        worldBox.min.y,
-        worldBox.max.y,
+        authoredMinY,
+        authoredMaxY,
         wall,
       );
       box.min.y = wall.x;
