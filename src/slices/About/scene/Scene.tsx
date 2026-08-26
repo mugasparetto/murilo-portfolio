@@ -289,6 +289,27 @@ const facePlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -FACE_HOME.z);
  */
 const LG_FACE_SCALE = 0.8;
 
+/**
+ * The viewport aspect the `lg`-and-up placement is authored at, and the widest
+ * the face is ever allowed to be relative to the screen.
+ *
+ * The camera's fov is vertical and the face sits at a fixed depth, so at a
+ * fixed scale it covers a fixed share of the viewport's *height* — about 88% —
+ * whatever shape the window is. The copy around it is placed the other way
+ * round: everything in <AboutContent /> is positioned in percentages of the
+ * layer's width. On a 16:10 window those two agree, and the face stops a few
+ * pixels short of the column at 64.8%. Stand the same window on its end — an
+ * iPad Pro in portrait is 0.75 — and the height the face is claiming buys it
+ * far more of the width than the layout left for it, so it grows straight
+ * across the description.
+ *
+ * So below this aspect the face is scaled by however much narrower the window
+ * is, which holds its *width* share at what it is here instead of its height
+ * share. 16:10 rather than 16:9 because it's the shallower of the two shapes
+ * the section is actually laid out in, and the cap has to leave both alone.
+ */
+const FACE_FIT_ASPECT = 1;
+
 const faceRay = new THREE.Raycaster();
 const faceNdc = new THREE.Vector2();
 const slotTop = new THREE.Vector3();
@@ -372,6 +393,12 @@ export default function Scene({ scrollWindow }: Props) {
   const size = useThree((s) => s.size);
   const fov = useThree((s) => (s.camera as THREE.PerspectiveCamera).fov);
 
+  /** see {@link FACE_FIT_ASPECT} — 1 on anything as wide as the design */
+  const faceFit = useMemo(
+    () => Math.min(1, size.width / size.height / FACE_FIT_ASPECT),
+    [size.width, size.height],
+  );
+
   /**
    * The falloff the grid is drawn through: an ellipse inscribed in the
    * viewport, sized at the grid's own depth so it tracks the screen edges
@@ -429,8 +456,12 @@ export default function Scene({ scrollWindow }: Props) {
     // instead of sliding towards the middle of the world. The float rides on
     // top scaled, same as below `lg`: a smaller face bobs by proportionally
     // less.
+    //
+    // `faceFit` is the other half of that: the step down handles the column
+    // getting narrower at a fixed window shape, and the fit handles the window
+    // itself getting narrower than the shape it was all drawn at.
     if (up.lg) {
-      const scale = up.xl ? 1 : LG_FACE_SCALE;
+      const scale = (up.xl ? 1 : LG_FACE_SCALE) * faceFit;
 
       group.scale.setScalar(scale);
       group.position.set(
