@@ -658,49 +658,53 @@ export default function AboutContent({
       {/* the eyebrow labels the cards, so with no numbers to label it goes too
           rather than leaving a rule over nothing.
 
-          It's placed on its own rather than wrapped around the list: sitting at
-          the same 10.7% as "who i am", it reads as one line across the section
-          with the block on the right, and the cards stay at the height the
-          design puts them at instead of being pushed down by it. Stacked below
-          `lg` both are static, so they fall into the column in source order. */}
+          Eyebrow and list share one box, the way "who i am" does on the right:
+          the box is what sits at the design's 10.7%, so the pair still reads as
+          one line across the section, and the space under the rule is a margin
+          rather than the difference between two percentages — that difference
+          is a slice of the section's height, so it opened up on a tall viewport
+          and closed on a short one. Stacked below `lg` the box is static and
+          falls into the column in source order. */}
       {numbers.length > 0 && (
         <div className="lg:absolute lg:top-[10.7%] lg:left-[3.9%] lg:w-[30%]">
           <Eyebrow ref={statsEyebrowRef}>my stats</Eyebrow>
+
+          <ul
+            ref={statsRef}
+            // three across is what the design's count wants; a fourth card
+            // wraps rather than squeezing the labels onto two lines. The top
+            // margin is the design's gap under the rule, sized off the type so
+            // it holds at any height.
+            className="mt-3 grid grid-cols-3 gap-2 sm:mt-4 lg:block lg:space-y-2"
+          >
+            {numbers.map(({ number, label }, i) => (
+              <li
+                // a group item carries no id of its own, and position is the only
+                // thing that identifies a card here
+                key={i}
+                style={{ "--stagger": `${i * STAGGER_STEP}%` } as CSSProperties}
+                // The height is fixed from `lg` up so the cards stay a set whatever
+                // the longest label does; the gap and the type are sized to keep
+                // that label on one line at the low end of each step, since the
+                // design's own 64px gap only fits once the viewport is as wide as
+                // the frame it was drawn on.
+                className={`flex flex-col items-center rounded-sm border-2 border-white ${PLATE} px-2 py-2.5 text-center lg:ml-(--stagger) lg:h-16 lg:w-[77.6%] lg:flex-row lg:items-center lg:gap-8 lg:px-3 lg:py-0 lg:text-left xl:h-20 xl:gap-12 xl:px-4 2xl:h-24 2xl:gap-16 2xl:px-5 min-[112rem]:h-25 min-[112rem]:px-6`}
+              >
+                <span
+                  className={`font-display font-extrabold text-white ${LEADING} text-xl lg:text-2xl xl:text-3xl 2xl:text-4xl min-[112rem]:text-[2.75rem]`}
+                >
+                  {number}
+                </span>
+                <span
+                  className={`${CAPS} ${MUTED} ${LEADING} text-[0.5625rem] lg:text-[0.625rem] xl:text-[0.6875rem] 2xl:text-[0.8125rem] min-[112rem]:text-base`}
+                >
+                  {label}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
-
-      <ul
-        ref={statsRef}
-        // three across is what the design's count wants; a fourth card wraps
-        // rather than squeezing the labels onto two lines
-        className="grid grid-cols-3 gap-2 empty:hidden lg:absolute lg:top-[14.2%] lg:left-[3.9%] lg:block lg:w-[30%] lg:space-y-2 -mt-2 lg:mt-1"
-      >
-        {numbers.map(({ number, label }, i) => (
-          <li
-            // a group item carries no id of its own, and position is the only
-            // thing that identifies a card here
-            key={i}
-            style={{ "--stagger": `${i * STAGGER_STEP}%` } as CSSProperties}
-            // The height is fixed from `lg` up so the cards stay a set whatever
-            // the longest label does; the gap and the type are sized to keep
-            // that label on one line at the low end of each step, since the
-            // design's own 64px gap only fits once the viewport is as wide as
-            // the frame it was drawn on.
-            className={`flex flex-col items-center rounded-sm border-2 border-white ${PLATE} px-2 py-2.5 text-center lg:ml-(--stagger) lg:h-16 lg:w-[77.6%] lg:flex-row lg:items-center lg:gap-8 lg:px-3 lg:py-0 lg:text-left xl:h-20 xl:gap-12 xl:px-4 2xl:h-24 2xl:gap-16 2xl:px-5 min-[112rem]:h-25 min-[112rem]:px-6`}
-          >
-            <span
-              className={`font-display font-extrabold text-white ${LEADING} text-xl lg:text-2xl xl:text-3xl 2xl:text-4xl min-[112rem]:text-[2.75rem]`}
-            >
-              {number}
-            </span>
-            <span
-              className={`${CAPS} ${MUTED} ${LEADING} text-[0.5625rem] lg:text-[0.625rem] xl:text-[0.6875rem] 2xl:text-[0.8125rem] min-[112rem]:text-base`}
-            >
-              {label}
-            </span>
-          </li>
-        ))}
-      </ul>
 
       {/* — the face ------------------------------------------------------ */}
       {/* The head is scene geometry — <Head />, over in the R3F tree — and this
