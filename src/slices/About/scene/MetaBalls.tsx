@@ -171,16 +171,10 @@ type HolographicMetaBallsProps = {
   pauseSpeed?: number;
   pauseYOffset?: number;
   ref: React.Ref<THREE.Mesh>;
-  // ── Mouse interaction ──────────────────────
-  /** Hard X boundary (animation-space) balls cannot be pushed past */
-  mouseMinX?: number | null;
-  mouseMaxX?: number | null;
-  /** Radius (in animation-space units) within which the mouse disturbs balls */
-  mouseRadius?: number;
-  /** How strongly balls are pushed away from the cursor (negative = attracted) */
-  mouseStrength?: number;
-  /** How quickly the mouse disturbance lerps in/out (0–1) */
-  mouseInfluenceSpeed?: number;
+  // ── Invisible walls ────────────────────────
+  /** Hard X boundary (animation-space) balls cannot drift past */
+  wallMinX?: number | null;
+  wallMaxX?: number | null;
   // ── Holographic overrides ──────────────────
   holoTimeScale?: number;
   /**
@@ -472,15 +466,6 @@ const MAX_ANCHORS = 16;
 const EMPTY_MASK = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);
 EMPTY_MASK.needsUpdate = true;
 
-// Scratch for the per-frame pointer projection. Every instance runs that
-// projection on every frame, and a fresh Ray plus two vectors each time is pure
-// garbage — nothing here outlives the call that writes it.
-const meshWorldPos = new THREE.Vector3();
-const meshWorldScale = new THREE.Vector3();
-const pointerRay = new THREE.Ray();
-const pointerNdc = new THREE.Vector3();
-const pointerAnim = { x: 0, y: 0 };
-
 type MaskUniforms = {
   enabled: number;
   texture: THREE.Texture;
@@ -652,11 +637,6 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
     // Tracked positions for lerping — initialised lazily on first frame
     const ballPositions = useRef<{ x: number; y: number }[] | null>(null);
 
-    // Per-ball mouse-disturbance offsets (lerped independently)
-    const mouseOffsets = useRef<{ x: number; y: number }[]>(
-      Array.from({ length: 50 }, () => ({ x: 0, y: 0 })),
-    );
-
     // ── Anchor arrays ────────────────────────────
     const anchorPositions = useMemo(
       () => Array.from({ length: MAX_ANCHORS }, () => new THREE.Vector3()),
@@ -778,11 +758,11 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
     const meshRef = useRef<THREE.Mesh>(null);
 
     // ── Animation ────────────────────────────────
-    useFrame(({ clock, size, pointer, camera: frameCamera }) => {
+    useFrame(({ clock, size }) => {
       // A hidden field drives nothing, and Head hides the goo for good the
       // moment a piece leaves the assembled face — so without this the four
-      // instances go on paying for a full uniform rewrite and a pointer
-      // unprojection every frame for the rest of the session.
+      // instances go on paying for a full uniform rewrite every frame for the
+      // rest of the session.
       if (meshRef.current && !meshRef.current.visible) return;
 
       // Ball motion is offset by `seed`; the holographic fill has its own phase
@@ -856,50 +836,6 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
         });
       }
 
-      const mouseRadius = props.mouseRadius;
-      const mouseStrength = props.mouseStrength;
-      const mouseInfluenceSpeed = props.mouseInfluenceSpeed;
-
-      // Unproject the NDC pointer through the camera onto the mesh's Z plane,
-      // then convert to animation-space by subtracting the mesh world position
-      // and dividing by its scale (which maps 1 world unit → 1/scale animation unit).
-      //
-      // Skipped outright on a layer that doesn't react to the cursor. With
-      // either `mouseStrength` or `mouseRadius` at zero the disturbance below
-      // is identically zero, so the whole projection is measured and thrown
-      // away — which is what every layer on the face was doing.
-      let mouse: { x: number; y: number } | null = null;
-      if (mouseStrength !== 0 && mouseRadius > 0 && meshRef.current) {
-        meshRef.current.getWorldPosition(meshWorldPos);
-
-        // Ray from camera through the NDC pointer position
-        pointerNdc.set(pointer.x, pointer.y, 0.5).unproject(frameCamera);
-        pointerRay.origin.copy(frameCamera.position);
-        pointerRay.direction
-          .subVectors(pointerNdc, frameCamera.position)
-          .normalize();
-
-        // Intersect with the Z=meshWorldPos.z plane
-        const planeZ = meshWorldPos.z;
-        const hit = (planeZ - pointerRay.origin.z) / pointerRay.direction.z;
-        if (hit > 0) {
-          const worldX = pointerRay.origin.x + pointerRay.direction.x * hit;
-          const worldY = pointerRay.origin.y + pointerRay.direction.y * hit;
-
-          // Convert world coords → animation-space:
-          // The mesh is a unit plane, so its *world* scale is how many world
-          // units the plane spans — `props.scale` only while nothing above it
-          // is scaled, which the face is between `lg` and `xl` and below `lg`
-          // (see <Scene />). Read off the mesh, the cursor keeps landing where
-          // the cursor is at any size.
-          meshRef.current.getWorldScale(meshWorldScale);
-          const worldUnitsPerAnimUnit = meshWorldScale.x / props.animationSize;
-          pointerAnim.x = (worldX - meshWorldPos.x) / worldUnitsPerAnimUnit;
-          pointerAnim.y = (worldY - meshWorldPos.y) / worldUnitsPerAnimUnit;
-          mouse = pointerAnim;
-        }
-      }
-
       for (let i = 0; i < count; i++) {
         const p = ballParams[i];
         const laneT = count > 1 ? i / (count - 1) : 0.5;
@@ -937,44 +873,14 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
           lerpSpeed,
         );
 
-        // ── Mouse disturbance ──────────────────────
-        // Compute desired offset based on current mouse position
-        let wantOffX = 0;
-        let wantOffY = 0;
+        // ── Invisible walls: clamp X within [wallMinX, wallMaxX] ─────────────
+        let finalX = ballPositions.current[i].x;
+        const finalY = ballPositions.current[i].y;
 
-        if (mouse && !target) {
-          const bx = ballPositions.current[i].x;
-          const by = ballPositions.current[i].y;
-          const dx = bx - mouse.x;
-          const dy = by - mouse.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-
-          if (dist < mouseRadius && dist > 0.001) {
-            // Falloff: strongest at centre, zero at mouseRadius
-            const falloff = 1.0 - dist / mouseRadius;
-            const force = mouseStrength * falloff * falloff;
-            // Normalised direction away from mouse (repel) or toward (attract)
-            wantOffX = (dx / dist) * force;
-            wantOffY = (dy / dist) * force;
-          }
-        }
-
-        // Lerp the offset toward the desired value (snappy in, gentle decay out)
-        const offRef = mouseOffsets.current[i];
-        const lerpIn = mouse ? mouseInfluenceSpeed : mouseInfluenceSpeed * 0.3;
-        offRef.x = THREE.MathUtils.lerp(offRef.x, wantOffX, lerpIn);
-        offRef.y = THREE.MathUtils.lerp(offRef.y, wantOffY, lerpIn);
-
-        // ── Invisible walls: clamp X within [mouseMinX, mouseMaxX] ───────────
-        let finalX = ballPositions.current[i].x + offRef.x;
-        const finalY = ballPositions.current[i].y + offRef.y;
-
-        if (props.mouseMinX !== null && finalX < props.mouseMinX) {
-          finalX = props.mouseMinX;
-          offRef.x = finalX - ballPositions.current[i].x;
-        } else if (props.mouseMaxX !== null && finalX > props.mouseMaxX) {
-          finalX = props.mouseMaxX;
-          offRef.x = finalX - ballPositions.current[i].x;
+        if (props.wallMinX !== null && finalX < props.wallMinX) {
+          finalX = props.wallMinX;
+        } else if (props.wallMaxX !== null && finalX > props.wallMaxX) {
+          finalX = props.wallMaxX;
         }
 
         metaBalls[i].set(finalX, finalY, p.radius, p.yScale);
@@ -987,6 +893,9 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
         scale={props.scale}
         renderOrder={props.renderOrder ?? 1}
         ref={meshRef}
+        // Purely decorative: never a hit target, so it stays out of raycasts
+        // even if something above it starts listening for pointer events.
+        raycast={() => null}
       >
         <planeGeometry args={[1, 1]} />
         <shaderMaterial
@@ -1058,11 +967,8 @@ const HolographicMetaBalls = forwardRef<
     pauseTarget = null,
     pauseSpeed = 0.2,
     pauseYOffset = 5,
-    mouseRadius = 0,
-    mouseStrength = 0,
-    mouseInfluenceSpeed = 0,
-    mouseMinX = null,
-    mouseMaxX = null,
+    wallMinX = null,
+    wallMaxX = null,
     holoTimeScale = HOLO.timeScale,
     holoTimeOffset = seed * 10,
     holoSeed = HOLO.seed,
@@ -1111,11 +1017,8 @@ const HolographicMetaBalls = forwardRef<
       pauseSpeed={pauseSpeed}
       pauseYOffset={pauseYOffset}
       ref={ref}
-      mouseRadius={mouseRadius}
-      mouseStrength={mouseStrength}
-      mouseInfluenceSpeed={mouseInfluenceSpeed}
-      mouseMinX={mouseMinX}
-      mouseMaxX={mouseMaxX}
+      wallMinX={wallMinX}
+      wallMaxX={wallMaxX}
       holoTimeScale={holoTimeScale}
       holoTimeOffset={holoTimeOffset}
       holoSeed={holoSeed}

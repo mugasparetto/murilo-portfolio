@@ -95,7 +95,7 @@ const GOO = {
  * not by Z — nothing in this group writes depth, so `renderOrder` decides
  * occlusion and everything below is a painterly cue:
  *   darker + softer edge + weaker rim = further away and out of focus,
- *   slower drift + weaker mouse response = parallax against the front layer.
+ *   slower drift = parallax against the front layer.
  */
 const GOO_BACK = {
   shade: 0.2,
@@ -103,7 +103,6 @@ const GOO_BACK = {
   fieldEdge: 0.5,
   rimLight: 0.08,
   speed: 0.32,
-  mouseStrength: 0,
   fieldPower: 0.75,
 } as const;
 
@@ -1758,8 +1757,8 @@ export default function Head({
       <MetaBalls
         ref={metaBallsHeadBack}
         position={[12, -630, 2605]}
-        mouseMinX={-11}
-        mouseMaxX={11}
+        wallMinX={-11}
+        wallMaxX={11}
         scale={[280, 280, 1]}
         enableTransparency
         animationSize={40}
@@ -1798,8 +1797,8 @@ export default function Head({
       <MetaBalls
         ref={metaBallsHeadFront}
         position={[8, -630, 2605]}
-        mouseMinX={-10}
-        mouseMaxX={10}
+        wallMinX={-10}
+        wallMaxX={10}
         scale={[340, 280, 1]}
         enableTransparency
         animationSize={40}
@@ -1810,7 +1809,7 @@ export default function Head({
         ballSpreadY={4}
         ballCount={9}
         pauseYOffset={25}
-        // 0.4 * animationSize * clumpFactor must stay inside mouseMaxX, or the
+        // 0.4 * animationSize * clumpFactor must stay inside wallMaxX, or the
         // outermost balls pile up against the wall and fuse into a solid edge.
         clumpFactor={0.7}
         anchors={[
@@ -1846,8 +1845,8 @@ export default function Head({
         ref={metaBallsMouthFront}
         position={[5, -830, 2605]}
         scale={[300, 280, 1]}
-        mouseMinX={-12}
-        mouseMaxX={12}
+        wallMinX={-12}
+        wallMaxX={12}
         enableTransparency
         seed={12}
         // Match the front head metaballs' colour phase (seed 10 → 10 * 10)
@@ -1870,8 +1869,8 @@ export default function Head({
         ref={metaBallsMouthBack}
         position={[10, -830, 2605]}
         scale={[300, 280, 1]}
-        mouseMinX={-12}
-        mouseMaxX={12}
+        wallMinX={-12}
+        wallMaxX={12}
         enableTransparency
         seed={12}
         // Match the back head metaballs' colour phase (seed 5 → 5 * 10)
