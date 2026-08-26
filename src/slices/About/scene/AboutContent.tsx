@@ -138,7 +138,7 @@ const LEADING = "leading-[1.46]";
  * straight onto the face. That predates this and is a design call, not a
  * performance one; if they should have a plate below `lg`, this is it.
  */
-const PLATE = "bg-black/60 lg:bg-black/40";
+const PLATE = "bg-black/40 backdrop-blur-lg";
 
 /**
  * Each card is nudged right of the one above it, so they read as a stair
@@ -517,18 +517,14 @@ function useCopyReveal(
 
 /** A rule and a label — the design's section markers. */
 function Eyebrow({
-  as: As = "p",
   ref,
   children,
 }: {
-  as?: "p" | "h3";
   ref?: Ref<HTMLElement>;
   children: ReactNode;
 }) {
   return (
-    <As
-      // `As` is a union, so TS wants a ref both elements accept; neither adds
-      // anything to HTMLElement that this — a GSAP target — could want
+    <h3
       ref={ref as Ref<HTMLParagraphElement & HTMLHeadingElement>}
       // the 0.72 is {@link EYEBROW_OPACITY} — keep the two in step
       className="flex items-center gap-2.5 opacity-[0.72]"
@@ -542,7 +538,7 @@ function Eyebrow({
       >
         {children}
       </span>
-    </As>
+    </h3>
   );
 }
 
@@ -669,9 +665,7 @@ export default function AboutContent({
           `lg` both are static, so they fall into the column in source order. */}
       {numbers.length > 0 && (
         <div className="lg:absolute lg:top-[10.7%] lg:left-[3.9%] lg:w-[30%]">
-          <Eyebrow as="h3" ref={statsEyebrowRef}>
-            my stats
-          </Eyebrow>
+          <Eyebrow ref={statsEyebrowRef}>my stats</Eyebrow>
         </div>
       )}
 
@@ -679,7 +673,7 @@ export default function AboutContent({
         ref={statsRef}
         // three across is what the design's count wants; a fourth card wraps
         // rather than squeezing the labels onto two lines
-        className="grid grid-cols-3 gap-2 empty:hidden lg:absolute lg:top-[14.2%] lg:left-[3.9%] lg:block lg:w-[30%] lg:space-y-2 -mt-2"
+        className="grid grid-cols-3 gap-2 empty:hidden lg:absolute lg:top-[14.2%] lg:left-[3.9%] lg:block lg:w-[30%] lg:space-y-2 -mt-2 lg:mt-1"
       >
         {numbers.map(({ number, label }, i) => (
           <li
@@ -756,7 +750,7 @@ export default function AboutContent({
           // share of this row; `order` because it reads first in the DOM and
           // sits second across
           <div ref={skillsRef} className="lg:order-2 lg:ml-auto lg:w-[34.3%]">
-            <Eyebrow as="h3">my skills</Eyebrow>
+            <Eyebrow>my skills</Eyebrow>
 
             {/* the rows sit edge to edge in the design, so the dividers are
                 one shared border rather than a gap. The list is narrower than
@@ -787,7 +781,7 @@ export default function AboutContent({
                 anyway: the hairline reason stands on its own, and the rule the
                 mask pass taught still holds for anything that comes back —
                 nothing on this layer wants a clipping ancestor. */}
-            <ul className="mt-2.5 lg:mt-3.5 mb-6 lg:mb-0 lg:w-[90.4%]">
+            <ul className="mt-2.5 lg:mt-4 mb-6 lg:mb-0 lg:w-[90.4%]">
               {skills.map(({ skill }, i) => (
                 <li
                   key={i}
