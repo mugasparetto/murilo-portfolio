@@ -509,10 +509,41 @@ export default function Scene({ scrollWindow }: Props) {
   const handleGrabbing = useCallback(
     (payload: null | "head" | "eyes" | "mouth") => {
       setGrabbing(payload);
-      shouldFloat.current = false;
     },
     [],
   );
+
+  /**
+   * The face has actually been disturbed — a piece moved, not merely pressed.
+   *
+   * This is what retires the float, rather than the grab itself: holding a
+   * piece pauses the bob on its own (see the frame loop's `grabbing` check), so
+   * a press that puts the piece straight back down leaves the scene exactly as
+   * it found it and the bob picks up where it paused. Only a piece that has
+   * actually gone somewhere stops it for good, because from then on the face is
+   * something being played with rather than something sitting there.
+   */
+  const handleDisturbed = useCallback(() => {
+    shouldFloat.current = false;
+  }, []);
+
+  /**
+   * The part of the mount state that isn't <Head />'s to put back.
+   *
+   * The float is retired by the first piece that actually moves and never
+   * started again, so a face returned to its home spot would otherwise sit
+   * there dead still. Picked up
+   * where it was left rather than rewound to the top of its cycle: the bob is a
+   * sine of the accumulated time and the face has been sitting at whatever
+   * height that sine was frozen at ever since, so starting the clock again from
+   * zero would drop it up to the full amplitude in a single frame — which is
+   * the one snap in a reset that is otherwise all easing. Nobody can tell which
+   * part of a bob they are watching; they can tell it jumped.
+   */
+  const handleReset = useCallback(() => {
+    setGrabbing(null);
+    shouldFloat.current = true;
+  }, []);
 
   return (
     <group>
@@ -553,7 +584,13 @@ export default function Scene({ scrollWindow }: Props) {
 
       <Suspense fallback={null}>
         {/* no hands on it below `lg` — see the prop */}
-        <Head ref={head} onGrabbing={handleGrabbing} still={!up.lg} />
+        <Head
+          ref={head}
+          onGrabbing={handleGrabbing}
+          onDisturbed={handleDisturbed}
+          onReset={handleReset}
+          still={!up.lg}
+        />
       </Suspense>
 
       {/* the section's HTML is a DOM overlay in <About />; this only drives it */}

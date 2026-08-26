@@ -28,6 +28,12 @@ export type SpriteHandle = {
    * pairwise test hold both polygons at once.
    */
   getWorldPolygon: () => THREE.Vector2[];
+  /**
+   * The authored spot — where the piece was on its first frame, and where
+   * `reset()` puts it back. Takes an `out` for the same reason the readers
+   * above do.
+   */
+  getHome: (out?: THREE.Vector3) => THREE.Vector3;
   isDragging: () => boolean;
   getCentreBox: () => THREE.Box3 | null;
   /**
@@ -45,6 +51,11 @@ export type SpriteHandle = {
   setEnabled: (enabled: boolean) => void;
   getGroup: () => THREE.Object3D;
   setInteractable: (value: boolean) => void;
+  /**
+   * Put the piece back exactly as it mounted: on its authored spot, at rest,
+   * with no gesture in flight and both hands free to pick it up again.
+   */
+  reset: () => void;
 };
 
 // ─── Throw tuning ─────────────────────────────────────────────────────────────
@@ -547,6 +558,18 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     const interactable = useRef(true);
 
     const enabledRef = useRef(true);
+
+    /**
+     * The authored spot, kept as a vector of its own so `reset()` has something
+     * to put the piece back on. The group's position is no use for that — React
+     * writes the prop there once on mount and everything since has been the
+     * drag, the throw and the snap.
+     */
+    const [homeX, homeY, homeZ] = position;
+    const home = useMemo(
+      () => new THREE.Vector3(homeX, homeY, homeZ),
+      [homeX, homeY, homeZ],
+    );
 
     const dragPlane = useRef(new THREE.Plane());
     const dragOffset = useRef(new THREE.Vector3());
@@ -1243,6 +1266,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         },
         setVelocity: (v) => throwVelocity.current.copy(v),
         isDragging: () => isDraggingRef.current,
+        getHome: (out) => (out ?? new THREE.Vector3()).copy(home),
         getCentreBox,
         setExtraBounds: (box: THREE.Box3 | null) => {
           hasExtraBounds.current = !!box;
@@ -1279,8 +1303,46 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         setInteractable: (value: boolean) => {
           interactable.current = value; // a new ref inside PolygonSprite
         },
+        reset: () => {
+          // Whatever gesture was in flight is over — the piece is about to be
+          // somewhere else. Dropping `dragOwner` matters most: a drag left
+          // holding it locks every piece out of the pointer for good.
+          isDraggingRef.current = false;
+          isPressedRef.current = false;
+          pointerPx.current = null;
+          velocitySamples.current.length = 0;
+          if (dragOwner === dragToken.current) dragOwner = null;
+
+          groupRef.current.position.copy(home);
+          throwVelocity.current.set(0, 0, 0);
+
+          // Both of these are switched off when the finished face is sent home,
+          // and nothing else ever switches them back on.
+          enabledRef.current = true;
+          interactable.current = true;
+
+          hasExtraBounds.current = false;
+          recovering.current = false;
+          // Seeded from the piece again by the next walls pass, which is what a
+          // piece that has never moved looks like to it.
+          lastWallPos.current.set(NaN, NaN, NaN);
+
+          // Only the piece the pointer is actually over speaks — all three are
+          // reset in a row, so the last one to call this would otherwise win.
+          // Worth saying at all because the piece has just become grabbable
+          // again under a pointer that hasn't moved, and a cursor only changes
+          // on a move.
+          if (isInsideRef.current) setPageCursor("grab");
+        },
       }),
-      [hull, worldHull, normalizedScale, getCentreBox, readPointerVelocity],
+      [
+        hull,
+        worldHull,
+        normalizedScale,
+        getCentreBox,
+        readPointerVelocity,
+        home,
+      ],
     );
 
     return (

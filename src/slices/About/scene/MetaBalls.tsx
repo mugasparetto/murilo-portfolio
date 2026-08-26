@@ -29,6 +29,28 @@ export type MetaBallsHandle = {
   setPauseTarget: (target: "top" | "bottom" | null) => void;
   setVisible: (visible: boolean) => void;
   setPauseYOffset: (offset: number) => void;
+  /**
+   * Slide the field away from where it was authored, in the parent's units,
+   * and say where its mask has gone with it.
+   *
+   * The two are separate because they need not be the same: the mask is a
+   * picture of one thing and the field hangs off another, so a caller moving
+   * the goo between two pieces that are themselves moving apart has an outline
+   * travelling at one speed and a field at another. Passing the mask's own
+   * movement is what keeps the outline over the thing it is an outline *of* —
+   * hand it the field's movement instead and the goo is clipped against a
+   * shape that isn't where it is being drawn.
+   *
+   * All zeroes puts both back where the props left them.
+   */
+  setOffset: (
+    fieldX: number,
+    fieldY: number,
+    maskX: number,
+    maskY: number,
+  ) => void;
+  /** Back to the field as it was on the first frame, and visible again. */
+  reset: () => void;
 };
 
 export type AnchorBall = {
@@ -465,7 +487,35 @@ type MaskUniforms = {
   scale: THREE.Vector2;
   offset: THREE.Vector2;
   floor: number;
+  /**
+   * The mask plane's own size, kept because `setOffset` has to turn a slide
+   * measured in the parent's units back into the mask's UV.
+   */
+  size: THREE.Vector2;
 };
+
+/**
+ * Write the plane-UV → mask-UV map into `target`, corrected for a field that has
+ * been slid by `field` and a mask plane that has gone with it by `mask`.
+ *
+ * Both writers of the uniform go through here — the frame loop, and `setOffset`
+ * itself. The loop alone isn't enough: <MetaBalls /> is a child of whatever is
+ * doing the sliding, so its loop is subscribed first and runs first, and a
+ * uniform left to it would be a frame behind the mesh position set after it.
+ * One frame of the outline trailing the goo is one frame of goo over the edge
+ * of it, which is the whole thing this correction exists to stop.
+ */
+function writeMaskOffset(
+  target: THREE.Vector2,
+  base: MaskUniforms,
+  field: THREE.Vector2,
+  mask: THREE.Vector2,
+) {
+  target.set(
+    base.offset.x + (field.x - mask.x) / base.size.x,
+    base.offset.y + (field.y - mask.y) / base.size.y,
+  );
+}
 
 /**
  * Resolve a FieldMask into the affine map from this plane's UV into the mask
@@ -486,6 +536,7 @@ function resolveMask(
       scale: new THREE.Vector2(1, 1),
       offset: new THREE.Vector2(0, 0),
       floor: 0,
+      size: new THREE.Vector2(1, 1),
     };
   }
 
@@ -504,6 +555,7 @@ function resolveMask(
     // 0 reads the very bottom row, so by default nothing is held and the mask
     // is just the texture's own alpha.
     floor: mask.floor ?? 0,
+    size: new THREE.Vector2(mw, mh),
   };
 }
 
@@ -522,6 +574,10 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
     const pauseTargetRef = useRef<"top" | "bottom" | null>(props.pauseTarget);
     const pauseYOffsetRef = useRef<number>(props.pauseYOffset);
 
+    /** How far the field and its mask have been slid — see `setOffset`. */
+    const slideField = useRef(new THREE.Vector2());
+    const slideMask = useRef(new THREE.Vector2());
+
     useImperativeHandle(ref, () => ({
       setPauseTarget: (target) => {
         pauseTargetRef.current = target;
@@ -531,6 +587,34 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
       },
       setPauseYOffset: (offset) => {
         pauseYOffsetRef.current = offset;
+      },
+      setOffset: (fieldX, fieldY, maskX, maskY) => {
+        slideField.current.set(fieldX, fieldY);
+        slideMask.current.set(maskX, maskY);
+        meshRef.current?.position.set(
+          props.position[0] + fieldX,
+          props.position[1] + fieldY,
+          props.position[2],
+        );
+        writeMaskOffset(
+          uniforms.uMaskOffset.value,
+          maskUniforms,
+          slideField.current,
+          slideMask.current,
+        );
+      },
+      reset: () => {
+        pauseTargetRef.current = props.pauseTarget;
+        pauseYOffsetRef.current = props.pauseYOffset;
+
+        slideField.current.set(0, 0);
+        slideMask.current.set(0, 0);
+        meshRef.current?.position.fromArray(props.position);
+        // Dropped rather than rewritten: the frame loop seeds them from the
+        // natural lane layout the moment it finds them missing, which is
+        // exactly what it did on the first frame.
+        ballPositions.current = null;
+        if (meshRef.current) meshRef.current.visible = true;
       },
     }));
 
@@ -733,7 +817,12 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
       uniforms.uMaskTex.value = maskUniforms.texture;
       uniforms.uMaskEnabled.value = maskUniforms.enabled;
       uniforms.uMaskScale.value.copy(maskUniforms.scale);
-      uniforms.uMaskOffset.value.copy(maskUniforms.offset);
+      writeMaskOffset(
+        uniforms.uMaskOffset.value,
+        maskUniforms,
+        slideField.current,
+        slideMask.current,
+      );
       uniforms.uMaskFloor.value = maskUniforms.floor;
 
       const anchors = props.anchors;

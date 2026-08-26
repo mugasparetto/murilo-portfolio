@@ -4,7 +4,10 @@ import { useFrame } from "@react-three/fiber";
 import { useTexture, Line } from "@react-three/drei";
 import MetaBalls, { FieldMask, MetaBallsHandle } from "./MetaBalls";
 import PolygonSprite, { UV, SpriteHandle, SpriteBounds } from "./PolygonSprite";
-import ThirdEye, { ThirdEyeHandle } from "./ThirdEye";
+import ThirdEye, {
+  ThirdEyeHandle,
+  CLOSE_DURATION as EYE_CLOSE,
+} from "./ThirdEye";
 
 // ─── The piece chain ──────────────────────────────────────────────────────────
 //
@@ -232,6 +235,19 @@ const SNAP_LERP = 0.18;
 const SETTLE_DISTANCE = 0.5;
 
 /**
+ * How far the piece in hand has to have travelled for the grab to count as
+ * having happened at all.
+ *
+ * A press that puts a piece back down where it found it leaves the scene
+ * exactly as it was, and the things a grab retires for the rest of the session
+ * should not be retired by one — see `onDisturbed`. Matched to the distance the
+ * goo survives (see the visibility loop at the end of this file), which is the
+ * other place the scene decides a piece has been moved: the pieces mount on
+ * `HOME`, so at the start of a session the two measure the same thing.
+ */
+const GRAB_SLOP = 2;
+
+/**
  * How much of its speed a piece in the finished face loses per 60Hz frame, so
  * the trio stops coasting instead of drifting on into the trip home.
  */
@@ -288,6 +304,57 @@ const TRAVEL_SPEED = 300;
  */
 const TRAVEL_RANGE = 80;
 
+// ─── The trip back ────────────────────────────────────────────────────────────
+//
+// Clicking the open eye puts the section back to the way it mounted, and it
+// plays its arrival in reverse: the eye shuts first, and only then do the pieces
+// slide back onto the spot they started from, opening the two seams they closed
+// on the way in. Nothing is grabbable while that runs — the pieces are already
+// hands-off from the settle, and they stay that way until they land.
+
+/**
+ * How long the pieces take to slide back to where they mounted.
+ *
+ * A duration rather than the speed the trip *home* is given, because unlike
+ * that trip this one is near enough the same journey every time: the eye is
+ * only ever there to click on a face that is whole and parked, so the pieces
+ * have the two chain steps to undo, plus at most the {@link TRAVEL_RANGE} of
+ * slack the trip home doesn't bother closing.
+ */
+const RESET_DURATION = 0.8;
+
+/**
+ * Carry one seam's pair of fields part of the way back, given how far the two
+ * pieces it lies between still have to go.
+ *
+ * The field rides the midpoint of those two, because that midpoint *is* the
+ * seam: it is the gap between them that the goo hangs in, so the gap opening
+ * around a field left where it was is the goo sitting still while the bands
+ * slide off it.
+ *
+ * The outline the field is clipped by rides the upper piece alone, because that
+ * is the band the mask is a picture of — see the two masks in <Head />, one
+ * taken from each of the top two slices. On the way back the two travel
+ * different distances, and a mask carried along with its field is a head-shaped
+ * hole in the wrong place: the goo spills out over the real head at the top,
+ * which is the whole reason these are handed over separately.
+ */
+function carrySeam(
+  front: MetaBallsHandle | null,
+  back: MetaBallsHandle | null,
+  upper: THREE.Vector2,
+  lower: THREE.Vector2,
+  slack: number,
+) {
+  const fieldX = ((upper.x + lower.x) / 2) * slack;
+  const fieldY = ((upper.y + lower.y) / 2) * slack;
+  const maskX = upper.x * slack;
+  const maskY = upper.y * slack;
+
+  front?.setOffset(fieldX, fieldY, maskX, maskY);
+  back?.setOffset(fieldX, fieldY, maskX, maskY);
+}
+
 /** Ease in and out, so the face leans into the trip and coasts to a stop. */
 function easeInOut(t: number) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -310,8 +377,10 @@ type Bond = {
  * `loose` — the pieces are in play, being dragged, thrown and snapped.
  * `homing` — the face is whole and flying back to `HOME`.
  * `done` — parked, inert, eye open.
+ * `resetting` — the eye is shutting and the pieces are on their way back to
+ * where they mounted, after which it is `loose` again.
  */
-type Phase = "loose" | "homing" | "done";
+type Phase = "loose" | "homing" | "done" | "resetting";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -868,6 +937,18 @@ type Props = {
   ref: RefObject<THREE.Group | null>;
   onGrabbing: (payload: PieceName | null) => void;
   /**
+   * A piece has actually been moved, as opposed to merely pressed. Fires at the
+   * release of a grab that came to something, at most once per grab, and never
+   * for one that didn't — see {@link GRAB_SLOP}.
+   */
+  onDisturbed?: () => void;
+  /**
+   * The scene has been put back to the start — see `handleReset`. Only the bits
+   * of the mount state that live outside this component are left to do, which
+   * today is the float <Scene /> stops on the first grab.
+   */
+  onReset?: () => void;
+  /**
    * A face nobody can take apart: no drag, no throw, and — because those are
    * the only things that ever move a piece — no walls to hold the pieces in.
    *
@@ -883,7 +964,13 @@ type Props = {
   still?: boolean;
 };
 
-export default function Head({ ref, onGrabbing, still = false }: Props) {
+export default function Head({
+  ref,
+  onGrabbing,
+  onDisturbed,
+  onReset,
+  still = false,
+}: Props) {
   const bottom = useTexture("/textures/head/bottom.webp");
   const middle = useTexture("/textures/head/middle.webp");
   const top = useTexture("/textures/head/top.webp");
@@ -906,6 +993,30 @@ export default function Head({ ref, onGrabbing, still = false }: Props) {
   });
 
   const thirdEye = useRef<ThirdEyeHandle>(null);
+
+  /** The piece in hand, and where it was when it was picked up. */
+  const heldPiece = useRef<SpriteHandle | null>(null);
+  const heldFrom = useRef(new THREE.Vector3());
+
+  /**
+   * The trip back: how far in it is, and where each piece is going from and to.
+   * Both ends are read once when the reset is asked for — neither moves while it
+   * runs — so the loop is a lerp and nothing else.
+   */
+  const rewind = useRef({
+    elapsed: 0,
+    from: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
+    to: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
+    /**
+     * How far each piece has to travel, in XY — what the trip scales down to
+     * nothing. The goo is carried by these rather than by its own pair of ends:
+     * everything on the way back is a plain lerp of the same shape, so a field
+     * or an outline that belongs to a piece can be read straight off this.
+     */
+    offset: [new THREE.Vector2(), new THREE.Vector2(), new THREE.Vector2()],
+    /** Whether the goo has been handed back yet. Once per trip. */
+    goo: false,
+  });
 
   // ── Snap state ──────────────────────────────────────────────────────────────
   const bonds = useRef<Bond[]>([
@@ -996,9 +1107,113 @@ export default function Head({ ref, onGrabbing, still = false }: Props) {
       metaBallsHeadBack.current?.setPauseTarget(headTarget);
       metaBallsMouthFront.current?.setPauseTarget(mouthTarget);
       metaBallsMouthBack.current?.setPauseTarget(mouthTarget);
+
+      // ── Did the grab come to anything? ───────────────────────────────────
+      //
+      // Answered at the release, because that is the first moment it can be:
+      // a press and a drag look identical going in. Everything above is undone
+      // by the release either way — the bonds re-arm, the goo unpauses — so
+      // this is only for what a grab switches off for good.
+      if (payload === null) {
+        const piece = heldPiece.current;
+        heldPiece.current = null;
+
+        if (
+          piece &&
+          piece.getPosition(posA).distanceTo(heldFrom.current) > GRAB_SLOP
+        ) {
+          onDisturbed?.();
+        }
+
+        return;
+      }
+
+      heldPiece.current =
+        payload === "head"
+          ? headRef.current
+          : payload === "eyes"
+            ? eyesRef.current
+            : mouthRef.current;
+      heldPiece.current?.getPosition(heldFrom.current);
     },
-    [onGrabbing],
+    [onGrabbing, onDisturbed],
   );
+
+  /**
+   * Start putting the section back to the way it mounted — what clicking the
+   * open third eye asks for.
+   *
+   * Only the two ends of the journey are settled here; the eye shuts on its own
+   * clock and the frame loop walks the pieces. Almost nothing is undone yet —
+   * for the length of the trip this is still the scene being left, with the
+   * bonds locked and the pieces out of the user's reach exactly as the settle
+   * left them. The one thing that comes back on the way is the goo, which the
+   * loop hands over as the seams it hangs in start to open.
+   */
+  const handleReset = useCallback(() => {
+    // Only ever from the finished scene. Everything below assumes a face that
+    // is whole, parked and hands-off, which is the only state the eye is there
+    // to be clicked in.
+    if (phase.current !== "done") return;
+
+    const head = headRef.current;
+    const eyes = eyesRef.current;
+    const mouth = mouthRef.current;
+    // Ahead of the eye, so a trip that can't be made isn't one the eye has
+    // already shut for.
+    if (!head || !eyes || !mouth) return;
+
+    thirdEye.current?.close();
+
+    const r = rewind.current;
+    r.elapsed = 0;
+    r.goo = false;
+
+    const pieces = [head, eyes, mouth];
+    for (let i = 0; i < PIECE_COUNT; i++) {
+      pieces[i].getPosition(r.from[i]);
+      pieces[i].getHome(r.to[i]);
+      r.offset[i].set(r.from[i].x - r.to[i].x, r.from[i].y - r.to[i].y);
+    }
+
+    phase.current = "resetting";
+  }, []);
+
+  /**
+   * The pieces have landed: put everything else back with them.
+   *
+   * Each thing that moved belongs to the component that owns it, and each knows
+   * what it looked like on its own first frame — so this is the roll call
+   * rather than the undo. What is genuinely this component's is the bookkeeping
+   * either side of it: the phase, the bonds, and the caches the frame loop
+   * measures against.
+   */
+  const finishReset = useCallback(() => {
+    phase.current = "loose";
+
+    for (let b = 0; b < BOND_COUNT; b++) {
+      const bond = bonds.current[b];
+      bond.locked = false;
+      bond.armed = true;
+    }
+
+    // Seeded from the pieces again on the next frame, so the last step of the
+    // trip back isn't read as a step the followers have to be carried by.
+    lastPos.current.valid = false;
+
+    const trip = travel.current;
+    trip.elapsed = 0;
+    trip.duration = 0;
+    trip.from.set(0, 0, 0);
+
+    // The pieces are already on their spot to within a rounding error — this is
+    // what puts them on it exactly, and hands them back to the user.
+    headRef.current?.reset();
+    eyesRef.current?.reset();
+    mouthRef.current?.reset();
+
+    onReset?.();
+  }, [onReset]);
 
   // ── Snap + collision frame loop ────────────────────────────────────────────
   useFrame((_, delta) => {
@@ -1057,6 +1272,69 @@ export default function Head({ ref, onGrabbing, still = false }: Props) {
         phase.current = "done";
         thirdEye.current?.open();
       }
+      return;
+    }
+
+    // ── 0b. The trip back ────────────────────────────────────────────────────
+    //
+    // Nothing else runs while this does, for the same reason nothing runs
+    // through the trip home: the pieces are being written outright, and both
+    // the snap lerp and the collision pass would only fight the lerp.
+    //
+    // Each piece walks its own line rather than the head leading and the other
+    // two riding along, because the whole point of the trip is that they *stop*
+    // being one body: what it undoes is the two chain steps that pulled the
+    // seams shut, so the pieces have to come apart by exactly those as they go.
+    if (phase.current === "resetting") {
+      const r = rewind.current;
+      r.elapsed += dt;
+
+      // The eye shuts before the face moves — the arrival in reverse, which put
+      // the face home first and opened the eye on it afterwards.
+      const progress = Math.min(
+        Math.max(r.elapsed - EYE_CLOSE, 0) / RESET_DURATION,
+        1,
+      );
+
+      // The goo comes back as the seams start to open rather than once they
+      // have. Every field is drawn behind the face (see the render orders), so
+      // while the seams are shut there is none of it to see — and from here it
+      // is revealed by the very gap it hangs in, which is the whole picture
+      // rather than a thing that appears in it.
+      if (!r.goo && r.elapsed >= EYE_CLOSE) {
+        r.goo = true;
+        metaBallsHeadFront.current?.reset();
+        metaBallsHeadBack.current?.reset();
+        metaBallsMouthFront.current?.reset();
+        metaBallsMouthBack.current?.reset();
+      }
+
+      const eased = easeInOut(progress);
+
+      for (let i = 0; i < PIECE_COUNT; i++) {
+        posA.lerpVectors(r.from[i], r.to[i], eased);
+        chain[i].setPosition(posA);
+      }
+
+      // The same lerp, run on the two seams. Both fall to zero exactly as the
+      // pieces land, which is where the fields were authored.
+      const slack = 1 - eased;
+      carrySeam(
+        metaBallsHeadFront.current,
+        metaBallsHeadBack.current,
+        r.offset[HEAD],
+        r.offset[EYES],
+        slack,
+      );
+      carrySeam(
+        metaBallsMouthFront.current,
+        metaBallsMouthBack.current,
+        r.offset[EYES],
+        r.offset[MOUTH],
+        slack,
+      );
+
+      if (progress >= 1) finishReset();
       return;
     }
 
@@ -1234,6 +1512,11 @@ export default function Head({ ref, onGrabbing, still = false }: Props) {
     const eyes = eyesRef.current;
     const mouth = mouthRef.current;
 
+    // The trip back is the one time pieces are away from `HOME` *and* the goo
+    // belongs on screen: they are on their way to the arrangement it is pinned
+    // to, so it is being revealed rather than escaped from.
+    if (phase.current === "resetting") return;
+
     if (head && metaBallsHeadFront.current && metaBallsHeadBack.current) {
       const headPosition = head.getPosition(posA);
       if (headPosition.distanceTo(HOME) > 2) {
@@ -1292,7 +1575,12 @@ export default function Head({ ref, onGrabbing, still = false }: Props) {
       >
         {/* Rides the skull cap, so it stays put through the float, the drag and
             the throw — and only shows itself once the face is whole. */}
-        <ThirdEye ref={thirdEye} skin={top} spriteScale={scale} />
+        <ThirdEye
+          ref={thirdEye}
+          skin={top}
+          spriteScale={scale}
+          onReset={handleReset}
+        />
       </PolygonSprite>
 
       <MetaBalls

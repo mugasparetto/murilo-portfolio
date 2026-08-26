@@ -109,6 +109,15 @@ const OPEN_DURATION = 1.2;
 /** Overshoot on the reveal, so it snaps wide and settles rather than easing in. */
 const OPEN_OVERSHOOT = 0.12;
 
+/**
+ * How long the eye takes to shut when the scene is put back to the start.
+ *
+ * A good deal slower than a blink's own shut, which is a tic you barely catch:
+ * this is the eye deliberately closing, and it is the first half of the reset.
+ * <Head /> times the second half against it, which is why it is exported.
+ */
+export const CLOSE_DURATION = 0.35;
+
 const BLINK_DURATION = 0.26;
 /** Fraction of a blink spent closing. The rest is the slower reopen. */
 const BLINK_CLOSE = 0.38;
@@ -298,6 +307,12 @@ void main() {
 export type ThirdEyeHandle = {
   /** Start the reveal. Ignored once it has already been asked to open. */
   open: () => void;
+  /**
+   * Shut the eye over {@link CLOSE_DURATION} and put it away, leaving it
+   * exactly as it was before it was ever asked to open — ready to be revealed
+   * again by the next `open()`. Ignored unless the eye is open and idle.
+   */
+  close: () => void;
 };
 
 type Props = {
@@ -306,9 +321,15 @@ type Props = {
   skin: THREE.Texture;
   /** World scale of the head sprite, so the lid can find its own patch of skin. */
   spriteScale: [number, number, number];
+  /**
+   * Clicking the open eye. It is the one thing in the finished scene still
+   * asking to be touched, so it is what puts the scene back to the start —
+   * see `handleReset` in <Head />, which is where that actually happens.
+   */
+  onReset?: () => void;
 };
 
-type Phase = "hidden" | "opening" | "idle";
+type Phase = "hidden" | "opening" | "idle" | "closing";
 
 /** Scratch for the pointer test below. Never outlives the frame it is written in. */
 const eyeNdc = new THREE.Vector3();
@@ -331,7 +352,36 @@ function easeOutBack(t: number) {
   return 1 + u * u * ((OPEN_OVERSHOOT + 1) * u + OPEN_OVERSHOOT);
 }
 
-export default function ThirdEye({ ref, skin, spriteScale }: Props) {
+/**
+ * Everything the frame loop mutates, at the values it mounts with.
+ *
+ * A factory rather than a literal in the ref, because the end of `close()` has
+ * to put the eye back to exactly this, and a second list of the same fields is
+ * a list that will drift from this one.
+ */
+const initialState = () => ({
+  phase: "hidden" as Phase,
+  delay: 0,
+  /** Reveal progress, 0–1. */
+  reveal: 0,
+  /** Shut progress, 0–1, once the eye has been asked to close. */
+  closing: 0,
+  /** Blink progress, 0–1, or < 0 when the eye is not blinking. */
+  blink: -1,
+  /** Seconds of idle left before the next blink. */
+  untilBlink: 0,
+  /** Whether the blink running now is the first of a pair. */
+  doubleBlink: false,
+  gaze: new THREE.Vector2(),
+  gazeTarget: new THREE.Vector2(),
+  untilSaccade: 0,
+  /** Whether the pointer currently holds the gaze. Drives the hysteresis. */
+  following: false,
+  spin: 0,
+  spinVel: 0,
+});
+
+export default function ThirdEye({ ref, skin, spriteScale, onReset }: Props) {
   const group = useRef<THREE.Group>(null);
   const orb = useRef<THREE.Mesh>(null);
   const pupil = useRef<THREE.Mesh>(null);
@@ -456,49 +506,22 @@ export default function ThirdEye({ ref, skin, spriteScale }: Props) {
     live.current = { lid: lidUniforms, orb: orbMat.uniforms };
   }, [lidUniforms, orbMat]);
 
-  const state = useRef({
-    phase: "hidden" as Phase,
-    delay: 0,
-    /** Reveal progress, 0–1. */
-    reveal: 0,
-    /** Blink progress, 0–1, or < 0 when the eye is not blinking. */
-    blink: -1,
-    /** Seconds of idle left before the next blink. */
-    untilBlink: 0,
-    /** Whether the blink running now is the first of a pair. */
-    doubleBlink: false,
-    gaze: new THREE.Vector2(),
-    gazeTarget: new THREE.Vector2(),
-    untilSaccade: 0,
-    /** Whether the pointer currently holds the gaze. Drives the hysteresis. */
-    following: false,
-    spin: 0,
-    spinVel: 0,
-  });
+  const state = useRef(initialState());
 
   /** Whether the pointer is over the eye, so the cursor can be handed back. */
   const hovering = useRef(false);
 
   /**
-   * Blink on click.
+   * Click the open eye to put the scene back to the start.
    *
-   * Idle only: through the reveal `uOpen` belongs to the ease, and a blink
-   * folded into it would fight the overshoot rather than read as one.
+   * Idle only: the eye is not something to press at while it is still coming
+   * open, and a reset booked mid-reveal would take the scene apart under an
+   * animation that is still playing.
    */
   const handlePointerDown = useCallback(() => {
-    const s = state.current;
-    if (s.phase !== "idle") return;
-
-    // Clicking again mid-blink books a second one on the end instead of
-    // restarting this one, which would snap the lids open half way through.
-    if (s.blink >= 0) {
-      s.doubleBlink = true;
-      return;
-    }
-
-    s.blink = 0;
-    s.doubleBlink = false;
-  }, []);
+    if (state.current.phase !== "idle") return;
+    onReset?.();
+  }, [onReset]);
 
   const handlePointerOver = useCallback(() => {
     if (state.current.phase !== "idle") return;
@@ -529,6 +552,23 @@ export default function ThirdEye({ ref, skin, spriteScale }: Props) {
       s.spinVel = SPIN_BURST;
       s.untilSaccade = randomIn(SACCADE_INTERVAL);
     },
+    close: () => {
+      const s = state.current;
+      if (s.phase !== "idle") return;
+
+      s.phase = "closing";
+      s.closing = 0;
+      // A blink caught mid-flight would be reopening the lids underneath the
+      // shut, so it is dropped rather than played out.
+      s.blink = -1;
+      s.doubleBlink = false;
+
+      // Inert from here — every handler above is idle-only — so the cursor goes
+      // back now rather than waiting for the lids to meet. Clearing the flag is
+      // also what stops the real `pointerout`, which the eye is about to fire
+      // as it vanishes, from doing this a second time.
+      handlePointerOut();
+    },
   }));
 
   useFrame(({ clock, camera, pointer, size }, delta) => {
@@ -553,8 +593,36 @@ export default function ThirdEye({ ref, skin, spriteScale }: Props) {
       }
     }
 
-    // ── Blinks ────────────────────────────────────────────────────────────────
+    // ── Blinks, and the one shut that isn't one ───────────────────────────────
+    //
+    // Both come out as `shut`, which is what the lid is driven by: the eye
+    // closing for good is the same movement as a blink, just slower and without
+    // the reopen.
     let shut = 0;
+
+    if (s.phase === "closing") {
+      s.closing += dt / CLOSE_DURATION;
+
+      if (s.closing >= 1) {
+        // Shut. Everything the loop drives is put back by hand here, because
+        // `hidden` stops it dead and none of it is written again until the next
+        // reveal starts from the top.
+        live.current.lid.uOpen.value = 0;
+        if (group.current) group.current.visible = false;
+
+        if (orb.current) {
+          orb.current.position.set(0, 0, 0);
+          orb.current.rotation.z = 0;
+        }
+        pupil.current?.position.set(0, 0, 0);
+        bead.current?.position.set(0, 0, 0);
+
+        state.current = initialState();
+        return;
+      }
+
+      shut = smooth(s.closing);
+    }
 
     if (s.phase === "idle") {
       if (s.blink >= 0) {
@@ -705,7 +773,7 @@ export default function ThirdEye({ ref, skin, spriteScale }: Props) {
         <planeGeometry args={[LID.width, LID.height]} />
       </mesh>
 
-      {/* Click target for the blink. A mesh of its own rather than handlers on
+      {/* Click target. A mesh of its own rather than handlers on
           the group or on the lid: R3F raycasts an interactive object's
           descendants too, so hanging them on the group would test the orb and
           both discs on every pointermove, and the lid quad reaches out into
