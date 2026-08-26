@@ -1833,8 +1833,8 @@ export default function Head({
         hoverCursor={still ? "pointer" : "grab"}
       >
         <HalfCircleWithDisk
-          radius={122}
-          position={[5, 82, -1]}
+          radius={122.5}
+          position={[5.5, 82, -1]}
           scale={[1, 0.1, 1]}
           thickness={2}
           renderOrder={0}
@@ -1920,7 +1920,7 @@ export default function Head({
         hoverCursor={still ? "pointer" : "grab"}
       >
         <HalfCircleWithDisk
-          radius={122}
+          radius={123}
           position={[1, -58, -5]}
           scale={[1, 0.1, 1]}
           thickness={2}
