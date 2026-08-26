@@ -952,14 +952,17 @@ type Props = {
    * A face nobody can take apart: no drag, no throw, and — because those are
    * the only things that ever move a piece — no walls to hold the pieces in.
    *
-   * Set below `lg`, where the head is a block in a scrolling column rather than
-   * a thing on a page: a touch drag there is the page pan, which the browser
-   * takes over mid-gesture anyway, and the walls are worse than useless. They
-   * are measured against the screen in world units — see {@link PIECE_BOUNDS} —
-   * and the group is scaled and moved to sit in the column below `lg`, so a
-   * piece's own coordinates no longer say where it is on screen. Turning them
-   * off is exactly right rather than merely cheap: with nothing to move the
-   * pieces, there is nothing for a wall to catch.
+   * Set on touch devices, at any width: a drag there is a finger, and a finger
+   * on the page is the page pan, which the browser takes over mid-gesture
+   * anyway — the grab is lost halfway through and the piece is left wherever
+   * the browser stopped listening. A cursor can't be misread that way, so a
+   * narrow desktop window keeps its hands even though the head is laid out as a
+   * block in the scrolling column there; the screen walls follow it, since they
+   * are measured into the group's own frame — see {@link PIECE_BOUNDS} and
+   * `spanToParentFrame`.
+   *
+   * Dropping the walls with the drag is exactly right rather than merely cheap:
+   * with nothing to move the pieces, there is nothing for a wall to catch.
    */
   still?: boolean;
 };

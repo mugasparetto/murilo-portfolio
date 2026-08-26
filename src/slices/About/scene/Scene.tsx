@@ -9,10 +9,10 @@ import {
 } from "react";
 import { ThreeElements, useFrame, useThree } from "@react-three/fiber";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
+import { useCoarsePointer } from "@/app/hooks/pointer";
 import Head, { FACE_HEIGHT, FACE_HOME } from "./Head";
 import Title from "./Title";
 import { AboutOverlayDriver, columnOffset, readFaceSlot } from "./AboutOverlay";
-import { KeyTextField } from "@prismicio/client";
 import {
   makeRanges,
   segmentProgress,
@@ -324,6 +324,7 @@ type Props = {
 
 export default function Scene({ scrollWindow }: Props) {
   const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
+  const coarsePointer = useCoarsePointer();
   const head = useRef<THREE.Group | null>(null);
   // the page position Lenis has eased to this frame — the same one the layer
   // the head is being fitted into is placed by
@@ -583,13 +584,13 @@ export default function Scene({ scrollWindow }: Props) {
       )}
 
       <Suspense fallback={null}>
-        {/* no hands on it below `lg` — see the prop */}
+        {/* no hands on it under a finger — see the prop */}
         <Head
           ref={head}
           onGrabbing={handleGrabbing}
           onDisturbed={handleDisturbed}
           onReset={handleReset}
-          still={!up.lg}
+          still={coarsePointer || !up.lg}
         />
       </Suspense>
 
