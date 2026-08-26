@@ -306,10 +306,10 @@ const TRAVEL_RANGE = 80;
 
 // ─── The trip back ────────────────────────────────────────────────────────────
 //
-// Clicking the open eye puts the section back to the way it mounted, and it
-// plays its arrival in reverse: the eye shuts first, and only then do the pieces
-// slide back onto the spot they started from, opening the two seams they closed
-// on the way in. Nothing is grabbable while that runs — the pieces are already
+// Clicking the open eye — or, on a `still` head, anywhere on the face — puts
+// the section back to the way it mounted, and it plays its arrival in reverse:
+// the eye shuts first, and only then do the pieces slide back onto the spot
+// they started from, opening the two seams they closed on the way in. Nothing is grabbable while that runs — the pieces are already
 // hands-off from the settle, and they stay that way until they land.
 
 /**
@@ -322,6 +322,18 @@ const TRAVEL_RANGE = 80;
  * slack the trip home doesn't bother closing.
  */
 const RESET_DURATION = 0.8;
+
+/**
+ * How long the pieces take to slide onto each other on the way *in*, for the
+ * `still` head that assembles itself under a tap rather than under a hand.
+ *
+ * The trip back's twin, and it runs on the same machinery: a lerp between the
+ * mounted pose and the assembled one, with `carrySeam` below walking the goo
+ * along with the seams. A shade longer than that one, because the seams
+ * shutting over the goo is the whole of what the tap buys — where the trip back
+ * is the way out of a face you have already watched assemble.
+ */
+const ASSEMBLE_DURATION = 0.9;
 
 /**
  * Carry one seam's pair of fields part of the way back, given how far the two
@@ -376,11 +388,13 @@ type Bond = {
 /**
  * `loose` — the pieces are in play, being dragged, thrown and snapped.
  * `homing` — the face is whole and flying back to `HOME`.
+ * `assembling` — a `still` head is putting itself together under a tap, which
+ * leaves it where `homing` would have: whole, on `HOME`, `done`.
  * `done` — parked, inert, eye open.
  * `resetting` — the eye is shutting and the pieces are on their way back to
  * where they mounted, after which it is `loose` again.
  */
-type Phase = "loose" | "homing" | "done" | "resetting";
+type Phase = "loose" | "homing" | "assembling" | "done" | "resetting";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -963,6 +977,10 @@ type Props = {
    *
    * Dropping the walls with the drag is exactly right rather than merely cheap:
    * with nothing to move the pieces, there is nothing for a wall to catch.
+   *
+   * What it has instead of the drag is a tap: one on any slice puts the face
+   * together and opens the eye, and one anywhere on the finished face — slice
+   * or eye — puts it back. See `handleTap`.
    */
   still?: boolean;
 };
@@ -1019,6 +1037,23 @@ export default function Head({
     offset: [new THREE.Vector2(), new THREE.Vector2(), new THREE.Vector2()],
     /** Whether the goo has been handed back yet. Once per trip. */
     goo: false,
+  });
+
+  /**
+   * The trip in, and the same three things about it: how far in it is, and
+   * where each piece is going from and to. {@link rewind} run the other way,
+   * for the `still` head — see `handleAssemble`.
+   *
+   * `offset` points the other way with it. On the way back it is how far each
+   * piece has left to go; here it is how far each has come. Both are the same
+   * quantity — the piece's distance from the pose the goo is authored in —
+   * read off whichever end of the trip the pieces are heading away from.
+   */
+  const assembly = useRef({
+    elapsed: 0,
+    from: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
+    to: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
+    offset: [new THREE.Vector2(), new THREE.Vector2(), new THREE.Vector2()],
   });
 
   // ── Snap state ──────────────────────────────────────────────────────────────
@@ -1166,7 +1201,13 @@ export default function Head({
     // already shut for.
     if (!head || !eyes || !mouth) return;
 
-    thirdEye.current?.close();
+    // And the eye ahead of everything else, because it is the one thing here
+    // that can refuse: it will not shut while it is still coming open, and a
+    // face that came apart under it would leave the reveal playing over an
+    // empty spot. The `still` head's tap is what makes that reachable — the eye
+    // gates its own click, but a slice is tappable from the moment the face
+    // lands.
+    if (!thirdEye.current?.close()) return;
 
     const r = rewind.current;
     r.elapsed = 0;
@@ -1217,6 +1258,67 @@ export default function Head({
 
     onReset?.();
   }, [onReset]);
+
+  /**
+   * Put the face together on its own — what a tap on a `still` head asks for,
+   * and its answer to the drag it hasn't got.
+   *
+   * Both ends of the trip are settled here and the frame loop walks the pieces,
+   * exactly as the trip back does it. The head is left where it stands and the
+   * two bands come up onto it, so the arrangement it lands in is the one the
+   * snap builds and the spot it lands on is the one it was already parked on —
+   * which is why nothing flies home afterwards, and only the eye is left.
+   */
+  const handleAssemble = useCallback(() => {
+    // A tap is only ever an offer. Every other phase is one where something
+    // already has the pieces — the loop, the user's hand, or a trip in flight —
+    // and none of them wants a second thing writing positions underneath it.
+    if (phase.current !== "loose") return;
+
+    const head = headRef.current;
+    const eyes = eyesRef.current;
+    const mouth = mouthRef.current;
+    if (!head || !eyes || !mouth) return;
+
+    const a = assembly.current;
+    a.elapsed = 0;
+
+    const pieces = [head, eyes, mouth];
+    for (let i = 0; i < PIECE_COUNT; i++) pieces[i].getPosition(a.from[i]);
+
+    // Each band onto the one above it, by the step that shuts its seam — so the
+    // head has nowhere to go and no offset for the goo to be carried by. Z is
+    // left alone piece by piece, as everywhere else the chain is walked: it is
+    // render layering and nothing else.
+    a.to[HEAD].copy(a.from[HEAD]);
+    a.offset[HEAD].set(0, 0);
+
+    for (let i = 1; i < PIECE_COUNT; i++) {
+      const step = CHAIN_STEP[i - 1];
+      a.to[i].set(a.to[i - 1].x + step.x, a.to[i - 1].y + step.y, a.from[i].z);
+      a.offset[i].set(a.to[i].x - a.from[i].x, a.to[i].y - a.from[i].y);
+    }
+
+    phase.current = "assembling";
+  }, []);
+
+  /**
+   * A tap on one of the three slices, which is the whole of a `still` head's
+   * interaction: it puts together a face that is in pieces, and puts back one
+   * that is whole.
+   *
+   * Neither half touches a trip in flight — both open with a phase guard — so a
+   * tap during one does nothing rather than turning the face around halfway
+   * through it.
+   *
+   * The open eye is the other way of asking for the reset and answers to its
+   * own click; a tap that lands on both says the same thing twice, and the
+   * second one arrives to a scene already on its way back.
+   */
+  const handleTap = useCallback(() => {
+    if (phase.current === "loose") handleAssemble();
+    else handleReset();
+  }, [handleAssemble, handleReset]);
 
   // ── Snap + collision frame loop ────────────────────────────────────────────
   useFrame((_, delta) => {
@@ -1338,6 +1440,69 @@ export default function Head({
       );
 
       if (progress >= 1) finishReset();
+      return;
+    }
+
+    // ── 0c. The trip in ──────────────────────────────────────────────────────
+    //
+    // The block above run forwards, for the `still` head assembling itself
+    // under a tap: the pieces slide onto the arrangement the snap would have
+    // built, the two seams shut over the goo hanging in them, and the eye opens
+    // on the face at the end — the beat the trip home finishes on, since a face
+    // assembled where it was parked has nowhere left to fly to.
+    //
+    // Nothing else in the loop runs while it does, for the reason the other two
+    // trips give: the pieces are being written outright, so the snap lerp and
+    // the collision pass have nothing to do but fight it.
+    if (phase.current === "assembling") {
+      const a = assembly.current;
+      a.elapsed += dt;
+
+      const progress = Math.min(a.elapsed / ASSEMBLE_DURATION, 1);
+      const eased = easeInOut(progress);
+
+      for (let i = 0; i < PIECE_COUNT; i++) {
+        posA.lerpVectors(a.from[i], a.to[i], eased);
+        chain[i].setPosition(posA);
+      }
+
+      // Each seam carried by how far the two pieces either side of it have
+      // come, which is what keeps the goo hanging *in* the gap while the gap
+      // shuts on it. A field left where it was authored would instead have the
+      // bands sliding across it, and the last thing you would see of the goo is
+      // it standing off the seam rather than being swallowed by it.
+      carrySeam(
+        metaBallsHeadFront.current,
+        metaBallsHeadBack.current,
+        a.offset[HEAD],
+        a.offset[EYES],
+        eased,
+      );
+      carrySeam(
+        metaBallsMouthFront.current,
+        metaBallsMouthBack.current,
+        a.offset[EYES],
+        a.offset[MOUTH],
+        eased,
+      );
+
+      if (progress >= 1) {
+        // The two bonds the drag flow would have locked on the way here.
+        // Nothing reads them while the face is `done`, but the reset hands the
+        // pieces back through `finishReset`, and it is these it clears.
+        for (let b = 0; b < BOND_COUNT; b++) {
+          bonds.current[b].locked = true;
+          bonds.current[b].armed = true;
+        }
+
+        // Seeded from the pieces again on the next loose frame, so the last
+        // step of this trip isn't read as a step a follower has to be carried
+        // by.
+        lastPos.current.valid = false;
+
+        phase.current = "done";
+        thirdEye.current?.open();
+      }
       return;
     }
 
@@ -1515,10 +1680,12 @@ export default function Head({
     const eyes = eyesRef.current;
     const mouth = mouthRef.current;
 
-    // The trip back is the one time pieces are away from `HOME` *and* the goo
-    // belongs on screen: they are on their way to the arrangement it is pinned
-    // to, so it is being revealed rather than escaped from.
-    if (phase.current === "resetting") return;
+    // The two trips between the mounted pose and the assembled one are the
+    // times a piece is away from `HOME` *and* the goo belongs on screen: the
+    // seams open on the way back and shut on the way in, and the goo is what
+    // hangs in them either way — revealed or swallowed by the very gap it lives
+    // in, rather than escaped from. `carrySeam` walks it along with them.
+    if (phase.current === "resetting" || phase.current === "assembling") return;
 
     if (head && metaBallsHeadFront.current && metaBallsHeadBack.current) {
       const headPosition = head.getPosition(posA);
@@ -1575,6 +1742,8 @@ export default function Head({
         bounds={still ? STILL_BOUNDS : PIECE_BOUNDS}
         onPointerDown={still ? undefined : () => handleGrab("head")}
         onPointerUp={still ? undefined : () => handleGrab(null)}
+        onTap={still ? handleTap : undefined}
+        hoverCursor={still ? "pointer" : "grab"}
       >
         {/* Rides the skull cap, so it stays put through the float, the drag and
             the throw — and only shows itself once the face is whole. */}
@@ -1661,6 +1830,8 @@ export default function Head({
         bounds={still ? STILL_BOUNDS : PIECE_BOUNDS}
         onPointerDown={still ? undefined : () => handleGrab("eyes")}
         onPointerUp={still ? undefined : () => handleGrab(null)}
+        onTap={still ? handleTap : undefined}
+        hoverCursor={still ? "pointer" : "grab"}
       >
         <HalfCircleWithDisk
           radius={122}
@@ -1746,6 +1917,8 @@ export default function Head({
         bounds={still ? STILL_MOUTH_BOUNDS : MOUTH_BOUNDS}
         onPointerDown={still ? undefined : () => handleGrab("mouth")}
         onPointerUp={still ? undefined : () => handleGrab(null)}
+        onTap={still ? handleTap : undefined}
+        hoverCursor={still ? "pointer" : "grab"}
       >
         <HalfCircleWithDisk
           radius={122}

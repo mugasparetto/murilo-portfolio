@@ -144,6 +144,14 @@ const STRANDED_SETTLE = 0.5;
  */
 const POLYGON_INFLATE = -0.03;
 
+/**
+ * How far, in screen pixels, a press may travel and still count as a tap.
+ *
+ * Wide enough for the wobble a finger leaves on the way back up, narrow enough
+ * that a flick meant to scroll the page past the sprite is never one.
+ */
+const TAP_SLOP_PX = 8;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 /** A 2D point in UV space [0,1] where (0,0) = bottom-left, (1,1) = top-right */
@@ -192,6 +200,24 @@ interface PolygonSpriteProps {
   onPointerDown?: () => void;
   /** Fired when the pointer is released, after a press that started inside the polygon */
   onPointerUp?: () => void;
+  /**
+   * A press and a release with barely any travel in between — a click, or the
+   * finger version of one. Fired straight after `onPointerUp`.
+   *
+   * It is the only press a touch device can be held to: a finger on the page is
+   * also the page pan, and the browser takes that gesture over mid-press
+   * without ever sending a `pointerup` (see `abortDrag`), so anything hung off
+   * `onPointerDown` fires on every scroll that happens to start on the sprite.
+   */
+  onTap?: () => void;
+  /**
+   * Cursor for a pointer inside the polygon. Default `"grab"`, for a sprite you
+   * can pick up; one that only answers to `onTap` wants `"pointer"`.
+   *
+   * A draggable sprite still shows `"grabbing"` for as long as it is held —
+   * that one is about the gesture in flight rather than about the sprite.
+   */
+  hoverCursor?: string;
   /** Render a coloured debug overlay so you can tune the polygon + bounds box */
   debug?: boolean;
   children?: React.ReactNode;
@@ -543,6 +569,8 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
       bounds,
       onPointerDown,
       onPointerUp,
+      onTap,
+      hoverCursor = "grab",
       debug = false,
       children,
     },
@@ -553,6 +581,14 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
     const { camera, scene, size } = useThree();
 
     const isPressedRef = useRef(false);
+    /**
+     * Where the press landed, in screen pixels, and whether it has since moved
+     * further than a tap may — the two halves of the {@link TAP_SLOP_PX} test.
+     * Cleared by whatever ends the press, so a gesture the browser took over
+     * can't be released as a tap later.
+     */
+    const pressPx = useRef<{ x: number; y: number } | null>(null);
+    const pressMoved = useRef(false);
     const isInsideRef = useRef(false);
     const isDraggingRef = useRef(false);
     const interactable = useRef(true);
@@ -923,7 +959,9 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         if (!pointInPolygon(uv[0], uv[1], polygon)) return;
 
         isPressedRef.current = true;
-        setPageCursor("grabbing");
+        pressPx.current = { x: event.clientX, y: event.clientY };
+        pressMoved.current = false;
+        setPageCursor(draggable ? "grabbing" : hoverCursor);
         onPointerDown?.();
 
         if (!draggable) return;
@@ -1000,15 +1038,26 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         isPressedRef.current = false;
         isDraggingRef.current = false;
         pointerPx.current = null;
+        pressPx.current = null;
         velocitySamples.current.length = 0;
         throwVelocity.current.set(0, 0, 0);
         if (dragOwner === token) dragOwner = null;
 
         onPointerUp?.();
-        setPageCursor(isInsideRef.current ? "grab" : "default");
+        setPageCursor(isInsideRef.current ? hoverCursor : "default");
       };
 
       const handlePointerMove = (event: PointerEvent) => {
+        // Ahead of the drag branch below, so a piece that is being dragged is a
+        // press that has moved by the time it is let go, whatever the pointer
+        // does afterwards.
+        const press = pressPx.current;
+        if (press && !pressMoved.current) {
+          const dx = event.clientX - press.x;
+          const dy = event.clientY - press.y;
+          if (Math.hypot(dx, dy) > TAP_SLOP_PX) pressMoved.current = true;
+        }
+
         if (isDraggingRef.current && draggable) {
           // Recorded, not applied: the frame loop re-aims the piece so it keeps
           // tracking the cursor while the camera drifts between moves.
@@ -1036,7 +1085,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         if (hit && !isInsideRef.current) {
           if (!enabledRef.current) return;
           isInsideRef.current = true;
-          setPageCursor(interactable.current ? "grab" : "default");
+          setPageCursor(interactable.current ? hoverCursor : "default");
         } else if (!hit && isInsideRef.current) {
           isInsideRef.current = false;
           setPageCursor("default");
@@ -1047,13 +1096,16 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         if (!isPressedRef.current) return;
 
         const wasDragging = isDraggingRef.current;
+        const wasTap = !pressMoved.current;
         isPressedRef.current = false;
         isDraggingRef.current = false;
         pointerPx.current = null;
+        pressPx.current = null;
         if (dragOwner === token) dragOwner = null;
 
         onPointerUp?.();
-        setPageCursor(isInsideRef.current ? "grab" : "default");
+        if (wasTap) onTap?.();
+        setPageCursor(isInsideRef.current ? hoverCursor : "default");
 
         throwVelocity.current.set(0, 0, 0);
         if (!throwable || !wasDragging) {
@@ -1122,6 +1174,8 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
       getCentreBox,
       onPointerDown,
       onPointerUp,
+      onTap,
+      hoverCursor,
       pushSample,
       readPointerVelocity,
     ]);
@@ -1332,7 +1386,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
           // Worth saying at all because the piece has just become grabbable
           // again under a pointer that hasn't moved, and a cursor only changes
           // on a move.
-          if (isInsideRef.current) setPageCursor("grab");
+          if (isInsideRef.current) setPageCursor(hoverCursor);
         },
       }),
       [
@@ -1342,6 +1396,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
         getCentreBox,
         readPointerVelocity,
         home,
+        hoverCursor,
       ],
     );
 

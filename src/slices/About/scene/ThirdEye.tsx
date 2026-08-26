@@ -311,8 +311,13 @@ export type ThirdEyeHandle = {
    * Shut the eye over {@link CLOSE_DURATION} and put it away, leaving it
    * exactly as it was before it was ever asked to open — ready to be revealed
    * again by the next `open()`. Ignored unless the eye is open and idle.
+   *
+   * Says whether it took, so the scene the eye is the last beat of can hold its
+   * own reset to the same rule the eye holds its click to: an eye still coming
+   * open is not one to shut, and a scene taken apart under it would be running
+   * the face out from under an animation that is still playing.
    */
-  close: () => void;
+  close: () => boolean;
 };
 
 type Props = {
@@ -554,7 +559,7 @@ export default function ThirdEye({ ref, skin, spriteScale, onReset }: Props) {
     },
     close: () => {
       const s = state.current;
-      if (s.phase !== "idle") return;
+      if (s.phase !== "idle") return false;
 
       s.phase = "closing";
       s.closing = 0;
@@ -568,6 +573,8 @@ export default function ThirdEye({ ref, skin, spriteScale, onReset }: Props) {
       // also what stops the real `pointerout`, which the eye is about to fire
       // as it vanishes, from doing this a second time.
       handlePointerOut();
+
+      return true;
     },
   }));
 
