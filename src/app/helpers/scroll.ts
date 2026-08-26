@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { RefObject, useRef, useMemo, useEffect } from "react";
 
-import { cssVh } from "./viewport";
+import { useScrollY } from "@/app/hooks/ScrollY";
+import { pxToVh } from "./viewport";
 
 export const easeCos = (x: number) => 0.5 - 0.5 * Math.cos(Math.PI * x);
 
@@ -43,48 +44,59 @@ export function progressInVhWindow(vh: number, w: VhWindow) {
  * Absolute scroll position expressed in vh from the top of the scroll container.
  *
  * - If scrollContainerRef is provided:
- *    - reads el.scrollTop
+ *    - reads el.scrollTop on the element's own `scroll` event
  *    - uses el.clientHeight as the "vh reference"
  * - Otherwise:
- *    - reads window/document scrollTop
- *    - uses the CSS `vh` unit — see {@link cssVh} for why that is not
- *      `window.innerHeight`
+ *    - takes the document scroll from <ScrollYProvider />, which reads it once
+ *      a frame — see there for why a `scroll` listener is the wrong source
+ *    - converts with {@link pxToVh}, i.e. the CSS `vh` unit rather than
+ *      `window.innerHeight`; see the helper for why those differ on iOS
  */
 export function useScrollVhAbsolute(
   scrollContainerRef?: RefObject<HTMLElement | null>,
-) {
-  const scrollVhRef = useRef(0);
+): RefObject<number> {
+  // The document scroll is the shared per-frame read — see <ScrollYProvider />
+  // for why a `scroll` listener is the wrong source for it on iOS. Handed back
+  // as a getter rather than a cached ref so it can't be a frame stale either:
+  // callers read `.current` from inside their own `useFrame`, which runs after
+  // the provider's, and the value is derived at that moment rather than
+  // whenever a listener last happened to fire.
+  const { scrollY } = useScrollY();
 
+  const containerVh = useRef(0);
+
+  // A container scroller keeps the listener: nothing passes one today, and an
+  // element's `scrollTop` is not reported through the compositor gap the
+  // document's is.
   useEffect(() => {
-    const getViewportH = () => {
-      const el = scrollContainerRef?.current;
-      return el ? el.clientHeight || 1 : cssVh();
-    };
-
-    const getScrollTop = () => {
-      const el = scrollContainerRef?.current;
-      if (el) return el.scrollTop || 0;
-      return window.scrollY || document.documentElement.scrollTop || 0;
-    };
+    const el = scrollContainerRef?.current;
+    if (!el) return;
 
     const update = () => {
-      const vh = (getScrollTop() / getViewportH()) * 100;
-      scrollVhRef.current = vh;
+      containerVh.current = (el.scrollTop / (el.clientHeight || 1)) * 100;
     };
 
     update();
 
-    const target: any = scrollContainerRef?.current ?? window;
-    target.addEventListener("scroll", update, { passive: true });
+    el.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update, { passive: true });
 
     return () => {
-      target.removeEventListener("scroll", update);
+      el.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
     };
   }, [scrollContainerRef]);
 
-  return scrollVhRef;
+  return useMemo(
+    () => ({
+      get current() {
+        return scrollContainerRef?.current
+          ? containerVh.current
+          : pxToVh(scrollY.current);
+      },
+    }),
+    [scrollContainerRef, scrollY],
+  );
 }
 
 /**

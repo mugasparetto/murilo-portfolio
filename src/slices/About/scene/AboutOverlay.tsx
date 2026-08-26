@@ -225,8 +225,12 @@ function travel(scroll: number, viewportH: number) {
  * the drift the camera hasn't closed yet, less however far the column has been
  * scrolled through the section.
  *
- * Whole pixels: a fractional translate resamples everything on the layer every
- * frame, which reads as shimmer on the type.
+ * Whole *device* pixels: what makes a fractional translate shimmer is landing
+ * the type off the raster grid, and that grid is the device's, not CSS's. So
+ * the snap is 1/3 of a CSS px on a phone rather than a whole one — same
+ * crispness, a third of the step. Rounding to CSS pixels there quantised the
+ * column's motion to three device pixels at a time, which on a screen whose
+ * scroll is otherwise sub-pixel smooth is itself visible as judder.
  *
  * Exported because the head is placed against the *same* number — see <Scene />.
  * Both callers compute it rather than one reading the other's leftovers, so
@@ -244,9 +248,10 @@ export function columnOffset(
   viewportH: number,
   scroll: number,
 ) {
-  return Math.round(
-    anchorDrift(camera, fov, viewportH) - travel(scroll, viewportH),
-  );
+  const y = anchorDrift(camera, fov, viewportH) - travel(scroll, viewportH);
+  const dpr = window.devicePixelRatio || 1;
+
+  return Math.round(y * dpr) / dpr;
 }
 
 /**
@@ -286,20 +291,44 @@ export default function AboutOverlay({
       measure();
     };
 
+    /**
+     * The same, at most once a frame.
+     *
+     * `relayout` is three `getBoundingClientRect()`s and a `scrollY`, so four
+     * forced layouts, and the event it hangs off is not the once-per-drag thing
+     * a desktop resize is. On iOS the address bar collapses and expands as the
+     * page is scrolled — expanding is what scrolling *up* does — and every step
+     * of that animation is a `resize`. Unbatched, a scroll back up the page
+     * pays for dozens of synchronous layouts in the frames the section is also
+     * being drawn in, which is exactly where the chop was.
+     *
+     * Coalescing is safe because nothing reads the result until the next frame
+     * anyway: the driver below and <Scene /> both take it from `useFrame`.
+     */
+    let pending = 0;
+    const schedule = () => {
+      if (pending) return;
+      pending = requestAnimationFrame(() => {
+        pending = 0;
+        relayout();
+      });
+    };
+
     relayout();
 
     // The column's height is the copy's height, so it changes for reasons no
     // resize event fires for: an edit in Prismic, a rewrap, the display face
     // swapping in after first paint. Watching the layer itself catches all of
     // them, and the slot moves with everything above it.
-    const observer = new ResizeObserver(relayout);
+    const observer = new ResizeObserver(schedule);
     observer.observe(band);
 
-    window.addEventListener("resize", relayout, { passive: true });
+    window.addEventListener("resize", schedule, { passive: true });
 
     return () => {
+      cancelAnimationFrame(pending);
       observer.disconnect();
-      window.removeEventListener("resize", relayout);
+      window.removeEventListener("resize", schedule);
     };
   }, [sectionRef]);
 

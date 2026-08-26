@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { CameraPose } from "./SceneManager";
+import { useScrollY } from "@/app/hooks/ScrollY";
 import { pxToVh } from "@/app/helpers/viewport";
 
 export type RigPose = {
@@ -106,33 +107,35 @@ export default function ScrollRig({
   intensityRef,
 }: ScrollRigProps) {
   const { camera } = useThree();
+  // The page's scroll position for this frame, read live at the top of it —
+  // see <ScrollYProvider />, which is also why there is no `scroll` listener
+  // here any more. Sampling the same value the About column and the head are
+  // placed from is the point: the camera is a term in where that column ends
+  // up (`anchorDrift` projects through it), so a rig running a scroll event or
+  // two behind them put the head somewhere its own hole was not.
+  const { scrollY } = useScrollY();
 
   // holds the latest absolute scroll amount in vh
   const scrollVhRef = useRef(0);
 
+  // A container scroller is still read the old way — nothing passes one today,
+  // and `scrollTop` on an element has none of the compositor gap the document
+  // has.
   useEffect(() => {
-    const getScrollTopPx = () => {
-      const el = scrollContainerRef?.current;
-      if (el) return el.scrollTop;
-      return window.scrollY || document.documentElement.scrollTop || 0;
-    };
+    const el = scrollContainerRef?.current;
+    if (!el) return;
 
     const update = () => {
-      // `cssVh`, never `innerHeight` — the windows below are quoted against
-      // section heights written in CSS `vh`, and on iOS those are two different
-      // numbers whenever the address bar is out. See the helper.
-      scrollVhRef.current = pxToVh(getScrollTopPx());
+      scrollVhRef.current = pxToVh(el.scrollTop);
     };
 
     update();
 
-    // Use passive listeners for smooth scrolling libs too
-    const el = scrollContainerRef?.current ?? window;
-    el.addEventListener("scroll", update as any, { passive: true });
+    el.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update, { passive: true });
 
     return () => {
-      el.removeEventListener("scroll", update as any);
+      el.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
     };
   }, [scrollContainerRef]);
@@ -165,7 +168,12 @@ export default function ScrollRig({
     const cam = cameraRef?.current ?? camera;
     if (sorted.length === 0) return;
 
-    const vh = scrollVhRef.current;
+    // `cssVh`, never `innerHeight` — the windows below are quoted against
+    // section heights written in CSS `vh`, and on iOS those are two different
+    // numbers whenever the address bar is out. See the helper.
+    const vh = scrollContainerRef?.current
+      ? scrollVhRef.current
+      : pxToVh(scrollY.current);
 
     // Default: before first window => first.from
     desiredPos.current.copy(firstFromPos);

@@ -28,7 +28,27 @@ import { useThree } from "@react-three/fiber";
  * Pass `fps={0}` to drive every refresh — the same cadence as `frameloop
  * "always"`, since <Canvas /> is in `"never"` mode and something has to call
  * `advance` either way.
+ *
+ * ── Why a phone is never asked for more than 60 ────────────────────────────
+ *
+ * The quantising above assumes a display holding one rate. A ProMotion iPhone
+ * does not: it varies its refresh between 10 and 120Hz on its own, and Safari
+ * hands rAF out at whatever it has settled on. Run the test at 82 against that
+ * and the answer flips on either side of the 9.76ms threshold — a panel at
+ * 120Hz renders every second refresh for an even 60, and the same panel a
+ * moment later at 100Hz passes *every* refresh and tries to draw this scene a
+ * hundred times a second. It can't, so it drops frames, and the pacing that
+ * came out even at one rate comes out ragged at the next. The rate never looks
+ * bad; the spacing between frames does, which is the thing that reads as chop.
+ *
+ * 60 puts the threshold at 13.3ms, above every refresh interval a phone
+ * actually varies through, so the cap resolves the same way whatever the panel
+ * is doing — and 60 is the ceiling Safari will honour for most of them anyway.
+ * The desktop cap is untouched: a 165Hz panel is a fixed rate, which is the
+ * case the number was measured for.
  */
+const TOUCH_FPS = 60;
+
 export default function FrameCap({ fps = 60 }: { fps?: number }) {
   const advance = useThree((s) => s.advance);
 
@@ -37,7 +57,15 @@ export default function FrameCap({ fps = 60 }: { fps?: number }) {
     let start = -1;
     let last = -Infinity;
 
-    const interval = fps > 0 ? 1 / fps : 0;
+    // Read here rather than in a prop: <FrameCap /> lives inside <Canvas />, so
+    // it never renders on the server and there is no hydration to match.
+    const coarse =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(pointer: coarse)").matches;
+
+    const target = coarse && fps > TOUCH_FPS ? TOUCH_FPS : fps;
+
+    const interval = target > 0 ? 1 / target : 0;
     // A refresh landing a shade early still counts. Without the slack a 60Hz
     // panel whose refreshes arrive a hair under 16.667ms would fail the test
     // every time, skip to the one after, and halve itself to 30.

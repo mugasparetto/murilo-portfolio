@@ -27,6 +27,7 @@ import Door from "./Door";
 import Sky from "./Sky";
 import HumanDestruction from "./HumanModelDestruction";
 import { useFluidMaterials } from "@/app/components/FluidMaterial";
+import { useSectionOnScreenRef } from "@/app/helpers/sectionVisibility";
 
 import { NameDriver } from "./Name";
 import { HeadlineDriver } from "./Headline";
@@ -127,6 +128,10 @@ export default function Scene({ scrollRef }: Props) {
 
   const p = paramsRef.current;
 
+  // Hiding this scene's group stops it being drawn but not the work inside it,
+  // and the sim below is the expensive half — see {@link useSectionOnScreenRef}.
+  const heroOnScreen = useSectionOnScreenRef("scene-hero");
+
   // <Door /> writes into this every frame rather than replacing it, so the
   // fluid sim reads a stable object and nothing allocates per pointer event
   const pointerUvRef = useRef<THREE.Vector2 | null>(new THREE.Vector2());
@@ -154,6 +159,7 @@ export default function Scene({ scrollRef }: Props) {
     simHeight: 1024,
     pointerUvRef,
     pointerActiveRef,
+    enabledRef: heroOnScreen,
   });
 
   const groupPosition = useMemo<[number, number, number]>(

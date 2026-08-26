@@ -35,20 +35,28 @@ const Hero: FC<HeroProps> = ({ slice }) => {
     return () => remove(id);
   }, [id, slice.primary, register, remove]);
 
-  // Toggle active when slice is in view
-  // useEffect(() => {
-  //   const el = heroRef.current;
-  //   if (!el) return;
+  // Drawn while the section is anywhere near the viewport, hidden once it is a
+  // long way off — see {@link setSectionOnScreen}. `active` drives `visible` on
+  // the group now rather than filtering the entry out of the scene, so this
+  // costs a frame either way and nothing is rebuilt on the way back.
+  //
+  // A whole viewport of margin on each side, which is far more than the picture
+  // needs and deliberately so: the two sections share a camera flight, and the
+  // one being flown away from has to stay drawn until it is certainly out of
+  // frame. Tighten it by measuring — the section that pops is the one whose
+  // margin is too small.
+  useEffect(() => {
+    const el = heroRef.current;
+    if (!el) return;
 
-  //   const io = new IntersectionObserver(
-  //     ([entry]) => setActive(id, entry.isIntersecting),
-  //     // tweak: becomes active when the section is near viewport
-  //     { root: null, threshold: 0.01, rootMargin: "20% 0px 20% 0px" },
-  //   );
+    const io = new IntersectionObserver(
+      ([entry]) => setActive(id, entry.isIntersecting),
+      { root: null, threshold: 0, rootMargin: "100% 0px 100% 0px" },
+    );
 
-  //   io.observe(el);
-  //   return () => io.disconnect();
-  // }, [id, setActive]);
+    io.observe(el);
+    return () => io.disconnect();
+  }, [id, setActive]);
 
   return (
     <section

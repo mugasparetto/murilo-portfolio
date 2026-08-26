@@ -45,6 +45,19 @@ type Props = {
   pointerUvRef: React.RefObject<THREE.Vector2 | null>;
   pointerActiveRef: React.RefObject<boolean>;
   seed?: number; // optional random seed for initialization
+
+  /**
+   * Whether to step the simulation at all. Omit and it always runs.
+   *
+   * This is the section's own visibility — see {@link useSectionOnScreenRef} —
+   * and it is a ref rather than a prop so that a section coming and going costs
+   * no React render. The sim is the single most expensive thing in the hero's
+   * frame and the only one that is not a draw call, so hiding the group it
+   * feeds does nothing for it: `visible` skips the renderer's walk, and this
+   * runs its own `gl.render` into a render target regardless. Hundreds of
+   * thousands of fragments a frame, for a door two sections up the page.
+   */
+  enabledRef?: React.RefObject<boolean>;
 };
 
 export function useFluidMaterials({
@@ -54,6 +67,7 @@ export function useFluidMaterials({
   pointerUvRef,
   pointerActiveRef,
   seed = 0,
+  enabledRef,
 }: Props) {
   const { gl } = useThree();
 
@@ -170,6 +184,11 @@ export function useFluidMaterials({
   }, [simQuad.geo, fluidMat, displayMat]);
 
   useFrame((state, delta) => {
+    // The clock stops with the sim, so the door is found where it was left
+    // rather than several sections' worth of decay further on — the same
+    // bargain <SolidIcon />'s ticker strikes when its section goes away.
+    if (enabledRef && !enabledRef.current) return;
+
     timeRef.current += delta;
 
     // Update time uniforms (delta-based, not frame-based)

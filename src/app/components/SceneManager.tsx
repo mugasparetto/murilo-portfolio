@@ -1,10 +1,11 @@
 "use client";
 
 import { Stats } from "@react-three/drei";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
 import { useSceneRegistry } from "@/app/hooks/SceneRegistry";
+import { setSectionOnScreen } from "@/app/helpers/sectionVisibility";
 import {
   defaultParams,
   type SceneParams,
@@ -20,6 +21,23 @@ export type CameraPose = {
   position: THREE.Vector3;
   target: THREE.Vector3;
 };
+
+/**
+ * Hoisted so the array keeps its identity across renders. <ScrollRig /> memoises
+ * a sorted copy and a `Vector3` clone of the first pose off it, and now that the
+ * sections publish their own visibility this component re-renders as they come
+ * and go — inline, every one of those would rebuild.
+ */
+const CAMERA_WINDOWS = [
+  {
+    window: {
+      startVh: 115,
+      endVh: 250,
+    },
+    from: HERO_POSE,
+    to: ABOUT_POSE,
+  },
+];
 
 export default function SceneManager() {
   const { entries } = useSceneRegistry();
@@ -44,29 +62,34 @@ export default function SceneManager() {
   // sways as much as the section being looked at wants
   const parallaxIntensityRef = useRef(1);
 
-  const ordered = Object.values(entries)
-    .filter((e) => e.active)
-    .sort((a, b) => a.priority - b.priority);
+  // Everything registered, drawn or not. `active` used to filter here, which
+  // unmounted the subtree and made the flag unusable mid-scroll — see
+  // {@link setSectionOnScreen} for why it drives `visible` instead.
+  const ordered = Object.values(entries).sort(
+    (a, b) => a.priority - b.priority,
+  );
+
+  // Mirrored out to the per-frame readers that `visible` can't reach: hiding a
+  // group stops it being drawn, not the `useFrame`s inside it.
+  useEffect(() => {
+    for (const e of ordered) setSectionOnScreen(e.name ?? e.id, e.active);
+  }, [ordered]);
 
   return (
     <>
       {ordered.map((e) => (
+        // Two groups, not one: <Diagnostics />'s bisect toggle writes `visible`
+        // on the *named* one imperatively, and a React-owned prop on the same
+        // object would take it back on the next render — which is now every
+        // time a section enters or leaves. Nested, the two compose instead of
+        // fighting, and either one hides the subtree.
         <group key={e.id} name={e.name ?? e.id}>
-          {e.node}
+          <group visible={e.active}>{e.node}</group>
         </group>
       ))}
 
       <ScrollRig
-        windows={[
-          {
-            window: {
-              startVh: 115,
-              endVh: 250,
-            },
-            from: HERO_POSE,
-            to: ABOUT_POSE,
-          },
-        ]}
+        windows={CAMERA_WINDOWS}
         basePoseRef={poseRef}
         intensityRef={parallaxIntensityRef}
         smoothing={-25}
