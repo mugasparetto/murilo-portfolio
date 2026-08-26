@@ -6,8 +6,8 @@ import { useThree } from "@react-three/fiber";
 import { Text } from "@react-three/drei";
 
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
-import { ABOUT_POSE } from "@/app/components/poses";
-import { BLOCK_TOP, blockFill } from "@/slices/Hero/scene/Name";
+import { ABOUT_POSE, poseFrame } from "@/app/components/poses";
+import { blockFill } from "@/slices/Hero/scene/Name";
 
 /**
  * The section title: solid caps with stroked echoes trailing under them — the
@@ -22,12 +22,21 @@ import { BLOCK_TOP, blockFill } from "@/slices/Hero/scene/Name";
  * having twice. So this one is ordinary geometry, placed once in world space,
  * and the parallax sways it along with the backdrop it belongs to.
  *
- * That leaves one problem: the margins are a *screen* measurement — {@link
- * BLOCK_TOP} of the viewport height down from the top edge, {@link blockFill}
- * of its width across — and a mesh has no viewport. The bridge is {@link
- * ABOUT_POSE}: the scroll rig comes to rest there and holds it for the whole
- * section, so projecting that frustum at the block's depth turns the viewport
- * edges into plain world coordinates. Done once per resize, not per frame.
+ * That leaves one problem: the side margins are a *screen* measurement —
+ * {@link blockFill} of the viewport width across — and a mesh has no viewport.
+ * The bridge is {@link ABOUT_POSE}: the scroll rig comes to rest there and
+ * holds it for the whole section, so projecting that frustum at the block's
+ * depth turns the viewport edges into plain world coordinates. Done once per
+ * resize, not per frame.
+ *
+ * Vertically it hangs off the centre of that frustum rather than off its top
+ * edge, and by its own cap height rather than by a share of the viewport. The
+ * head sits at the centre, and this block is the head's backdrop: what has to
+ * hold is the gap between the two, which is a gap between two pieces of the
+ * picture and not a margin. Measuring it from the top edge instead let it come
+ * loose — the type is sized off the viewport's *width*, so on a narrow screen
+ * the block shrank while the top edge stayed put and the title drifted off up
+ * there on its own.
  *
  * The type is measured rather than sized by hand for the reason the name is:
  * scaling the block to the viewport beats a per-breakpoint size table. Troika
@@ -64,6 +73,12 @@ const ECHO_STROKE = 0.015;
 
 /** how far past the baseline the reveal clip reaches, in cap heights */
 const CLIP_SLOP = 0.1;
+
+/**
+ * How far the title's baseline sits above the centre of the frustum, in cap
+ * heights — so the whole block, echoes included, rides with its own size.
+ */
+const BLOCK_RISE = 0.65;
 
 const FONT = "/fonts/PPMonumentExtended-Black.ttf";
 
@@ -115,21 +130,12 @@ export default function Title({ text = "ABOUT" }: { text?: string }) {
 
   /**
    * The rest pose's frustum where the block sits: how much world the viewport
-   * spans at that depth, and the world y its top edge falls on. The look
-   * direction is straight down -Z (see {@link ABOUT_POSE}), so this is the
-   * whole of the projection.
+   * spans at that depth, and the world point it is centred on.
    */
-  const frame = useMemo(() => {
-    const distance = ABOUT_POSE.position[2] - Z;
-    const height =
-      2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * distance;
-
-    return {
-      height,
-      width: height * (size.width / size.height),
-      top: ABOUT_POSE.position[1] + height / 2,
-    };
-  }, [camera.fov, size.width, size.height]);
+  const frame = useMemo(
+    () => poseFrame(ABOUT_POSE, camera.fov, size.width / size.height, Z),
+    [camera.fov, size.width, size.height],
+  );
 
   // world units per NOMINAL unit: whatever makes the ink span its share of the
   // frustum. Uniform, so every offset below can stay in cap heights.
@@ -138,12 +144,12 @@ export default function Title({ text = "ABOUT" }: { text?: string }) {
 
   return (
     // the group's origin is the title's baseline, with the caps standing on top
-    // of it — so pushing it down by a cap height puts them under the margin
+    // of it and the echoes hanging below — so the rise is what clears the head
     <group
       visible={metrics !== null}
       position={[
-        -(metrics?.centreX ?? 0) * scale,
-        frame.top - frame.height * BLOCK_TOP - cap * scale,
+        frame.center[0] - (metrics?.centreX ?? 0) * scale,
+        frame.center[1] + BLOCK_RISE * cap * scale,
         Z,
       ]}
       scale={scale}

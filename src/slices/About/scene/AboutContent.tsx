@@ -637,7 +637,7 @@ export default function AboutContent({
           {title && (
             <p
               ref={titleRef}
-              className={`font-display mt-2 font-extrabold text-white ${CAPS} ${LEADING} text-base tracking-normal whitespace-pre-line sm:text-lg lg:text-xl xl:text-2xl 2xl:text-[1.75rem]`}
+              className={`font-display mt-2 font-extrabold text-white ${CAPS} ${LEADING} text-base tracking-normal whitespace-pre-line sm:text-lg lg:text-xl xl:text-2xl 2xl:text-[1.75rem] short:text-lg shorter:text-[0.85rem]`}
             >
               {title}
             </p>
@@ -646,7 +646,7 @@ export default function AboutContent({
           {description && (
             <p
               ref={descriptionRef}
-              className={`mt-3 ${CAPS} ${MUTED} ${LEADING} text-xs tracking-normal lg:text-sm lg:max-w-[93%] xl:mt-5 xl:text-base 2xl:mt-6 2xl:text-lg`}
+              className={`mt-3 ${CAPS} ${MUTED} ${LEADING} text-xs tracking-normal lg:text-sm lg:max-w-[93%] xl:mt-5 xl:text-base 2xl:mt-6 2xl:text-lg short:text-sm shorter:text-[0.75rem]`}
             >
               {description}
             </p>
@@ -744,7 +744,7 @@ export default function AboutContent({
 
           Below `lg` the wrapper is just another item in the column and the two
           fall into it in source order, so the skills list still comes first. */}
-      <div className="flex flex-col gap-5 sm:gap-6 lg:absolute lg:top-[56.1%] lg:right-[3.4%] lg:left-[3.9%] lg:flex-row lg:items-end lg:gap-0">
+      <div className="flex flex-col gap-5 sm:gap-6 lg:absolute lg:bottom-[12%] lg:right-[3.4%] lg:left-[3.9%] lg:flex-row lg:items-end lg:gap-0">
         {skills.length > 0 && (
           // the design's right-hand column, 64.8%–96.6% of the frame, as a
           // share of this row; `order` because it reads first in the DOM and
@@ -781,11 +781,18 @@ export default function AboutContent({
                 anyway: the hairline reason stands on its own, and the rule the
                 mask pass taught still holds for anything that comes back —
                 nothing on this layer wants a clipping ancestor. */}
-            <ul className="mt-2.5 lg:mt-4 mb-6 lg:mb-0 lg:w-[90.4%]">
+            {/* Between `md` and `lg` the column is wide enough that a single
+                stack leaves the list running well past the copy beside it, so
+                the rows pair off into two columns there and nowhere else. The
+                shared-divider frame can't survive that split — `first` and
+                `last` are the grid's first and last cells, not each column's —
+                so in that range every row closes its own box instead (see the
+                row classes below), which is why the columns take a gap. */}
+            <ul className="mt-2.5 lg:mt-4 mb-6 lg:mb-0 md:grid md:grid-cols-2 md:gap-2 lg:block lg:w-[90.4%]">
               {skills.map(({ skill }, i) => (
                 <li
                   key={i}
-                  className={`flex h-10 items-stretch border-x border-b border-white first:border-t first:rounded-t-sm last:rounded-b-sm ${PLATE} lg:h-12 xl:h-14 2xl:h-16`}
+                  className={`flex h-10 items-stretch border-x border-b border-white max-md:first:border-t max-md:first:rounded-t-sm max-md:last:rounded-b-sm md:max-lg:rounded-sm md:max-lg:border-t lg:first:border-t lg:first:rounded-t-sm lg:last:rounded-b-sm ${PLATE} lg:h-12 xl:h-14 2xl:h-16 short:h-10 shorter:h-8`}
                 >
                   <span className="grid w-10 shrink-0 place-items-center border-r border-white text-white lg:w-12 xl:w-14 2xl:w-18">
                     {/* the hero's solids, a different one on each row and each
@@ -797,7 +804,7 @@ export default function AboutContent({
                     />
                   </span>
                   <span
-                    className={`flex flex-1 items-center px-3 text-white ${CAPS} text-sm lg:px-4 lg:text-base xl:px-6 xl:text-xl 2xl:text-2xl`}
+                    className={`flex flex-1 items-center px-3 text-white ${CAPS} text-sm lg:px-4 lg:text-base xl:px-6 xl:text-xl 2xl:text-2xl short:text-sm shorter:text-xs`}
                   >
                     {skill}
                   </span>

@@ -27,6 +27,28 @@
   --font-display: "Monument Extended", sans-serif;
 }
 
+/*
+ * Height breakpoints, for the blocks that are positioned as percentages of a
+ * `h-screen` layer — see <AboutContent />, whose two right-hand blocks are
+ * anchored at 10.7% and 56.1% while the copy between them is sized in `rem`.
+ * The band closes with the viewport; the type doesn't, so it needs a step of
+ * its own. `lg`'s width test is folded in because that percentage layout only
+ * exists from `lg` up, and because it keeps these off a landscape phone, where
+ * a collapsing URL bar would flip a height query mid-scroll.
+ *
+ * Written as `min-width`/`max-height` rather than the modern `(height < 50rem)`
+ * range syntax, and it has to stay that way: Lightning CSS, which Turbopack
+ * runs the output through, downlevels a range feature inside a compound
+ * condition to `and not (min-height: 50rem)` — and `and not (…)` is not valid
+ * media-query grammar (level 4 wants the `not` inside its own parens), so the
+ * whole query is dropped and the variant silently never matches. Legacy
+ * features pass through untouched.
+ *
+ * NB `max-height` is inclusive, so these are `<=` where the names read `<`.
+ */
+@custom-variant short (@media (min-width: 64rem) and (max-height: 50rem));
+@custom-variant shorter (@media (min-width: 64rem) and (max-height: 40rem));
+
 *,
 *::after,
 *::before {
