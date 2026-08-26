@@ -265,7 +265,7 @@ const GRID_OFFSET = 0.1;
  * as nothing at all, especially under a Noise pass running at 0.4. Reverse
  * them to fade the grid out into the margins instead of into the middle.
  */
-const GRID_OPACITY: [number, number] = [0, 0.1];
+const GRID_OPACITY: [number, number] = [0, 0.07];
 
 /**
  * Where the fade runs, as fractions of the viewport ellipse: nothing at all
