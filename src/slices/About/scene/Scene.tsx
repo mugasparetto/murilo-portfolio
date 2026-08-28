@@ -308,7 +308,7 @@ const LG_FACE_SCALE = 0.8;
  * share. 16:10 rather than 16:9 because it's the shallower of the two shapes
  * the section is actually laid out in, and the cap has to leave both alone.
  */
-const FACE_FIT_ASPECT = 1;
+const FACE_FIT_ASPECT = 16 / 10;
 
 const faceRay = new THREE.Raycaster();
 const faceNdc = new THREE.Vector2();
