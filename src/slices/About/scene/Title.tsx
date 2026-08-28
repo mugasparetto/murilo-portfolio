@@ -63,9 +63,9 @@ const NOMINAL = 100;
  * the echo reads as a row of hairlines.
  */
 const ECHOES = [
-  { gap: 0.92, reveal: 0.75 },
-  { gap: 1.54, reveal: 0.44 },
-  { gap: 1.94, reveal: 0.22 },
+  { gap: 0.9, reveal: 0.74 },
+  { gap: 1.52, reveal: 0.46 },
+  { gap: 1.94, reveal: 0.21 },
 ];
 
 /** echo outline width, in cap heights */
