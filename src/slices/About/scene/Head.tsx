@@ -2,7 +2,11 @@ import { RefObject, useMemo, useCallback, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { useTexture, Line } from "@react-three/drei";
-import MetaBalls, { FieldMask, MetaBallsHandle } from "./MetaBalls";
+import MetaBalls, {
+  FieldMask,
+  MetaBallsHandle,
+  PointerReaction,
+} from "./MetaBalls";
 import PolygonSprite, { UV, SpriteHandle, SpriteBounds } from "./PolygonSprite";
 import ThirdEye, {
   ThirdEyeHandle,
@@ -105,6 +109,26 @@ const GOO_BACK = {
   speed: 0.32,
   fieldPower: 0.75,
 } as const;
+
+/**
+ * How the goo answers to the cursor. Only the two front layers take it: the
+ * rear pair stays on its own drift, which turns the reaction into a parallax
+ * cue as well — the front sheet slides over a back sheet that doesn't move.
+ *
+ * Weighted heavily toward Y. Sideways is where this field has least room —
+ * `wallMinX`/`wallMaxX` are ±10-12 and the mask clips at the edge of the face —
+ * whereas the mask's floor holds its width below the cap, so vertical push has
+ * somewhere to go. `ease` is low on purpose: the goo should lag the pointer and
+ * settle late, the way something this viscous would.
+ */
+const GOO_POINTER: PointerReaction = {
+  strength: 5,
+  radius: 13,
+  mode: "repel",
+  scaleX: 0.65,
+  scaleY: 1,
+  ease: 0.09,
+};
 
 /** Render order for the goo. Sprites sit at 10, so both stay behind the face. */
 const BACK_ORDER = 5;
@@ -1796,6 +1820,7 @@ export default function Head({
 
       <MetaBalls
         ref={metaBallsHeadFront}
+        pointerReaction={GOO_POINTER}
         position={[8, -630, 2605]}
         wallMinX={-10}
         wallMaxX={10}
@@ -1843,6 +1868,7 @@ export default function Head({
 
       <MetaBalls
         ref={metaBallsMouthFront}
+        pointerReaction={GOO_POINTER}
         position={[5, -830, 2605]}
         scale={[300, 280, 1]}
         wallMinX={-12}

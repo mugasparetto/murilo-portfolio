@@ -99,6 +99,52 @@ export type FieldMask = {
   floor?: number;
 };
 
+/**
+ * Makes the free-floating balls answer to the cursor.
+ *
+ * The displacement is worked out on the CPU and folded into the ball positions
+ * the frame loop already writes every frame, so the shader never learns the
+ * cursor exists: no extra uniform, no extra per-fragment work, and the
+ * expensive half of this material — the holographic fill — is untouched. The
+ * whole effect costs one ray/plane intersect per instance plus a handful of
+ * float ops per ball.
+ *
+ * Two things bound how hard you can push. `wallMinX`/`wallMaxX` clamp the
+ * result, and balls piled against a wall fuse into a solid edge; and the field
+ * is clipped to `mask`, so a ball shoved past the silhouette doesn't travel
+ * out of frame, it vanishes. Keep `strength` well inside the slack the walls
+ * leave, and prefer letting Y carry the motion — there is more room below the
+ * mask's floor than there is either side of it.
+ */
+export type PointerReaction = {
+  /** How far a ball directly under the cursor moves, in animation units. */
+  strength?: number;
+  /**
+   * Distance at which the cursor stops being felt, in animation units. Inside
+   * it the push falls off smoothly to nothing at the rim.
+   */
+  radius?: number;
+  /**
+   * Sign of the push. `"repel"` shoulders the goo aside; `"attract"` has it
+   * lean into the cursor and bulge toward it.
+   */
+  mode?: "repel" | "attract";
+  /**
+   * Scales the X component of the push. Below 1 the goo answers mostly by
+   * lifting and sagging rather than sliding, which is the safer axis: sideways
+   * is where the walls and the mask are tightest.
+   */
+  scaleX?: number;
+  /** Scales the Y component of the push. */
+  scaleY?: number;
+  /**
+   * Approach speed of the smoothed cursor, per 60Hz frame (0-1). Low values
+   * give the goo weight — it lags the pointer and settles late, the way
+   * something viscous would.
+   */
+  ease?: number;
+};
+
 type HolographicMetaBallsProps = {
   speed?: number;
   animationSize?: number;
@@ -171,6 +217,12 @@ type HolographicMetaBallsProps = {
   pauseSpeed?: number;
   pauseYOffset?: number;
   ref: React.Ref<THREE.Mesh>;
+  /**
+   * Makes the balls answer to the cursor. Omit and nothing is tracked — the
+   * frame loop skips the whole thing, so an instance that doesn't opt in pays
+   * nothing for the ones that do.
+   */
+  pointerReaction?: PointerReaction | null;
   // ── Invisible walls ────────────────────────
   /** Hard X boundary (animation-space) balls cannot drift past */
   wallMinX?: number | null;
@@ -215,6 +267,57 @@ function hash31(p: number): number[] {
   const dot =
     r[0] * (r[1] + 33.33) + r[1] * (r[2] + 33.33) + r[2] * (r[0] + 33.33);
   return r.map((v) => fract(v + dot));
+}
+
+const POINTER_DEFAULTS = {
+  strength: 3,
+  radius: 12,
+  mode: "repel" as const,
+  scaleX: 1,
+  scaleY: 1,
+  ease: 0.12,
+};
+
+// Scratch for the pointer trace below. One ray/plane intersect per instance per
+// frame runs through these rather than building a Raycaster, a Plane and three
+// vectors every time — the same reason <PolygonSprite /> keeps its own set.
+const pointerRay = new THREE.Raycaster();
+const pointerPlane = new THREE.Plane();
+const pointerHit = new THREE.Vector3();
+const planeNormal = new THREE.Vector3();
+const planeOrigin = new THREE.Vector3();
+
+/**
+ * Where the cursor falls on `mesh`'s own plane, in the animation space the ball
+ * positions are written in — the space the shader rebuilds as
+ * `(vUv - 0.5) * iAnimationSize`.
+ *
+ * Traced against the plane rather than the mesh, so the cursor keeps its
+ * coordinates out past the edges of the quad instead of falling off it: a ball
+ * near the rim should still feel a pointer just outside, and `intersectObject`
+ * would report nothing there. Returns false when the plane is edge-on and the
+ * ray never meets it.
+ */
+function pointerInAnimationSpace(
+  mesh: THREE.Mesh,
+  camera: THREE.Camera,
+  pointer: THREE.Vector2,
+  animationSize: number,
+  out: THREE.Vector2,
+): boolean {
+  planeNormal.set(0, 0, 1).transformDirection(mesh.matrixWorld);
+  mesh.getWorldPosition(planeOrigin);
+  pointerPlane.setFromNormalAndCoplanarPoint(planeNormal, planeOrigin);
+
+  pointerRay.setFromCamera(pointer, camera);
+  if (!pointerRay.ray.intersectPlane(pointerPlane, pointerHit)) return false;
+
+  // Into the unit plane's own frame, where the quad spans -0.5..0.5 on both
+  // axes whatever `scale` has done to it — which is exactly what `vUv - 0.5`
+  // is, so the animation-space conversion is the one multiply below.
+  mesh.worldToLocal(pointerHit);
+  out.set(pointerHit.x * animationSize, pointerHit.y * animationSize);
+  return true;
 }
 
 // ─────────────────────────────────────────────
@@ -757,13 +860,29 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
     // Ref to the mesh so we can read its world position for coordinate mapping
     const meshRef = useRef<THREE.Mesh>(null);
 
+    // ── Cursor state ─────────────────────────────
+    /** Raw cursor position on this plane, in animation space, this frame. */
+    const pointerTarget = useRef(new THREE.Vector2());
+    /** The smoothed one the balls actually answer to — see `ease`. */
+    const pointerPos = useRef(new THREE.Vector2());
+    /** False until the first successful trace, so the smoothing has a real
+     *  position to start from instead of the middle of the field. */
+    const pointerReady = useRef(false);
+
     // ── Animation ────────────────────────────────
-    useFrame(({ clock, size }) => {
+    useFrame(({ clock, size, camera, pointer }) => {
       // A hidden field drives nothing, and Head hides the goo for good the
       // moment a piece leaves the assembled face — so without this the four
       // instances go on paying for a full uniform rewrite every frame for the
       // rest of the session.
-      if (meshRef.current && !meshRef.current.visible) return;
+      if (meshRef.current && !meshRef.current.visible) {
+        // The smoothed cursor goes stale while hidden — the head can be
+        // reassembled anywhere on screen — so it is dropped rather than eased
+        // out of on the first frame back, which would drag the goo across the
+        // field on its way to catching up.
+        pointerReady.current = false;
+        return;
+      }
 
       // Ball motion is offset by `seed`; the holographic fill has its own phase
       // so instances can move independently but still share a colour.
@@ -836,6 +955,55 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
         });
       }
 
+      // ── Cursor ───────────────────────────────────────────────────────────
+      //
+      // Traced once for the whole instance, not once per ball, and only while
+      // the balls are actually free: a migration to an anchor is a scripted
+      // move with somewhere definite to be, and a cursor tugging at it just
+      // fights the lerp. `react` staying null is also what lets an instance
+      // that never opted in skip all of this.
+      const react = target ? null : props.pointerReaction;
+
+      // Same reasoning as the hidden case above: a migration can run for as
+      // long as it likes, and the cursor is somewhere else entirely by the end
+      // of it. Dropped so the balls are handed a fresh position on release.
+      if (!react) pointerReady.current = false;
+
+      if (react && meshRef.current) {
+        const traced = pointerInAnimationSpace(
+          meshRef.current,
+          camera,
+          pointer,
+          props.animationSize,
+          pointerTarget.current,
+        );
+
+        // A miss leaves the smoothed position where it was, so the goo relaxes
+        // out of its last displacement instead of snapping flat.
+        if (traced) {
+          const ease = react.ease ?? POINTER_DEFAULTS.ease;
+          if (pointerReady.current) {
+            pointerPos.current.lerp(pointerTarget.current, ease);
+          } else {
+            // First trace of the instance's life. Jumped to rather than eased
+            // from the origin, which is the middle of the field: easing from
+            // there drags every ball through a shove none of them asked for.
+            pointerPos.current.copy(pointerTarget.current);
+            pointerReady.current = true;
+          }
+        }
+      }
+
+      const pointerRadius = react?.radius ?? POINTER_DEFAULTS.radius;
+      const pointerSign =
+        (react?.mode ?? POINTER_DEFAULTS.mode) === "attract" ? -1 : 1;
+      const pointerPush =
+        (react?.strength ?? POINTER_DEFAULTS.strength) * pointerSign;
+      const pointerScaleX = react?.scaleX ?? POINTER_DEFAULTS.scaleX;
+      const pointerScaleY = react?.scaleY ?? POINTER_DEFAULTS.scaleY;
+      const pointerActive =
+        react !== null && react !== undefined && pointerReady.current;
+
       for (let i = 0; i < count; i++) {
         const p = ballParams[i];
         const laneT = count > 1 ? i / (count - 1) : 0.5;
@@ -873,9 +1041,36 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
           lerpSpeed,
         );
 
-        // ── Invisible walls: clamp X within [wallMinX, wallMaxX] ─────────────
         let finalX = ballPositions.current[i].x;
-        const finalY = ballPositions.current[i].y;
+        let finalY = ballPositions.current[i].y;
+
+        // ── Cursor displacement ──────────────────────────────────────────────
+        //
+        // Applied on top of the settled position rather than folded into the
+        // lerp's destination, so the drift underneath keeps running at its own
+        // pace and the goo springs back the moment the cursor leaves. The
+        // falloff is smoothstep on distance, which flattens at both ends: no
+        // kink at the rim as a ball enters the cursor's reach, and no spike as
+        // it passes under it.
+        if (pointerActive) {
+          const dx = finalX - pointerPos.current.x;
+          const dy = finalY - pointerPos.current.y;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist < pointerRadius) {
+            const falloff = 1 - dist / pointerRadius;
+            const eased = falloff * falloff * (3 - 2 * falloff);
+            // A ball sitting exactly under the cursor has no direction to be
+            // pushed in. Left alone rather than given an arbitrary one, since
+            // its neighbours moving around it reads as it being held in place.
+            const push = dist > 1e-4 ? (pointerPush * eased) / dist : 0;
+
+            finalX += dx * push * pointerScaleX;
+            finalY += dy * push * pointerScaleY;
+          }
+        }
+
+        // ── Invisible walls: clamp X within [wallMinX, wallMaxX] ─────────────
 
         if (props.wallMinX !== null && finalX < props.wallMinX) {
           finalX = props.wallMinX;
@@ -967,6 +1162,7 @@ const HolographicMetaBalls = forwardRef<
     pauseTarget = null,
     pauseSpeed = 0.2,
     pauseYOffset = 5,
+    pointerReaction = null,
     wallMinX = null,
     wallMaxX = null,
     holoTimeScale = HOLO.timeScale,
@@ -1016,6 +1212,7 @@ const HolographicMetaBalls = forwardRef<
       pauseTarget={pauseTarget}
       pauseSpeed={pauseSpeed}
       pauseYOffset={pauseYOffset}
+      pointerReaction={pointerReaction}
       ref={ref}
       wallMinX={wallMinX}
       wallMaxX={wallMaxX}
