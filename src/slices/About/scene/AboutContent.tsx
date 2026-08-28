@@ -688,18 +688,31 @@ export default function AboutContent({
                 // that label on one line at the low end of each step, since the
                 // design's own 64px gap only fits once the viewport is as wide as
                 // the frame it was drawn on.
-                className={`flex flex-col items-center rounded-sm border-2 border-white ${PLATE} px-2 py-2.5 text-center lg:ml-(--stagger) lg:h-16 lg:w-[77.6%] lg:flex-row lg:items-center lg:gap-8 lg:px-3 lg:py-0 lg:text-left xl:h-20 xl:gap-12 xl:px-4 2xl:h-24 2xl:gap-16 2xl:px-5 min-[112rem]:h-25 min-[112rem]:px-6`}
+                //
+                // The item is the intro's target and holds nothing but the box it
+                // reserves — the card itself is the element inside. The two are
+                // split because both want `transform`: the intro writes one here
+                // every frame, and a transition on the same element would smear
+                // that animation and then lose to its inline value anyway. Held
+                // apart, the intro moves the item and the hover moves the card.
+                className="lg:ml-(--stagger) lg:h-16 lg:w-[77.6%] xl:h-20 2xl:h-24 min-[112rem]:h-25"
               >
-                <span
-                  className={`font-display font-extrabold text-white ${LEADING} text-xl lg:text-2xl xl:text-3xl 2xl:text-4xl min-[112rem]:text-[2.75rem]`}
+                {/* `pointer-events-auto` because <AboutOverlay />'s layer is
+                    transparent to the pointer — see the skills rows below */}
+                <div
+                  className={`pointer-events-auto flex h-full flex-col items-center rounded-sm border-2 border-white ${PLATE} px-2 py-2.5 text-center transition-transform duration-300 ease-out hover:translate-x-4 lg:flex-row lg:items-center lg:gap-8 lg:px-3 lg:py-0 lg:text-left xl:gap-12 xl:px-4 2xl:gap-16 2xl:px-5 min-[112rem]:px-6`}
                 >
-                  {number}
-                </span>
-                <span
-                  className={`${CAPS} ${MUTED} ${LEADING} text-[0.5625rem] lg:text-[0.625rem] xl:text-[0.6875rem] 2xl:text-[0.8125rem] min-[112rem]:text-base`}
-                >
-                  {label}
-                </span>
+                  <span
+                    className={`font-display font-extrabold text-white ${LEADING} text-xl lg:text-2xl xl:text-3xl 2xl:text-4xl min-[112rem]:text-[2.75rem]`}
+                  >
+                    {number}
+                  </span>
+                  <span
+                    className={`${CAPS} ${MUTED} ${LEADING} text-[0.5625rem] lg:text-[0.625rem] xl:text-[0.6875rem] 2xl:text-[0.8125rem] min-[112rem]:text-base`}
+                  >
+                    {label}
+                  </span>
+                </div>
               </li>
             ))}
           </ul>
@@ -796,7 +809,11 @@ export default function AboutContent({
               {skills.map(({ skill }, i) => (
                 <li
                   key={i}
-                  className={`flex h-10 items-stretch border-x border-b border-white max-md:first:border-t max-md:first:rounded-t-sm max-md:last:rounded-b-sm md:max-lg:rounded-sm md:max-lg:border-t lg:first:border-t lg:first:rounded-t-sm lg:last:rounded-b-sm ${PLATE} lg:h-12 xl:h-14 2xl:h-16 short:h-10 shorter:h-8`}
+                  // `pointer-events-auto` because <AboutOverlay />'s layer is
+                  // transparent to the pointer — without it the row never sees a
+                  // hover. Scoped to the plate so the gaps around the list stay
+                  // transparent and the head pieces underneath stay draggable.
+                  className={`group pointer-events-auto flex h-10 items-stretch border-x border-b border-white max-md:first:border-t max-md:first:rounded-t-sm max-md:last:rounded-b-sm md:max-lg:rounded-sm md:max-lg:border-t lg:first:border-t lg:first:rounded-t-sm lg:last:rounded-b-sm ${PLATE} lg:h-12 xl:h-14 2xl:h-16 short:h-10 shorter:h-8`}
                 >
                   <span className="grid w-10 shrink-0 place-items-center border-r border-white text-white lg:w-12 xl:w-14 2xl:w-18">
                     {/* the hero's solids, a different one on each row and each
@@ -808,7 +825,9 @@ export default function AboutContent({
                     />
                   </span>
                   <span
-                    className={`flex flex-1 items-center px-3 text-white ${CAPS} text-sm lg:px-4 lg:text-base xl:px-6 xl:text-xl 2xl:text-2xl short:text-sm shorter:text-xs`}
+                    /* the label alone slides on hover — the icon keeps its
+                       cell, so the divider it sits against stays put */
+                    className={`flex flex-1 items-center px-3 text-white transition-transform duration-300 ease-out group-hover:translate-x-4 ${CAPS} text-sm lg:px-4 lg:text-base xl:px-6 xl:text-xl 2xl:text-2xl short:text-sm shorter:text-xs`}
                   >
                     {skill}
                   </span>
