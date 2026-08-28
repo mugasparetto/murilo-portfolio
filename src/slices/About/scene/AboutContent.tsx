@@ -324,10 +324,16 @@ const EYEBROW_OPACITY = 0.72;
  * not an entrance from out of sight — and the section should only ever be
  * doing one size of movement at a time.
  *
- * The skills block travels whole, eyebrow and rows together, since it's a
- * single labelled object arriving. The stat cards don't: they're a set of
- * three, and a set is worth counting off. Their eyebrow leads, taking the same
- * drop the "who i am" one takes, and the cards follow row by row.
+ * The stat cards are a set, and a set is worth counting off: their eyebrow
+ * leads, taking the same drop the "who i am" one takes, and the cards follow
+ * row by row.
+ *
+ * The skills list is the same kind of set, but from `lg` up it doesn't get the
+ * same treatment — there it travels whole, eyebrow and rows together, because
+ * what it has to do at that size is arrive level with the face beside it, as
+ * one labelled object. Below `lg` there is no face to be level with and the
+ * list is the last thing in the column, coming up under a thumb a row at a
+ * time, so it counts off exactly as the cards do.
  */
 const BLOCK_SHIFT = 16;
 
@@ -339,36 +345,62 @@ const BLOCK_SHIFT = 16;
  * fifth — clearly after it, still one continuous reveal rather than two
  * sequences with a pause between them.
  *
- * `ROW_LEAD` does the same job inside the stats: the cards start while their
+ * `ROW_LEAD` sets the stats block off against the skills one beside it, so the
+ * two halves of that beat don't start together.
+ *
+ * `CARD_LEAD` is the gap inside the stats block: the cards start while their
  * eyebrow is still moving, which is what keeps the label and the set it labels
- * reading as one thing. `ROW_STAGGER` is short enough that three cards are
- * done well inside the tween's own half-second — it's a count-off, not a
- * queue.
+ * reading as one thing. It's the one figure here that holds below `lg` too,
+ * where the block plays on its own arrival and has nothing to be spaced
+ * against — see {@link useCopyReveal}. `ROW_STAGGER` is short enough that three
+ * cards are done well inside the tween's own half-second — it's a count-off,
+ * not a queue.
  */
 const BLOCK_LEAD = 0.35;
 const ROW_LEAD = 0.35;
+const CARD_LEAD = 0.2;
 const ROW_STAGGER = 0.2;
 
 /**
- * When it fires. The layer this sits on is exactly one viewport tall and is
- * slid up into place by <AboutOverlayDriver />, so "the section is visible" is
- * just the title's own box entering the viewport — an IntersectionObserver
- * reads the driver's transform for free, where a scroll position would have to
- * be re-derived from the camera.
+ * When it fires. "The section is visible" is just the title's own box entering
+ * the viewport — an IntersectionObserver reads the layer's transform for free,
+ * where a scroll position would have to be re-derived from the camera.
  *
- * The bottom margin is the whole of the timing: it lifts the root's bottom
- * edge to the middle of the screen, so the section has to be most of the way
- * in before the title crosses it — rather than starting the moment the block
- * clears the bottom of the window, with nowhere yet to be seen rising into.
+ * The bottom margin is the whole of the timing, and it is a different figure
+ * on each side of `lg`, because the layer underneath moves differently on each
+ * side of it — see <AboutOverlay />.
  *
- * Threshold stays at 0 deliberately. With the root cropped this hard, asking
- * for a *share* of the title to be inside it couples the timing to how many
- * lines the copy happens to take, and a title taller than what's left of the
- * root would never reach the ratio at all. At 0 it's the top edge crossing
- * that fires it, which is the same moment whatever the copy does.
+ * From `lg` up the layer is exactly one viewport and is slid into place as a
+ * unit by <AboutOverlayDriver />: the title never scrolls past the reader, it
+ * arrives with the whole section at once. So the root is cropped hard, and the
+ * section has to be most of the way in before the title crosses what's left of
+ * the bottom edge — rather than firing the moment the block clears the bottom
+ * of the window, with nowhere yet to be seen rising into.
+ *
+ * Below `lg` the layer is the column's own height, a good deal taller than one
+ * screen, and once the section has arrived it carries on up a pixel per pixel
+ * scrolled. The title enters from the bottom like ordinary page content, and
+ * the crop above turns into the wrong instruction there: it would hold the
+ * words parked while the reader watched an empty block travel most of the
+ * screen, then play them as they left the top of it. A sixth of the viewport
+ * is the ordinary “clear the fold by about a line” trigger — the words rise
+ * where the reader is already looking, with the whole screen below them left
+ * for the beats hung behind the title.
+ *
+ * Threshold stays at 0 on both. With the root cropped at all, asking for a
+ * *share* of the title to be inside it couples the timing to how many lines
+ * the copy happens to take, and from `lg` up a title taller than what's left
+ * of the root would never reach the ratio at all. At 0 it's the top edge
+ * crossing that fires it, which is the same moment whatever the copy does.
  */
-const REVEAL_ROOT_MARGIN = "0px 0px -75% 0px";
+const REVEAL_ROOT_MARGIN = {
+  base: "0px 0px -20% 0px",
+  lg: "0px 0px -65% 0px",
+} as const;
 const REVEAL_THRESHOLD = 0;
+
+/** `lg`, as BREAKPOINTS has it — the width the layer changes shape at. */
+const LG_QUERY = "(min-width: 64rem)";
 
 /**
  * The elements the reveal writes to. An object rather than six positional
@@ -379,7 +411,11 @@ type RevealRefs = {
   title: RefObject<HTMLElement | null>;
   eyebrow: RefObject<HTMLElement | null>;
   description: RefObject<HTMLElement | null>;
+  /** the block, which is what travels from `lg` up */
   skills: RefObject<HTMLElement | null>;
+  /** and the two pieces inside it, which are what travel below `lg` */
+  skillsEyebrow: RefObject<HTMLElement | null>;
+  skillsList: RefObject<HTMLElement | null>;
   statsEyebrow: RefObject<HTMLElement | null>;
   stats: RefObject<HTMLElement | null>;
 };
@@ -388,8 +424,33 @@ type RevealRefs = {
  * Plays {@link REVEAL} over the words of `refs.title` the first time the
  * section comes into view, {@link COPY} over the two blocks around it as that
  * finishes, and {@link BLOCK_SHIFT} over the skills list and the stat cards
- * behind that — once, and only then: the observer is dropped as it fires, so
+ * behind that — once, and only then: each observer is dropped as it fires, so
  * scrolling back up doesn't replay it.
+ *
+ * That sequence is one timeline from `lg` up and three below it, for the same
+ * reason {@link REVEAL_ROOT_MARGIN} is two figures. From `lg` up the section
+ * arrives whole, every block already on screen behind the one trigger, so the
+ * beats are spaced against *each other* — {@link BLOCK_LEAD} and friends are
+ * what make three blocks read as one reveal rather than three.
+ *
+ * Below `lg` those same leads would be spacing beats against a clock while the
+ * reader spaces them against the scroll: the section is a column taller than
+ * the screen, and by the time the last beat played the skills list would still
+ * be two thumb-flicks below the fold, finished before it was ever seen. So
+ * each of the column's three blocks takes its own trigger at the same
+ * {@link REVEAL_ROOT_MARGIN} `base` edge and plays as it clears the fold, and
+ * the scroll does the spacing the leads do above.
+ *
+ * What doesn't come apart is what's inside a block: the words still hand off
+ * to the eyebrow and paragraph closing on them, and both lists still count off
+ * behind their own eyebrow at {@link CARD_LEAD}. Those pairs sit within a few
+ * lines of each other on a phone, so they arrive together whatever the reader
+ * does — it's only the blocks, a screen or more apart in the column, that the
+ * scroll has any say over.
+ *
+ * The skills block is the one that also changes *what* it moves: a single
+ * object from `lg` up, an eyebrow and a list of rows below it — see
+ * {@link BLOCK_SHIFT}.
  *
  * The split is made once, up front, and the words are parked at their start
  * pose right away: waiting for the trigger to split would flash the finished
@@ -412,6 +473,7 @@ function useCopyReveal(
   title: string,
   description: string,
   statCount: number,
+  skillCount: number,
 ) {
   useGSAP(
     () => {
@@ -421,6 +483,18 @@ function useCopyReveal(
       // whoever asked not to see things move gets the title as typeset, with
       // nothing split, parked or observed — same bargain as <SolidIcon />
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+      // Read here rather than through `useBreakpoints`, the same way the motion
+      // query above is: everything below is built once and dropped as it fires,
+      // so a subscription would only re-render the section for a figure nothing
+      // reads again. A resize across `lg` before the section has arrived keeps
+      // the layout it mounted with — re-running the effect there would re-split
+      // the title and re-park its words to move the triggers, on a viewport that
+      // has just changed shape under the reader.
+      //
+      // It decides both when the beats fire and, for the skills block, what
+      // they move: see the parking below.
+      const wide = window.matchMedia(LG_QUERY).matches;
 
       // `mask` wraps each word in its own `overflow: clip` box — the hard edge
       // the words climb out from
@@ -434,84 +508,185 @@ function useCopyReveal(
       if (eyebrow) gsap.set(eyebrow, { opacity: 0, y: -COPY_SHIFT });
       if (paragraph) gsap.set(paragraph, { opacity: 0, y: COPY_SHIFT });
 
-      // The last beat's targets, parked the same way. The skills block is
-      // parked at the wrapper, so its eyebrow rides along inside it — the rule
-      // keeps the 0.72 its class gives it instead of being tweened to it, and
-      // the block arrives as one object.
-      //
-      // The cards are read off the list rather than collected through refs of
-      // their own: they are a `map` over a repeatable group, so the DOM
-      // already holds them in order and a ref array would only restate it.
-      // `statCount` is a dependency for exactly this reason — a card added in
-      // Prismic has to be picked up here, not left as the one row that never
-      // moves.
+      // The last beat's targets. The rows and the cards are both read off
+      // their list rather than collected through refs of their own: they are a
+      // `map` over a repeatable group, so the DOM already holds them in order
+      // and a ref array would only restate it. `statCount` and `skillCount`
+      // are dependencies for exactly this reason — an item added in Prismic has
+      // to be picked up here, not left as the one row that never moves.
       const skills = refs.skills.current;
+      const skillsEyebrow = refs.skillsEyebrow.current;
+      const rows = refs.skillsList.current
+        ? Array.from(refs.skillsList.current.children)
+        : [];
       const statsEyebrow = refs.statsEyebrow.current;
       const cards = refs.stats.current
         ? Array.from(refs.stats.current.children)
         : [];
 
-      if (skills) gsap.set(skills, { opacity: 0, x: BLOCK_SHIFT });
+      // The stats block is always its eyebrow and its cards, one labelling the
+      // other. The skills block is that below `lg` and a single object above
+      // it, which is the one place the two layouts differ in what they move
+      // rather than only in when.
+      //
+      // From `lg` up it's parked at the wrapper, so the eyebrow rides along
+      // inside it — the rule keeps the 0.72 its class gives it instead of being
+      // tweened to it, and the block arrives whole, level with the face beside
+      // it. Below `lg` there's no face to be level with and the list is the
+      // last thing in the column, arriving a row at a time under a thumb: the
+      // rows are worth counting off there exactly as the cards are, and a
+      // wrapper parked over them would be a second opacity and a second
+      // transform on top of the ones each row is already carrying.
+      if (wide) {
+        if (skills) gsap.set(skills, { opacity: 0, x: BLOCK_SHIFT });
+      } else {
+        if (skillsEyebrow) {
+          gsap.set(skillsEyebrow, { opacity: 0, y: -COPY_SHIFT });
+        }
+        if (rows.length) gsap.set(rows, { opacity: 0, x: BLOCK_SHIFT });
+      }
+
       if (statsEyebrow) gsap.set(statsEyebrow, { opacity: 0, y: -COPY_SHIFT });
       if (cards.length) gsap.set(cards, { opacity: 0, x: -BLOCK_SHIFT });
 
-      const io = new IntersectionObserver(
-        ([entry]) => {
-          if (!entry.isIntersecting) return;
-          io.disconnect();
+      // The three beats, each written once against a timeline the caller
+      // hands it. That's what lets the same tweens be one sequence from `lg`
+      // up and three separate plays below it, rather than the two layouts
+      // keeping two copies of the motion in step by hand.
+      //
+      // The two that can land anywhere take the position they start at and
+      // put their own label there, so the tweens inside them stay related to
+      // each other wherever the beat itself falls. The copy beat takes none:
+      // it heads its timeline in both layouts.
 
-          // a timeline rather than a delay, so the second beat starts where
-          // the first actually ends — a moment that moves with the word count.
-          // Two tweens off one label rather than one over both, because they
-          // fade to different places; the label is what keeps them together.
+      /** The title's words, and the eyebrow and paragraph closing on them. */
+      const copyBeat = (tl: gsap.core.Timeline) => {
+        tl.to(split.words, { opacity: 1, yPercent: 0, ...REVEAL });
+
+        // the handoff sits where the words actually end — a moment that moves
+        // with the word count — rather than at a delay guessed against it. Two
+        // tweens off the one label rather than one over both, because they
+        // fade to different places; the label is what keeps them together.
+        tl.addLabel("settle");
+        if (eyebrow) {
+          tl.to(eyebrow, { opacity: EYEBROW_OPACITY, y: 0, ...COPY }, "settle");
+        }
+        if (paragraph) {
+          tl.to(paragraph, { opacity: 1, y: 0, ...COPY }, "settle");
+        }
+      };
+
+      /**
+       * An eyebrow and the set it labels, counting off behind it: the stat
+       * cards always, and the skills rows below `lg`. One function because
+       * they are the same object — a rule, a label, and a short list under it
+       * — and should be read as one wherever both are on screen.
+       *
+       * Both tween to the same rest pose, so the side each travels in from is
+       * the parking's to say rather than this function's: the cards enter from
+       * the left of the frame, the skills rows from the right, each keeping
+       * the direction the design gives its block.
+       */
+      const listBeat = (
+        tl: gsap.core.Timeline,
+        at: gsap.Position,
+        label: string,
+        eyebrowEl: HTMLElement | null,
+        items: Element[],
+      ) => {
+        tl.addLabel(label, at);
+        if (eyebrowEl) {
+          tl.to(eyebrowEl, { opacity: EYEBROW_OPACITY, y: 0, ...COPY }, label);
+        }
+        if (items.length) {
+          tl.to(
+            items,
+            { opacity: 1, x: 0, ...COPY, stagger: ROW_STAGGER },
+            `${label}+=${CARD_LEAD}`,
+          );
+        }
+      };
+
+      /** The stats eyebrow, and the cards counting off behind it. */
+      const statsBeat = (tl: gsap.core.Timeline, at: gsap.Position) =>
+        listBeat(tl, at, "stats", statsEyebrow, cards);
+
+      /**
+       * The skills block: one object from `lg` up, an eyebrow and a list of
+       * rows below it — see the parking above for why.
+       */
+      const skillsBeat = (tl: gsap.core.Timeline, at: gsap.Position) => {
+        if (wide) {
+          if (skills) tl.to(skills, { opacity: 1, x: 0, ...COPY }, at);
+          return;
+        }
+        listBeat(tl, at, "skills", skillsEyebrow, rows);
+      };
+
+      // Every observer here is a one-shot: it drops itself as it fires, so a
+      // beat plays on the way down and stays played on the way back up. They
+      // are collected so the cleanup can drop the ones that never fired.
+      const observers: IntersectionObserver[] = [];
+
+      const rootMargin = wide ? REVEAL_ROOT_MARGIN.lg : REVEAL_ROOT_MARGIN.base;
+
+      const whenVisible = (target: Element, play: () => void) => {
+        const io = new IntersectionObserver(
+          ([entry]) => {
+            if (!entry.isIntersecting) return;
+            io.disconnect();
+            play();
+          },
+          { threshold: REVEAL_THRESHOLD, rootMargin },
+        );
+        io.observe(target);
+        observers.push(io);
+      };
+
+      if (wide) {
+        // One trigger, one timeline: the section arrives whole, so the beats
+        // are spaced against each other. One label for the whole last beat,
+        // offset from the copy's rather than appended, so the blocks stay
+        // related to each other however long the title's own beat runs.
+        whenVisible(el, () => {
           const tl = gsap.timeline();
-          tl.to(split.words, { opacity: 1, yPercent: 0, ...REVEAL });
-          tl.addLabel("settle");
-          if (eyebrow) {
-            tl.to(
-              eyebrow,
-              { opacity: EYEBROW_OPACITY, y: 0, ...COPY },
-              "settle",
-            );
-          }
-          if (paragraph) {
-            tl.to(paragraph, { opacity: 1, y: 0, ...COPY }, "settle");
-          }
-
-          // one label for the whole last beat, offset from the copy's rather
-          // than appended, so the three tweens hung off it stay related to
-          // each other however many words the title happens to hold
+          copyBeat(tl);
           tl.addLabel("blocks", `settle+=${BLOCK_LEAD}`);
-          if (skills) {
-            tl.to(skills, { opacity: 1, x: 0, ...COPY }, "blocks");
-          }
-          if (statsEyebrow) {
-            tl.to(
-              statsEyebrow,
-              { opacity: EYEBROW_OPACITY, y: 0, ...COPY },
-              `blocks+=${ROW_LEAD}`,
-            );
-          }
-          if (cards.length) {
-            tl.to(
-              cards,
-              { opacity: 1, x: 0, ...COPY, stagger: ROW_STAGGER },
-              `blocks+=${ROW_LEAD + 0.2}`,
-            );
-          }
-        },
-        { threshold: REVEAL_THRESHOLD, rootMargin: REVEAL_ROOT_MARGIN },
-      );
-      io.observe(el);
+          skillsBeat(tl, "blocks");
+          statsBeat(tl, `blocks+=${ROW_LEAD}`);
+        });
+      } else {
+        // A trigger each, and no leads: the column is taller than the screen,
+        // so the reader's scroll is what spaces these — see above.
+        //
+        // Each block is watched at its own top, which is the eyebrow where it
+        // has one: the eyebrow is parked too, so anchoring lower would leave
+        // the reader looking at the gap where its rule should be. The title
+        // block is the exception — it stays on the title, which is the box the
+        // margin was set against and the element this whole hook is scoped to.
+        whenVisible(el, () => copyBeat(gsap.timeline()));
+
+        const statsTop = statsEyebrow ?? refs.stats.current;
+        if (statsTop)
+          whenVisible(statsTop, () => statsBeat(gsap.timeline(), 0));
+
+        const skillsTop = skillsEyebrow ?? skills;
+        if (skillsTop) {
+          whenVisible(skillsTop, () => skillsBeat(gsap.timeline(), 0));
+        }
+      }
 
       return () => {
-        io.disconnect();
+        for (const io of observers) io.disconnect();
         // puts the original text node back, taking the spans and everything
         // set on them with it
         split.revert();
       };
     },
-    { dependencies: [title, description, statCount], scope: refs.title },
+    {
+      dependencies: [title, description, statCount, skillCount],
+      scope: refs.title,
+    },
   );
 }
 
@@ -595,6 +770,8 @@ export default function AboutContent({
   const eyebrowRef = useRef<HTMLElement>(null);
   const descriptionRef = useRef<HTMLParagraphElement>(null);
   const skillsRef = useRef<HTMLDivElement>(null);
+  const skillsEyebrowRef = useRef<HTMLElement>(null);
+  const skillsListRef = useRef<HTMLUListElement>(null);
   const statsEyebrowRef = useRef<HTMLElement>(null);
   const statsRef = useRef<HTMLUListElement>(null);
 
@@ -604,12 +781,15 @@ export default function AboutContent({
       eyebrow: eyebrowRef,
       description: descriptionRef,
       skills: skillsRef,
+      skillsEyebrow: skillsEyebrowRef,
+      skillsList: skillsListRef,
       statsEyebrow: statsEyebrowRef,
       stats: statsRef,
     },
     title ?? "",
     description ?? "",
     numbers.length,
+    skills.length,
   );
 
   const iconSize = "size-4 shrink-0 xl:size-5 2xl:size-6";
@@ -767,7 +947,7 @@ export default function AboutContent({
           // share of this row; `order` because it reads first in the DOM and
           // sits second across
           <div ref={skillsRef} className="lg:order-2 lg:ml-auto lg:w-[34.3%]">
-            <Eyebrow>my skills</Eyebrow>
+            <Eyebrow ref={skillsEyebrowRef}>my skills</Eyebrow>
 
             {/* the rows sit edge to edge in the design, so the dividers are
                 one shared border rather than a gap. The list is narrower than
@@ -805,7 +985,10 @@ export default function AboutContent({
                 `last` are the grid's first and last cells, not each column's —
                 so in that range every row closes its own box instead (see the
                 row classes below), which is why the columns take a gap. */}
-            <ul className="mt-2.5 lg:mt-4 mb-6 lg:mb-0 md:grid md:grid-cols-2 md:gap-2 lg:block lg:w-[90.4%]">
+            <ul
+              ref={skillsListRef}
+              className="mt-2.5 lg:mt-4 mb-6 lg:mb-0 md:grid md:grid-cols-2 md:gap-2 lg:block lg:w-[90.4%]"
+            >
               {skills.map(({ skill }, i) => (
                 <li
                   key={i}
