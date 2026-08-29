@@ -17,7 +17,7 @@ import SplitText from "gsap/SplitText";
 import { useGSAP } from "@gsap/react";
 
 import SolidIcon, { solidForRow } from "./SolidIcon";
-import { publishFaceSlot } from "./AboutOverlay";
+import { measureFaceSlot, publishFaceSlot } from "./faceSlot";
 import {
   aboutOnScreen,
   aboutOnScreenOnServer,
@@ -31,13 +31,24 @@ gsap.registerPlugin(useGSAP, SplitText);
  * the whole slice — the same way <NameOverlay /> and <HeadlineOverlay /> take
  * theirs. This renders one composition, not a variation switch, so the props
  * are worth spelling out: they say exactly which of the slice's fields reach
- * the DOM. What isn't here — the eyebrows, the meta list under the cards — is
- * design rather than copy, and stays hard-coded below.
+ * the DOM. What isn't here — the eyebrow, the meta list top left — is design
+ * rather than copy, and stays hard-coded below.
  *
  * The two groups keep their generated item types, so a field added in Slice
  * Machine turns up here rather than behind a cast.
  */
 type Props = {
+  /**
+   * The section, watched for reflows so the face's box can be re-measured —
+   * see ./faceSlot. Handed in rather than found by walking up from a ref here,
+   * so the relationship is something the call site states rather than something
+   * this file assumes about markup it doesn't own.
+   *
+   * Only ever read from a passive effect. It is a ref to this component's own
+   * *parent*, so it is still null during layout — see
+   * {@link REVEAL_ROOT_MARGIN} for the bug that costs.
+   */
+  sectionRef: RefObject<HTMLElement | null>;
   title: KeyTextField;
   description: KeyTextField;
   numbers: Content.AboutSliceDefaultPrimary["numbers"];
@@ -45,45 +56,51 @@ type Props = {
 };
 
 /**
- * The About section's copy, as laid out in Figma (node 1366-481).
+ * The About section's copy, as laid out in Figma (nodes 1423-1098 and
+ * 1421-917 — the section's first and last state).
  *
- * Everything here is HTML on <AboutOverlay />'s layer. The section's other
- * halves are already scene geometry and stay there: the giant "ABOUT" with its
+ * Everything here is ordinary HTML in the section, painting over the canvas.
+ * The section's other halves are scene geometry and stay there: the giant
+ * "ABOUT" with its
  * stroked echoes is <Title />, the grid is <Lines />, the sliced face is
- * <Head />, and the bar along the bottom is <SiteNav />. What's left — the two
- * labelled blocks on the right, the stat cards on the left and the meta list
- * under them — is type, and type belongs in the DOM.
+ * <Head />, and the bar along the bottom is <SiteNav />.
  *
  * ── Layout ────────────────────────────────────────────────────────────────
  *
- * The Figma frame is a single 1906 × 947 desktop composition, and the layer it
- * lands on is exactly one viewport, so from `lg` up the blocks are placed
- * absolutely at the percentages the design puts them at. They're deliberately
- * *independent* blocks rather than one flow: they would otherwise push each
- * other around as the copy rewraps, and the skills list has to stay level with
- * the face regardless of how many lines the paragraph takes. The one pairing
- * is the skills list and the meta list, which share a row so the meta list can
- * sit at the foot of a list whose height the skill count decides.
+ * The Figma frames are single 1906 × 947 desktop compositions, and from `lg` up
+ * the still half of this one is a `sticky top-0 h-screen` box — exactly one
+ * viewport — so the blocks inside it are placed absolutely at the percentages
+ * the design puts them at. They're deliberately *independent* blocks rather
+ * than one flow: they would otherwise push each other around as the copy
+ * rewraps.
  *
- * Below `lg` the blocks stack into a single column, traced off the mobile draft
- * (node 1398-689, a 375 x 1417 frame): who i am, the stat cards, the face, then
- * the skills list with the meta list under it. The stat cards are the one block
- * that changes shape rather than just size — stacked number-over-label and
- * three across, they cost ~80px instead of ~180.
+ * Two columns either side of the face:
  *
- * That column is about 1.7 screens tall on a phone, and it is meant to be. The
- * face sits in the middle of it at the draft's proportions, and the whole thing
- * scrolls through the section rather than being pinned to one viewport: see
- * <AboutOverlay />, whose layer is sized by this column below `lg` and travels
- * with the page scroll, and <Scene />, which puts the head in the box reserved
- * for it here. Everything only fits one pinned screen if the head is shrunk to
- * about a thumbnail, which is not what the draft asks for — measured against
- * the real faces, the four blocks of copy already take ~630px of the ~700 a
- * phone has.
+ * - left, pinned to the top: the meta list — where he is, what time it is
+ *   there, how long he has been at it;
+ * - left, pinned to the bottom: "who i am", the headline and the paragraph
+ *   under it. Set against the foot of the screen rather than flowing down from
+ *   the meta list, so the two ends of the column stay put however many lines
+ *   the headline takes;
+ * - right: the skill cards, which stack as the section is scrolled, and the
+ *   stats that arrive once the last of them has landed.
  *
- * The foot of the column clears <SiteNav /> — a bar across the bottom at `md`,
- * a hamburger in the corner below it — so the meta list can't land on top of it
- * at the end of the travel.
+ * The pile is the one part of this that moves with the scroll, and it moves
+ * entirely in CSS — no intro tween touches it. Each card is `position: sticky`
+ * at its own slot, with a
+ * beat's worth of flow under it. There is no frame loop and nothing to keep in
+ * step — see {@link SkillCard}, and {@link cardFlowVh} for the arithmetic.
+ *
+ * The one thing sticky can't say is *when* — the stats have to wait for the
+ * pile to finish rather than for a distance, so the last card locking into
+ * place is what brings them in. See {@link statsRootMargin}.
+ *
+ * Below `lg` the blocks stack into a single column: the meta list, the copy,
+ * the face, then the cards and the stats. The cards are ordinary items in that
+ * column there — open, in flow, one after the next — because the stack is a
+ * pinned-section effect and below `lg` the section isn't pinned. The mobile
+ * composition hasn't been drawn yet; this is the desktop one folded into a
+ * column so the section reads on a phone, not a design.
  *
  * Sizes step at the breakpoints rather than scaling with the viewport, matching
  * <HeadlineOverlay />: nothing here reads the window, so the server renders what
@@ -96,14 +113,14 @@ type Props = {
 /** Design fills: #FFFFFF for the display type, #E8E8E8 for the supporting copy. */
 const MUTED = "text-[#E8E8E8]";
 
-/** ls 1.4/14, 1.6/16 and 2.4/24 in the design — all of them 0.1em. */
+/** ls 1.4/14, 1.6/16 and 2/20 in the design — all of them 0.1em. */
 const CAPS = "uppercase tracking-[0.1em]";
 
 /** lh 40.9/28, 26.3/18, 64.2/44 … the whole composition is set at one ratio. */
 const LEADING = "leading-[1.46]";
 
 /**
- * The translucent black behind the stat cards and the skills rows.
+ * The translucent black behind the skill cards and the stat boxes.
  *
  * ── No backdrop-filter here, and it must not come back ────────────────────
  *
@@ -113,46 +130,194 @@ const LEADING = "leading-[1.46]";
  * that fills the viewport, so a backdrop-filter's backdrop *is* the scene. A
  * backdrop-filter is a draw-time compositor operation with no cross-frame
  * cache — if a frame is produced and the element is in it, the filter runs.
- * Whether the element moved is irrelevant, so <AboutOverlayDriver />'s careful
- * "skip the write if nothing changed" buys nothing at all here. And a frame is
- * always produced: <Postprocessing /> ends on `<Noise />`, which reseeds every
- * pixel on the canvas every frame, for ever, even with the camera at rest.
+ * Whether the element moved is irrelevant, and so is the fact that the pile is
+ * now pinned by the compositor rather than driven from JavaScript — a sticky
+ * card that has not moved in a hundred frames still has its backdrop resampled
+ * in every one of them. And a frame is always produced:
+ * <Postprocessing /> ends on `<Noise />`, which reseeds every pixel on the
+ * canvas every frame, for ever, even with the camera at rest.
  *
- * Seven of them, at 82fps, each re-sampling its own box grown by three sigma
- * on every side — `blur(16px)` is sigma, not a radius, so that's ±48px — and
- * at the browser's device scale factor, which `dpr={[1, 1.5]}` doesn't clamp:
- * that only sizes the WebGL drawing buffer. Which is also why the harness's
- * `5` can't shift this cost, and why it lands in `other` rather than `js` or
- * `gpu` — see <Diagnostics />.
+ * Each element re-samples its own box grown by three sigma on every side —
+ * `blur(16px)` is sigma, not a radius, so that's ±48px — and at the browser's
+ * device scale factor, which `dpr={[1, 1.5]}` doesn't clamp: that only sizes
+ * the WebGL drawing buffer. Which is also why the harness's `5` can't shift
+ * this cost, and why it lands in `other` rather than `js` or `gpu` — see
+ * <Diagnostics />.
+ *
+ * NB the cards this now backs are a great deal larger than the skill *rows*
+ * they replace — four boxes of roughly 623 × 235 design px rather than seven
+ * strips — and they sit on top of one another, so most of that area is sampled
+ * several times over. If the section's frame budget goes, this is the first
+ * thing to try.
  *
  * Opacity does the legible half of the job on its own, which is the half that
- * matters. From `lg` up the cards sit at the left edge and the skills at the
- * right, over the black backdrop plane, a grid that fades to 0.1 out there and
- * the vignette's darkest band — blurring near-black returns near-black, so the
- * design's own 40% stands and nothing visible changed. Below `lg` the column
- * stacks squarely onto the face, where white caps over the holographic bands
- * need the extra 20% to read.
- *
- * NB the two blocks that are nothing but type — "who i am" and the stats
- * eyebrow — still carry no backing at any width, which on a phone puts them
- * straight onto the face. That predates this and is a design call, not a
- * performance one; if they should have a plate below `lg`, this is it.
+ * matters. From `lg` up the cards sit at the right edge over the black backdrop
+ * plane, a grid that fades to 0.1 out there and the vignette's darkest band —
+ * blurring near-black returns near-black, so the design's own 40% stands and
+ * nothing visible changed.
  */
 const PLATE = "bg-black/40 backdrop-blur-lg";
 
+/** The stat boxes are drawn lighter and heavier than the cards: 20% and 2px. */
+const STAT_PLATE = "bg-black/20 backdrop-blur-lg";
+
+/* --------------------------------------------------------------------------
+   The pile's arithmetic
+
+   Traced off the Figma frames and kept in `vh`, which from `lg` up is exact
+   rather than convenient: the still box is `h-screen` and the card column spans
+   the section, so a share of the design's 947 is a share of the viewport.
+
+   All of it feeds `position: sticky`. Nothing here runs per frame — the cards
+   are pinned by the compositor, and these numbers only say where and when.
+   -------------------------------------------------------------------------- */
+
+/** The first card's top and a card's height: 191 and 235 of 947. */
+const CARD_TOP_VH = 20.2;
+const CARD_HEIGHT_VH = 24.8;
+
 /**
- * Each card is nudged right of the one above it, so they read as a stair
- * stepping down towards the face: 64px a step on a 1906 frame, against a
- * container that spans the leftmost card's left edge to the rightmost's right
- * edge.
- *
- * A step per index rather than a fixed set of three classes, because the group
- * is repeatable and the design's count isn't a promise. It goes through a
- * custom property so the offset can be computed from `i` and still only apply
- * from `lg` up — a plain inline `margin-left` has no breakpoint to hide behind,
- * and would stagger the stacked column too.
+ * The step between two cards, 58 of 947 — and also the height of a card's
+ * header row, which is the whole illusion: a card covers everything of the one
+ * behind it *except* its header, because it starts exactly where that card's
+ * body does. Change one and change the other.
  */
-const STAGGER_STEP = 11.2;
+const CARD_STEP_VH = 6.1;
+
+/** Where the stats pin: 698 of 947, with the design's 135 of height under it. */
+const STATS_TOP_VH = 73.7;
+
+/**
+ * How much scroll the copy gets to itself after the section lands, before the
+ * first card's top edge crosses the fold.
+ *
+ * The knob to turn if the pile starts too early or too late — everything after
+ * it shifts along, including the section's own height. At 0 the first card
+ * would be rising as the headline was still settling.
+ */
+const INTRO_HOLD_VH = 25;
+
+/** One card's arrival: the scroll from one card locking to the next. */
+const BEAT_VH = 45;
+
+/**
+ * Scroll between the last card locking and the bottom of the page.
+ *
+ * Two jobs, and the second is the one that sets the figure. It is the pause on
+ * the finished picture — but it is also, read backwards, exactly how far the
+ * reader has to scroll *up* from the end before the stats begin to leave. Card
+ * four is pinned for the whole of it, so nothing moves, so the observer
+ * watching it has nothing to report: the stats simply hang there. At twenty
+ * that was a fifth of a screen of pulling away with no response.
+ *
+ * Small, then, and not zero — the last card would otherwise be locking at the
+ * very instant the page ran out of scroll, which is the same zero-slack bargain
+ * that cost the pile its pinning once already.
+ *
+ * Only this much is needed anyway, because a section's last viewport is
+ * unreachable: scrolled to the very bottom, the fold sits on the section's own
+ * end. {@link sectionVh} adds that screen on top. The reader still rests on the
+ * finished composition for as long as they like — they just cannot scroll
+ * through it.
+ */
+const REST_VH = 1;
+
+/** Binary floating point turns `20.2 + 6.1` into `26.299999999999997`. */
+const vh = (n: number) => Math.round(n * 100) / 100;
+
+/** Where card `i` pins. */
+const cardSlotVh = (i: number) => vh(CARD_TOP_VH + i * CARD_STEP_VH);
+
+/**
+ * Where card `i` sits in the column's flow — the number that decides when it
+ * arrives, and the whole of the stacking logic.
+ *
+ * The first card starts a screen and a hold below the section's top edge, so it
+ * rises into place rather than being there already. Each one after it is a beat
+ * *plus a step* further down: every card pins one {@link CARD_STEP_VH} lower
+ * than the last, and a card with further to fall needs that much more runway to
+ * still land on its own beat.
+ *
+ * One rule for every card, the first included. It used to sit at flow 0, which
+ * put it already past its own `top` when the section landed — so it was simply
+ * there, and being there is not an entrance, so it had to be given a fade to
+ * arrive on. The cards do not animate in; they scroll in.
+ */
+const cardFlowVh = (i: number) =>
+  vh(100 + INTRO_HOLD_VH + i * (BEAT_VH + CARD_STEP_VH));
+
+/** The scroll, measured from the section's top edge, at which card `i` pins. */
+const cardLockVh = (i: number) => vh(cardFlowVh(i) - cardSlotVh(i));
+
+/**
+ * The section's own height, for <About /> to set on it.
+ *
+ * The section is pinned from `lg` up, so its height measures nothing about its
+ * content — it is purely how much wheel the pile gets, which is why it has to
+ * come off the card count. Typed as a class, a fifth skill would get the same
+ * height four of them share and every beat would shorten to make room.
+ *
+ * The extra screen is not slack: the bottom of the page puts the fold on the
+ * section's own end, so the last 100vh of any section can never be scrolled
+ * *through*. Without it the final card would never reach its slot.
+ */
+export const sectionVh = (count: number) =>
+  vh(cardLockVh(Math.max(1, count) - 1) + 100 + REST_VH);
+
+/**
+ * What the card list's height has to satisfy, as an assertion rather than a
+ * formula — see the `lg:h-full` in the markup.
+ *
+ * A sticky box is clamped to its containing block. Give the list no more room
+ * than its cards happen to occupy and the pinned ones have nowhere to be held,
+ * so they are dragged up together as the list's bottom edge rises past them:
+ * the pile appears to stop stacking and start shoving, one card every
+ * {@link CARD_STEP_VH} of scroll, bottom card first.
+ *
+ * The list is given the column's whole height instead of a computed run-out.
+ * That was worth doing for the slack alone — the computed figure was an exact
+ * fit, so the bottom card reached its clamp at the same scroll as the page
+ * reached its end, and anything that made the page a shade taller than
+ * expected walked the pile off one card at a time. But it is also the better
+ * rule: at full height a card's room runs out only if
+ *
+ *     cardSlotVh(count - 1) + CARD_HEIGHT_VH > 100
+ *
+ * which says the finished pile is taller than the screen — a thing the design
+ * has to answer for long before the arithmetic does. Four cards sit at 63.3vh
+ * with 36.7vh to spare; it breaks at seven, which is also where the last card
+ * would be growing through the stats.
+ */
+const stackFitsVh = (count: number) =>
+  vh(cardSlotVh(Math.max(1, count) - 1) + CARD_HEIGHT_VH);
+
+/**
+ * The gap under card `i`, which is what sticky reads to space the arrivals.
+ *
+ * Uniform, and none under the last — holding the finished pile is the list's
+ * own height, not trailing space inside it. See {@link stackFitsVh}.
+ */
+const cardGapVh = (i: number, count: number) =>
+  i === count - 1 ? 0 : vh(cardFlowVh(i + 1) - cardFlowVh(i) - CARD_HEIGHT_VH);
+
+/**
+ * The crop that fires the stats: the top of the screen down to just past where
+ * the last card comes to rest.
+ *
+ * The stats wait on the pile finishing rather than on a distance, and the last
+ * card locking *is* the pile finishing — so the last card is the thing to
+ * watch, and the moment its top edge reaches its own slot is the moment to
+ * fire. A degree of slack above the slot so the crossing is unambiguous.
+ *
+ * This used to be an empty cue box placed a viewport below the lock, which
+ * worked but bought a hidden constraint: an element only crosses the fold if
+ * the page can be scrolled far enough to push it there, and the last screen of
+ * a section cannot. Watching a card that is already on screen needs no runway
+ * at all.
+ */
+const STATS_CUE_SLACK_VH = 1;
+const statsRootMargin = (count: number) =>
+  `0px 0px -${vh(100 - cardSlotVh(count - 1) - STATS_CUE_SLACK_VH)}% 0px`;
 
 /** London, since the line above it says that's where the clock is. */
 const TIME_ZONE = "Europe/London";
@@ -210,11 +375,11 @@ function useLocalTime() {
  * The clock, on its own so that its tick re-renders a text node rather than the
  * section.
  *
- * <AboutContent /> holds three cards, four rows, four turning solids and three
- * inline icons, none of which have anything to say about the time — and every
- * one of them was being reconciled once a second, for ever, to change eight
- * characters. Held down here, the rest of the tree re-renders only when the
- * copy changes, which at runtime is never.
+ * <AboutContent /> holds four cards, three stat boxes, four turning solids and
+ * three inline icons, none of which have anything to say about the time — and
+ * every one of them was being reconciled once a second, for ever, to change
+ * eight characters. Held down here, the rest of the tree re-renders only when
+ * the copy changes, which at runtime is never.
  */
 function LocalTime() {
   const time = useLocalTime();
@@ -235,15 +400,20 @@ function LocalTime() {
  * `translate(0px, 0px)` sitting inline, and that alone is enough to make the
  * element a containing block and take its whole subtree off the pixel grid the
  * rest of the page is snapped to. A 1px white hairline is exactly the thing
- * that can't survive that: the skills list is sized in percentages all the way
- * up, so its right border lands mid-pixel and gets drawn at partial coverage —
- * visibly fainter than the three edges that happen to fall on whole pixels, or
- * missing altogether. Type set over a leftover transform goes soft the same
- * way, for the same reason.
+ * that can't survive that: the cards are sized in percentages all the way up,
+ * so their borders land mid-pixel and get drawn at partial coverage — visibly
+ * fainter than the edges that happen to fall on whole pixels, or missing
+ * altogether. Type set over a leftover transform goes soft the same way, for
+ * the same reason.
  *
  * Clearing it costs one write per element at the end of its tween and settles
  * the whole class of problem: at rest the section paints exactly as it would
  * with none of this on it, which is the only state worth guaranteeing.
+ *
+ * It is also why nothing in this hook is allowed to tween a *card*: those carry
+ * the stack driver's transform, and two writers on one property is a fight
+ * neither wins. The intro moves the wrapper around them instead — see the
+ * parking in {@link useCopyReveal}.
  *
  * Transform only. The opacities stay — <Eyebrow /> is tweened to the 0.72 its
  * own class already carries, so clearing that would be a no-op with a flash of
@@ -253,7 +423,7 @@ function LocalTime() {
 const CLEAR = "transform";
 
 /**
- * How the title's words arrive: up from a full line box below their place,
+ * How the headline's words arrive: up from a full line box below their place,
  * fading in, one after the next.
  *
  * Each word is masked — see the `mask` split below — so the rise is a word
@@ -268,7 +438,7 @@ const CLEAR = "transform";
  * of the glyphs showing at the large end and overshoot at the small.
  *
  * The stagger is what makes it read word-by-word rather than as a block, and
- * it's short enough that a long title still finishes in about a second — the
+ * it's short enough that a long headline still finishes in about a second — the
  * whole reveal is `stagger × (words - 1) + duration`.
  */
 const REVEAL_RISE = 100;
@@ -280,17 +450,17 @@ const REVEAL = {
 } as const;
 
 /**
- * What the title hands off to, once its last word has landed: the eyebrow above
- * it drops into place and the paragraph below it rises, both fading in.
+ * What the headline hands off to, once its last word has landed: the eyebrow
+ * above it drops into place and the paragraph below it rises, both fading in.
  *
- * The same distance with the sign flipped, so the two close on the title from
- * opposite sides and the block reads as gathering around it rather than as a
- * third and fourth thing arriving. They move together for the same reason.
+ * The same distance with the sign flipped, so the two close on the headline
+ * from opposite sides and the block reads as gathering around it rather than as
+ * a third and fourth thing arriving. They move together for the same reason.
  *
- * A px figure rather than the title's share of a line box: neither of these is
- * masked, so there's no clip edge for a percentage to be measured against — the
- * move is a short settle into place, not an entrance from out of sight, and it
- * wants to look the same size at every step the type takes.
+ * A px figure rather than the headline's share of a line box: neither of these
+ * is masked, so there's no clip edge for a percentage to be measured against —
+ * the move is a short settle into place, not an entrance from out of sight, and
+ * it wants to look the same size at every step the type takes.
  */
 const COPY_SHIFT = 16;
 const COPY = {
@@ -309,93 +479,102 @@ const COPY = {
 const EYEBROW_OPACITY = 0.72;
 
 /**
- * The last beat: the two labelled blocks on either side of the section — the
- * skills list on the right, the stat cards on the left — arriving once the
- * copy around the title has settled.
+ * From `lg` up the intro doesn't touch the card column at all — the cards do not
+ * animate in, they scroll in.
  *
- * They come in from opposite sides, each *away* from the middle of the section
- * it sits at the edge of: the skills list slides left off its own right edge,
- * the cards right off their left. So the pair reads as the section filling in
- * from the outside rather than as two lists sliding the same way, and neither
- * crosses the face between them.
+ * Every card now starts below the fold and rises into its slot on the scroll
+ * (see {@link cardFlowVh}), which is an entrance already. Fading the box they
+ * sit in on top of that would be the section doing two things at once, and the
+ * fade would be the one nobody asked for. It also spares a transform on an
+ * ancestor of a sticky element, which is a coordinate system its offsets then
+ * resolve against.
  *
- * The same 16px and the same {@link COPY} tween as the eyebrow and the
- * paragraph, because it's the same kind of move — a short settle into place,
- * not an entrance from out of sight — and the section should only ever be
- * doing one size of movement at a time.
+ * Below `lg` the column still fades in with everything else: there is no sticky
+ * there, no pile, and nothing else to make the cards feel like they arrived.
  *
- * The stat cards are a set, and a set is worth counting off: their eyebrow
- * leads, taking the same drop the "who i am" one takes, and the cards follow
- * row by row.
+ * The stats keep a settle on both sides. Theirs is one pinned box that holds
+ * its place for the whole section rather than a pile moving through it, so
+ * there is nothing for a transform to disturb — and they are the one block that
+ * has to announce itself rather than simply having been there.
  *
- * The skills list is the same kind of set, but from `lg` up it doesn't get the
- * same treatment — there it travels whole, eyebrow and rows together, because
- * what it has to do at that size is arrive level with the face beside it, as
- * one labelled object. Below `lg` there is no face to be level with and the
- * list is the last thing in the column, coming up under a thumb a row at a
- * time, so it counts off exactly as the cards do.
+ * From `lg` up it is also the distance they leave on: the beat is reversed
+ * rather than rewritten, so out is in backwards and the two cannot drift.
  */
-const BLOCK_SHIFT = 16;
+const STATS_SHIFT = 16;
 
 /**
- * How the beat is spaced against the one before it.
+ * How the beats are spaced against one another.
  *
- * `BLOCK_LEAD` is measured from the *start* of the copy beat, so at 0.35
- * against a 0.5s tween the blocks pick up while the paragraph is on its last
- * fifth — clearly after it, still one continuous reveal rather than two
- * sequences with a pause between them.
+ * `META_LEAD` sets the top-left block off against the copy at the foot of the
+ * same column, so the two ends of it don't arrive together.
  *
- * `ROW_LEAD` sets the stats block off against the skills one beside it, so the
- * two halves of that beat don't start together.
- *
- * `CARD_LEAD` is the gap inside the stats block: the cards start while their
- * eyebrow is still moving, which is what keeps the label and the set it labels
- * reading as one thing. It's the one figure here that holds below `lg` too,
- * where the block plays on its own arrival and has nothing to be spaced
- * against — see {@link useCopyReveal}. `ROW_STAGGER` is short enough that three
- * cards are done well inside the tween's own half-second — it's a count-off,
- * not a queue.
+ * `ROW_STAGGER` is the count-off inside the meta list, short enough that three
+ * rows are done well inside the tween's own half-second.
  */
-const BLOCK_LEAD = 0.35;
-const ROW_LEAD = 0.35;
-const CARD_LEAD = 0.2;
-const ROW_STAGGER = 0.2;
+const META_LEAD = 0.15;
+const ROW_STAGGER = 0.12;
 
 /**
- * When it fires. "The section is visible" is just the title's own box entering
- * the viewport — an IntersectionObserver reads the layer's transform for free,
- * where a scroll position would have to be re-derived from the camera.
+ * When it fires.
  *
- * The bottom margin is the whole of the timing, and it is a different figure
- * on each side of `lg`, because the layer underneath moves differently on each
- * side of it — see <AboutOverlay />.
+ * Two different questions on the two sides of `lg`, because the section is two
+ * different shapes there.
  *
- * From `lg` up the layer is exactly one viewport and is slid into place as a
- * unit by <AboutOverlayDriver />: the title never scrolls past the reader, it
- * arrives with the whole section at once. So the root is cropped hard, and the
- * section has to be most of the way in before the title crosses what's left of
- * the bottom edge — rather than firing the moment the block clears the bottom
- * of the window, with nowhere yet to be seen rising into.
+ * -- From `lg` up: the pinned box's top edge -------------------------------
  *
- * Below `lg` the layer is the column's own height, a good deal taller than one
- * screen, and once the section has arrived it carries on up a pixel per pixel
- * scrolled. The title enters from the bottom like ordinary page content, and
- * the crop above turns into the wrong instruction there: it would hold the
- * words parked while the reader watched an empty block travel most of the
- * screen, then play them as they left the top of it. A sixth of the viewport
- * is the ordinary “clear the fold by about a line” trigger — the words rise
- * where the reader is already looking, with the whole screen below them left
- * for the beats hung behind the title.
+ * The still half of the composition is a `sticky top-0 h-screen` box, so once
+ * the section lands nothing in it moves again for the whole 350vh. That makes
+ * "has the headline scrolled far enough" the wrong question -- the honest one
+ * is "has the composition arrived", and the box it all sits in is what to ask.
+ *
+ * A bottom margin of -95% crops the root to the top 5vh of the screen. The box
+ * starts at the section's own top edge and is a full viewport tall, so it
+ * enters that band the moment the section does and stays in it from then on —
+ * the observer fires within 5vh of the section reaching the top of the screen,
+ * which is also, and not by coincidence, where the camera flight from the hero
+ * ends. The copy arrives over a scene that has just come to rest.
+ *
+ * It has to be the box and not the <section> itself, even though the two cross
+ * at the same moment, and the reason is a timing trap rather than a geometric
+ * one: this hook runs on `useGSAP`, which is a *layout* effect, and React
+ * attaches host refs bottom-up — every child finishes before a parent element's
+ * ref is set. <AboutContent /> is a child of the section, so a ref to the
+ * section is still null here on the mount that matters, and a `if (section)`
+ * guard around it fails silently and permanently. The pinned box is inside this
+ * component, so its ref is attached before this runs. The old overlay took a
+ * section ref too and got away with it only because it read the ref from a
+ * passive `useEffect`, which runs after the whole commit.
+ *
+ * -- Why not the headline, ever again --------------------------------------
+ *
+ * This used to watch the headline through a -65% crop, and that combination
+ * failed silently and completely the moment the design moved the headline to
+ * the foot of the column: a pinned box never travels, so an element resting at
+ * 58vh inside it is at 58vh for ever, a root cropped to the top 35vh never
+ * contains it, the observer never fires, and every block hanging off it stays
+ * at `opacity: 0` with nothing at all to say it should have moved.
+ *
+ * The section cannot fail that way. It is taller than the viewport in every
+ * layout, so it crosses every band there is, wherever the blocks inside it are
+ * placed and however the copy rewraps.
+ *
+ * -- Below `lg`: ordinary page content -------------------------------------
+ *
+ * The section is a plain column there, taller than the screen, scrolling at
+ * page pace, and each block takes its own trigger as it clears the fold. A
+ * fifth of the viewport is the ordinary "clear the fold by about a line"
+ * figure: the words rise where the reader is already looking, with the whole
+ * screen below them left for the beats hung behind.
  *
  * Threshold stays at 0 on both. With the root cropped at all, asking for a
- * *share* of the title to be inside it couples the timing to how many lines
- * the copy happens to take, and from `lg` up a title taller than what's left
- * of the root would never reach the ratio at all. At 0 it's the top edge
- * crossing that fires it, which is the same moment whatever the copy does.
+ * *share* of a block to be inside it couples the timing to how tall that block
+ * happens to be, and a block taller than what is left of the root would never
+ * reach the ratio at all. At 0 it is the leading edge crossing that fires it,
+ * which is the same moment whatever the copy does.
  */
 const REVEAL_ROOT_MARGIN = {
   base: "0px 0px -20% 0px",
-  lg: "0px 0px -65% 0px",
+  lg: "0px 0px -95% 0px",
 } as const;
 const REVEAL_THRESHOLD = 0;
 
@@ -403,31 +582,44 @@ const REVEAL_THRESHOLD = 0;
 const LG_QUERY = "(min-width: 64rem)";
 
 /**
- * The elements the reveal writes to. An object rather than six positional
+ * The elements the reveal writes to. An object rather than five positional
  * parameters: they are all `RefObject<HTMLElement | null>` at the call site,
  * so a list of them is a list of things that would swap silently.
  */
 type RevealRefs = {
+  /**
+   * The pinned box, and from `lg` up the thing whose arrival starts
+   * everything — see {@link REVEAL_ROOT_MARGIN}.
+   */
+  still: RefObject<HTMLElement | null>;
   title: RefObject<HTMLElement | null>;
   eyebrow: RefObject<HTMLElement | null>;
   description: RefObject<HTMLElement | null>;
-  /** the block, which is what travels from `lg` up */
-  skills: RefObject<HTMLElement | null>;
-  /** and the two pieces inside it, which are what travel below `lg` */
-  skillsEyebrow: RefObject<HTMLElement | null>;
-  skillsList: RefObject<HTMLElement | null>;
-  statsEyebrow: RefObject<HTMLElement | null>;
+  /** the meta list at the top of the left column */
+  meta: RefObject<HTMLElement | null>;
+  /** the column the cards stack in — faded, never moved; see {@link STATS_SHIFT} */
+  stack: RefObject<HTMLElement | null>;
   stats: RefObject<HTMLElement | null>;
+  /**
+   * The last card, whose locking into place is what brings the stats in from
+   * `lg` up — see {@link statsRootMargin}. Below `lg` there is no pile to wait
+   * for and the stats take their own trigger.
+   */
+  lastCard: RefObject<HTMLLIElement | null>;
 };
 
 /**
  * Plays {@link REVEAL} over the words of `refs.title` the first time the
- * section comes into view, {@link COPY} over the two blocks around it as that
- * finishes, and {@link BLOCK_SHIFT} over the skills list and the stat cards
- * behind that — once, and only then: each observer is dropped as it fires, so
+ * section comes into view and {@link COPY} over the two blocks around it as
+ * that finishes — once, and only then: each observer is dropped as it fires, so
  * scrolling back up doesn't replay it.
  *
- * That sequence is one timeline from `lg` up and three below it, for the same
+ * That is the whole of the intro from `lg` up. The cards arrive on the scroll
+ * and the stats wait on the cards, so neither is on this timeline — and the
+ * stats are the one thing here that plays *backwards* as well, since the card
+ * they wait on can leave again. See the trigger below.
+ *
+ * That sequence is one timeline from `lg` up and several below it, for the same
  * reason {@link REVEAL_ROOT_MARGIN} is two figures. From `lg` up the section
  * arrives whole, every block already on screen behind the one trigger, so the
  * beats are spaced against *each other* — {@link BLOCK_LEAD} and friends are
@@ -435,37 +627,32 @@ type RevealRefs = {
  *
  * Below `lg` those same leads would be spacing beats against a clock while the
  * reader spaces them against the scroll: the section is a column taller than
- * the screen, and by the time the last beat played the skills list would still
- * be two thumb-flicks below the fold, finished before it was ever seen. So
- * each of the column's three blocks takes its own trigger at the same
+ * the screen, and by the time the last beat played the cards would still be two
+ * thumb-flicks below the fold, finished before they were ever seen. So each of
+ * the column's blocks takes its own trigger at the same
  * {@link REVEAL_ROOT_MARGIN} `base` edge and plays as it clears the fold, and
  * the scroll does the spacing the leads do above.
  *
- * What doesn't come apart is what's inside a block: the words still hand off
- * to the eyebrow and paragraph closing on them, and both lists still count off
- * behind their own eyebrow at {@link CARD_LEAD}. Those pairs sit within a few
- * lines of each other on a phone, so they arrive together whatever the reader
- * does — it's only the blocks, a screen or more apart in the column, that the
- * scroll has any say over.
- *
- * The skills block is the one that also changes *what* it moves: a single
- * object from `lg` up, an eyebrow and a list of rows below it — see
- * {@link BLOCK_SHIFT}.
+ * The stats are the one block whose trigger differs rather than only its
+ * timing. From `lg` up they wait on the cue at the foot of the pile, because
+ * "once the last card lands" is the whole point of the composition and is a
+ * scroll away rather than a second away. Below `lg` there is no pile to wait
+ * for and they clear the fold like everything else.
  *
  * The split is made once, up front, and the words are parked at their start
  * pose right away: waiting for the trigger to split would flash the finished
- * title for a frame if the section were ever already on screen. Splitting into
- * words rather than lines is also what makes it safe to do before the display
- * face has swapped in — the masked words are inline-blocks and re-wrap on
- * their own, where a line split would be measured against the fallback and
+ * headline for a frame if the section were ever already on screen. Splitting
+ * into words rather than lines is also what makes it safe to do before the
+ * display face has swapped in — the masked words are inline-blocks and re-wrap
+ * on their own, where a line split would be measured against the fallback and
  * stay that way.
  *
  * The copy is a dependency, so an edit in Prismic re-splits rather than
- * animating spans that no longer hold it, and so is the card count — see the
- * cards being read off the list below.
+ * animating spans that no longer hold it, and so is the stat count — see the
+ * boxes being read off the list below.
  *
- * The title is what the whole sequence hangs off — it carries the split, the
- * observer and the timeline everything else is hung on — so with no title
+ * The headline is what the whole sequence hangs off — it carries the split, the
+ * observer and the timeline everything else is hung on — so with no headline
  * rendered there's nothing for the rest to follow and it all stays as typeset.
  */
 function useCopyReveal(
@@ -480,7 +667,7 @@ function useCopyReveal(
       const el = refs.title.current;
       if (!el) return;
 
-      // whoever asked not to see things move gets the title as typeset, with
+      // whoever asked not to see things move gets the headline as typeset, with
       // nothing split, parked or observed — same bargain as <SolidIcon />
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
@@ -489,11 +676,8 @@ function useCopyReveal(
       // so a subscription would only re-render the section for a figure nothing
       // reads again. A resize across `lg` before the section has arrived keeps
       // the layout it mounted with — re-running the effect there would re-split
-      // the title and re-park its words to move the triggers, on a viewport that
-      // has just changed shape under the reader.
-      //
-      // It decides both when the beats fire and, for the skills block, what
-      // they move: see the parking below.
+      // the headline and re-park its words to move the triggers, on a viewport
+      // that has just changed shape under the reader.
       const wide = window.matchMedia(LG_QUERY).matches;
 
       // `mask` wraps each word in its own `overflow: clip` box — the hard edge
@@ -502,64 +686,44 @@ function useCopyReveal(
       gsap.set(split.words, { opacity: 0, yPercent: REVEAL_RISE });
 
       // parked the same way and for the same reason, each on its own side of
-      // the title; the eyebrow is always there, the paragraph is a field
+      // the headline; the eyebrow is always there, the paragraph is a field
       const eyebrow = refs.eyebrow.current;
       const paragraph = refs.description.current;
       if (eyebrow) gsap.set(eyebrow, { opacity: 0, y: -COPY_SHIFT });
       if (paragraph) gsap.set(paragraph, { opacity: 0, y: COPY_SHIFT });
 
-      // The last beat's targets. The rows and the cards are both read off
-      // their list rather than collected through refs of their own: they are a
-      // `map` over a repeatable group, so the DOM already holds them in order
-      // and a ref array would only restate it. `statCount` and `skillCount`
-      // are dependencies for exactly this reason — an item added in Prismic has
-      // to be picked up here, not left as the one row that never moves.
-      const skills = refs.skills.current;
-      const skillsEyebrow = refs.skillsEyebrow.current;
-      const rows = refs.skillsList.current
-        ? Array.from(refs.skillsList.current.children)
+      // The meta rows are read off their list rather than collected through
+      // refs of their own: they're fixed markup, so the DOM already holds them
+      // in order and a ref array would only restate it.
+      const metaRows = refs.meta.current
+        ? Array.from(refs.meta.current.children)
         : [];
-      const statsEyebrow = refs.statsEyebrow.current;
-      const cards = refs.stats.current
-        ? Array.from(refs.stats.current.children)
-        : [];
-
-      // The stats block is always its eyebrow and its cards, one labelling the
-      // other. The skills block is that below `lg` and a single object above
-      // it, which is the one place the two layouts differ in what they move
-      // rather than only in when.
-      //
-      // From `lg` up it's parked at the wrapper, so the eyebrow rides along
-      // inside it — the rule keeps the 0.72 its class gives it instead of being
-      // tweened to it, and the block arrives whole, level with the face beside
-      // it. Below `lg` there's no face to be level with and the list is the
-      // last thing in the column, arriving a row at a time under a thumb: the
-      // rows are worth counting off there exactly as the cards are, and a
-      // wrapper parked over them would be a second opacity and a second
-      // transform on top of the ones each row is already carrying.
-      if (wide) {
-        if (skills) gsap.set(skills, { opacity: 0, x: BLOCK_SHIFT });
-      } else {
-        if (skillsEyebrow) {
-          gsap.set(skillsEyebrow, { opacity: 0, y: -COPY_SHIFT });
-        }
-        if (rows.length) gsap.set(rows, { opacity: 0, x: BLOCK_SHIFT });
+      if (metaRows.length) {
+        gsap.set(metaRows, { opacity: 0, y: -COPY_SHIFT });
       }
 
-      if (statsEyebrow) gsap.set(statsEyebrow, { opacity: 0, y: -COPY_SHIFT });
-      if (cards.length) gsap.set(cards, { opacity: 0, x: -BLOCK_SHIFT });
+      // Below `lg` only. Above it the cards arrive by scrolling and the intro
+      // has nothing to say about them — see {@link STATS_SHIFT}. Parking the
+      // column here regardless would leave it at `opacity: 0` for ever, since
+      // nothing up there would then be tweening it back.
+      const stack = refs.stack.current;
+      if (!wide && stack) gsap.set(stack, { opacity: 0 });
 
-      // The three beats, each written once against a timeline the caller
-      // hands it. That's what lets the same tweens be one sequence from `lg`
-      // up and three separate plays below it, rather than the two layouts
-      // keeping two copies of the motion in step by hand.
-      //
-      // The two that can land anywhere take the position they start at and
-      // put their own label there, so the tweens inside them stay related to
-      // each other wherever the beat itself falls. The copy beat takes none:
-      // it heads its timeline in both layouts.
+      // The stat boxes count off on both sides of `lg`. What differs is only
+      // what says "now": the cue at the foot of the pile above, the block's own
+      // top below.
+      const stats = refs.stats.current;
+      const statBoxes = stats ? Array.from(stats.children) : [];
+      if (statBoxes.length) {
+        gsap.set(statBoxes, { opacity: 0, y: STATS_SHIFT });
+      }
 
-      /** The title's words, and the eyebrow and paragraph closing on them. */
+      // The beats, each written once against a timeline the caller hands it.
+      // That's what lets the same tweens be one sequence from `lg` up and
+      // several separate plays below it, rather than the two layouts keeping
+      // two copies of the motion in step by hand.
+
+      /** The headline's words, and the eyebrow and paragraph closing on them. */
       const copyBeat = (tl: gsap.core.Timeline) => {
         tl.to(split.words, { opacity: 1, yPercent: 0, ...REVEAL });
 
@@ -576,51 +740,29 @@ function useCopyReveal(
         }
       };
 
-      /**
-       * An eyebrow and the set it labels, counting off behind it: the stat
-       * cards always, and the skills rows below `lg`. One function because
-       * they are the same object — a rule, a label, and a short list under it
-       * — and should be read as one wherever both are on screen.
-       *
-       * Both tween to the same rest pose, so the side each travels in from is
-       * the parking's to say rather than this function's: the cards enter from
-       * the left of the frame, the skills rows from the right, each keeping
-       * the direction the design gives its block.
-       */
-      const listBeat = (
-        tl: gsap.core.Timeline,
-        at: gsap.Position,
-        label: string,
-        eyebrowEl: HTMLElement | null,
-        items: Element[],
-      ) => {
-        tl.addLabel(label, at);
-        if (eyebrowEl) {
-          tl.to(eyebrowEl, { opacity: EYEBROW_OPACITY, y: 0, ...COPY }, label);
-        }
-        if (items.length) {
-          tl.to(
-            items,
-            { opacity: 1, x: 0, ...COPY, stagger: ROW_STAGGER },
-            `${label}+=${CARD_LEAD}`,
-          );
-        }
+      /** The meta list at the top of the column, counting off. */
+      const metaBeat = (tl: gsap.core.Timeline, at: gsap.Position) => {
+        if (!metaRows.length) return;
+        tl.to(
+          metaRows,
+          { opacity: 1, y: 0, ...COPY, stagger: ROW_STAGGER },
+          at,
+        );
       };
 
-      /** The stats eyebrow, and the cards counting off behind it. */
-      const statsBeat = (tl: gsap.core.Timeline, at: gsap.Position) =>
-        listBeat(tl, at, "stats", statsEyebrow, cards);
+      /** The card column, arriving whole. */
+      const stackBeat = (tl: gsap.core.Timeline, at: gsap.Position) => {
+        if (stack) tl.to(stack, { opacity: 1, ...COPY }, at);
+      };
 
-      /**
-       * The skills block: one object from `lg` up, an eyebrow and a list of
-       * rows below it — see the parking above for why.
-       */
-      const skillsBeat = (tl: gsap.core.Timeline, at: gsap.Position) => {
-        if (wide) {
-          if (skills) tl.to(skills, { opacity: 1, x: 0, ...COPY }, at);
-          return;
-        }
-        listBeat(tl, at, "skills", skillsEyebrow, rows);
+      /** The stats, counting off behind whatever cued them. */
+      const statsBeat = (tl: gsap.core.Timeline, at: gsap.Position) => {
+        if (!statBoxes.length) return;
+        tl.to(
+          statBoxes,
+          { opacity: 1, y: 0, ...COPY, stagger: ROW_STAGGER },
+          at,
+        );
       };
 
       // Every observer here is a one-shot: it drops itself as it fires, so a
@@ -644,36 +786,83 @@ function useCopyReveal(
       };
 
       if (wide) {
-        // One trigger, one timeline: the section arrives whole, so the beats
-        // are spaced against each other. One label for the whole last beat,
-        // offset from the copy's rather than appended, so the blocks stay
-        // related to each other however long the title's own beat runs.
-        whenVisible(el, () => {
+        // One trigger, one timeline for the copy: the composition arrives
+        // whole, so its beats are spaced against each other. The labels are
+        // offset from the copy's own settle rather than appended, so the blocks
+        // stay related to each other however long the headline's beat runs.
+        //
+        // Watched at the pinned box rather than at any block inside it — see
+        // {@link REVEAL_ROOT_MARGIN}, which is mostly the story of getting this
+        // wrong twice.
+        const play = () => {
           const tl = gsap.timeline();
           copyBeat(tl);
-          tl.addLabel("blocks", `settle+=${BLOCK_LEAD}`);
-          skillsBeat(tl, "blocks");
-          statsBeat(tl, `blocks+=${ROW_LEAD}`);
-        });
+          metaBeat(tl, "settle+=" + META_LEAD);
+        };
+
+        // No box to watch means play it now, rather than never.
+        //
+        // Everything above has already been parked at `opacity: 0`, so a
+        // trigger that silently fails to attach doesn't degrade the reveal —
+        // it erases the section, permanently, with nothing on screen to say
+        // why. That has happened twice here on two unrelated causes, which is
+        // twice more than a failure this quiet gets to happen: the guard costs
+        // one branch and turns the worst case into a reveal that plays early.
+        const still = refs.still.current;
+        if (still) whenVisible(still, play);
+        else play();
+
+        // The stats are the exception, and the only block here whose timing the
+        // reader sets rather than a clock: they belong to the end of the pile,
+        // which is a scroll away rather than a second away. Watched at the last
+        // card, cropped to just past where it comes to rest, so the two happen
+        // together — see {@link statsRootMargin}.
+        //
+        // The one reveal here that is not a one-shot, and the only one that
+        // should not be. Every other block plays as the section arrives and has
+        // no reason to be undone — but the stats are tied to a card that can
+        // leave again, and a reader who scrolls back up past the pile finishing
+        // ought to find them gone, exactly as they found them the first time.
+        //
+        // So the beat is built once, paused, and driven both ways. `reverse()`
+        // runs that same tween backwards — the fade, the rise and the stagger,
+        // in the other order — which is the animation out for nothing, and one
+        // that cannot drift from the animation in because it *is* the animation
+        // in. Nothing below has to be kept in step by hand.
+        const lastCard = refs.lastCard.current;
+        if (lastCard && statBoxes.length) {
+          const stats = gsap.timeline({ paused: true });
+          statsBeat(stats, 0);
+
+          const io = new IntersectionObserver(
+            ([entry]) => {
+              // `reverse()` on a timeline still at its start is a no-op, which
+              // is what the observer's first call is on a page loaded above the
+              // section
+              if (entry.isIntersecting) stats.play();
+              else stats.reverse();
+            },
+            {
+              threshold: REVEAL_THRESHOLD,
+              rootMargin: statsRootMargin(skillCount),
+            },
+          );
+          io.observe(lastCard);
+          observers.push(io);
+        }
       } else {
         // A trigger each, and no leads: the column is taller than the screen,
         // so the reader's scroll is what spaces these — see above.
         //
-        // Each block is watched at its own top, which is the eyebrow where it
-        // has one: the eyebrow is parked too, so anchoring lower would leave
-        // the reader looking at the gap where its rule should be. The title
-        // block is the exception — it stays on the title, which is the box the
-        // margin was set against and the element this whole hook is scoped to.
+        // The headline block is the exception to "watch the block's own top" —
+        // it stays on the headline, which is the element this hook is scoped to.
         whenVisible(el, () => copyBeat(gsap.timeline()));
 
-        const statsTop = statsEyebrow ?? refs.stats.current;
-        if (statsTop)
-          whenVisible(statsTop, () => statsBeat(gsap.timeline(), 0));
-
-        const skillsTop = skillsEyebrow ?? skills;
-        if (skillsTop) {
-          whenVisible(skillsTop, () => skillsBeat(gsap.timeline(), 0));
+        if (refs.meta.current) {
+          whenVisible(refs.meta.current, () => metaBeat(gsap.timeline(), 0));
         }
+        if (stack) whenVisible(stack, () => stackBeat(gsap.timeline(), 0));
+        if (stats) whenVisible(stats, () => statsBeat(gsap.timeline(), 0));
       }
 
       return () => {
@@ -760,7 +949,127 @@ function StarIcon({ className }: { className?: string }) {
   );
 }
 
+/**
+ * One skill: a numbered header, a paragraph, and one of the sky's solids
+ * turning beside it.
+ *
+ * — Where the stacking lives ───────────────────────────────────────────────
+ *
+ * In three CSS declarations, and nowhere else. The card is `position: sticky`
+ * at `cardSlotVh(i)`, a header's height below the card before it, and it is
+ * given `cardGapVh(i)` of clear space underneath so the next one arrives a beat
+ * later. The browser does the rest: each card scrolls up the column until it
+ * reaches its own `top`, then holds while the one behind it climbs over
+ * everything but its header.
+ *
+ * That last part is the whole illusion, and it is an equality rather than a
+ * trick — `CARD_STEP_VH` is both the offset between two cards and the height
+ * of the header row below. A covered card shows its header and nothing else
+ * because the card on top of it starts exactly where its own body does.
+ *
+ * There is no first-card special case any more. Card 0 sits at flow 0, which is
+ * already past its own `top` when the section lands, so it is pinned from the
+ * section's first frame — the design's opening state, one card, open, waiting.
+ * It falls out of the same rule as the rest instead of being exempted from it.
+ *
+ * `z-index` is the stacking order itself: later cards paint over earlier ones,
+ * which is what turns four overlapping boxes into a pile rather than a mess.
+ *
+ * Below `lg` none of this applies — every `lg:` prefix above says so — and the
+ * card is an ordinary block in the column, open, at its natural height.
+ */
+function SkillCard({
+  ref,
+  index,
+  count,
+  skill,
+  description,
+}: {
+  /** set on the last card only — see {@link statsRootMargin} */
+  ref?: Ref<HTMLLIElement>;
+  index: number;
+  count: number;
+  skill: KeyTextField;
+  description: KeyTextField;
+}) {
+  return (
+    <li
+      ref={ref}
+      style={
+        {
+          "--slot": cardSlotVh(index) + "vh",
+          "--card-h": CARD_HEIGHT_VH + "vh",
+          "--header-h": CARD_STEP_VH + "vh",
+          // a beat's worth of runway for every card but the last, whose gap is
+          // the run-out that keeps the finished pile pinned — see
+          // {@link cardGapVh}
+          "--gap": cardGapVh(index, count) + "vh",
+          zIndex: index,
+        } as CSSProperties
+      }
+      className={
+        "pointer-events-auto relative mb-3 border-y border-white " +
+        PLATE +
+        " lg:sticky lg:top-(--slot) lg:mb-(--gap) lg:h-(--card-h)"
+      }
+    >
+      {/* The header row. Its height *is* {@link CARD_STEP_VH} from `lg` up --
+          that equality is what a collapsed card in the pile shows. */}
+      <div className="flex h-14 items-center gap-3 px-[5%] lg:h-(--header-h) lg:gap-4">
+        <span
+          className={
+            CAPS +
+            " " +
+            MUTED +
+            " shrink-0 tabular-nums text-[0.6875rem] lg:text-xs xl:text-[0.8125rem] 2xl:text-sm"
+          }
+        >
+          {/* "01/", "02/" ... the design numbers them, and the number is the one
+              part of a collapsed card that says where in the pile it is */}
+          {String(index + 1).padStart(2, "0")}/
+        </span>
+        <span
+          className={
+            "font-display " +
+            CAPS +
+            " " +
+            LEADING +
+            " truncate font-extrabold text-white text-sm lg:text-base xl:text-lg 2xl:text-xl"
+          }
+        >
+          {skill}
+        </span>
+      </div>
+
+      {description && (
+        <p
+          className={
+            CAPS +
+            " " +
+            MUTED +
+            " " +
+            LEADING +
+            " px-[5%] pr-[32%] pb-6 text-[0.625rem] tracking-normal lg:absolute lg:bottom-[14%] lg:left-[5%] lg:w-1/2 lg:p-0 lg:text-[0.6875rem] xl:text-xs 2xl:text-sm"
+          }
+        >
+          {description}
+        </p>
+      )}
+
+      {/* The sky's solids, a different one on each card and each turning at its
+          own rate — see <SolidIcon />. It replaces the design's placed bitmap,
+          which is a reference crop and already soft at this size. */}
+      <SolidIcon
+        kind={solidForRow(index)}
+        seed={index}
+        className="pointer-events-none absolute right-[4%] bottom-4 size-16 text-white lg:top-1/2 lg:bottom-auto lg:aspect-square lg:h-[86%] lg:w-auto lg:-translate-y-1/2"
+      />
+    </li>
+  );
+}
+
 export default function AboutContent({
+  sectionRef,
   title,
   description,
   numbers,
@@ -769,22 +1078,22 @@ export default function AboutContent({
   const titleRef = useRef<HTMLParagraphElement>(null);
   const eyebrowRef = useRef<HTMLElement>(null);
   const descriptionRef = useRef<HTMLParagraphElement>(null);
-  const skillsRef = useRef<HTMLDivElement>(null);
-  const skillsEyebrowRef = useRef<HTMLElement>(null);
-  const skillsListRef = useRef<HTMLUListElement>(null);
-  const statsEyebrowRef = useRef<HTMLElement>(null);
+  const stillRef = useRef<HTMLDivElement>(null);
+  const metaRef = useRef<HTMLUListElement>(null);
+  const stackRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLUListElement>(null);
+  const lastCardRef = useRef<HTMLLIElement>(null);
 
   useCopyReveal(
     {
+      still: stillRef,
       title: titleRef,
       eyebrow: eyebrowRef,
       description: descriptionRef,
-      skills: skillsRef,
-      skillsEyebrow: skillsEyebrowRef,
-      skillsList: skillsListRef,
-      statsEyebrow: statsEyebrowRef,
+      meta: metaRef,
+      stack: stackRef,
       stats: statsRef,
+      lastCard: lastCardRef,
     },
     title ?? "",
     description ?? "",
@@ -792,254 +1101,297 @@ export default function AboutContent({
     skills.length,
   );
 
+  /**
+   * Re-measure the face's box whenever the page could have reflowed.
+   *
+   * The box is ordinary page content now, so its document position only moves
+   * when something actually re-lays-out: a resize, a rewrap, the display face
+   * swapping in after first paint, an edit in Prismic. Watching the section
+   * catches all of them. Nothing here runs on scroll -- see ./faceSlot for why
+   * that is the whole point of the arrangement.
+   *
+   * Coalesced to one measurement a frame. On iOS the address bar collapses and
+   * expands as the page is scrolled, and every step of that animation fires a
+   * `resize`; unbatched, a scroll back up the page would pay for a forced
+   * layout in each of the frames the section is also being drawn in.
+   */
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+
+    let pending = 0;
+    const schedule = () => {
+      if (pending) return;
+      pending = requestAnimationFrame(() => {
+        pending = 0;
+        measureFaceSlot();
+      });
+    };
+
+    measureFaceSlot();
+
+    const observer = new ResizeObserver(schedule);
+    observer.observe(el);
+    window.addEventListener("resize", schedule, { passive: true });
+
+    return () => {
+      cancelAnimationFrame(pending);
+      observer.disconnect();
+      window.removeEventListener("resize", schedule);
+    };
+  }, [sectionRef]);
+
+  /**
+   * The one thing the pile's geometry cannot check for itself.
+   *
+   * Everything else scales with the card count on its own — the section grows a
+   * beat, the gaps hold, the cards keep landing on time. This is the exception:
+   * past a certain count the finished pile is taller than the screen, and then
+   * two things go at once, the cards running out of room to be pinned in and the
+   * last of them growing down through the stats. Neither shows up as an error;
+   * the pile just starts behaving oddly at the foot of the section.
+   *
+   * So it says so, in development. It is a design question rather than a bug —
+   * the answer is a shorter card or a tighter step, not a patch here — and it is
+   * a great deal easier to answer when something names it.
+   */
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+
+    const fits = stackFitsVh(skills.length);
+    if (fits <= 100) return;
+
+    console.warn(
+      `<AboutContent />: ${skills.length} skill cards make a pile ${fits}vh ` +
+        `tall, which is more than the screen. The lower cards will lose their ` +
+        `pinning and the last will grow through the stats — see stackFitsVh.`,
+    );
+  }, [skills.length]);
+
   const iconSize = "size-4 shrink-0 xl:size-5 2xl:size-6";
-  const metaText = `${CAPS} ${MUTED} text-[0.6875rem] lg:text-xs xl:text-[0.8125rem] 2xl:text-sm`;
+  const metaText =
+    CAPS +
+    " " +
+    MUTED +
+    " text-[0.6875rem] lg:text-xs xl:text-[0.8125rem] 2xl:text-sm";
+
+  /**
+   * The right-hand column, 1223-1846 of 1906 in the design, shared by the pile
+   * and the stats.
+   *
+   * They are two separate full-height boxes rather than one, because they want
+   * different things from the scroll: the cards are sticky siblings that travel
+   * through the section, the stats are a single box pinned near its foot. One
+   * container could not hold both without the stats taking flow space the pile
+   * needs.
+   *
+   * Both are `pointer-events-none`, with the cards and the stat boxes opting
+   * back in. They cover the whole right of the section and would otherwise
+   * swallow the drags that reach the head underneath — the same bargain the
+   * old overlay layer made, for the same reason.
+   */
+  const rightColumn =
+    "pointer-events-none px-(--block-inset) lg:absolute lg:inset-y-0 lg:left-[64.2%] lg:right-[3.1%] lg:px-0";
 
   return (
-    <div className="relative flex min-h-screen w-full flex-col justify-center gap-5 px-(--block-inset) pt-[6vh] pb-[calc(6vh+2.5rem)] sm:gap-6 lg:block lg:h-full lg:min-h-0 lg:gap-0 lg:px-0 lg:pt-0 lg:pb-0">
-      {/* "ABOUT" itself is <Title /> in the scene, where no reader can get at
-          it, so the section's heading lives here */}
-      <h2 className="sr-only">About</h2>
-
-      {/* — who i am ------------------------------------------------------ */}
-      {/* the eyebrow is a marker for the copy under it, so with neither field
-          filled the block goes rather than leaving a rule floating on its own */}
-      {(title || description) && (
-        <div
-          className={`lg:absolute lg:top-[10.7%] lg:right-[3.4%] lg:left-[64.8%] mb-6 lg:mb-0`}
-        >
-          <Eyebrow ref={eyebrowRef}>who i am</Eyebrow>
-
-          {/* the design breaks this over three lines, but a Text field is one
-              line in the editor, so the breaks are the column's to make — it's
-              sized to wrap the copy the same way. `pre-line` is there for the
-              author who does get a newline in. */}
-          {title && (
-            <p
-              ref={titleRef}
-              className={`font-display mt-2 font-extrabold text-white ${CAPS} ${LEADING} text-base tracking-normal whitespace-pre-line sm:text-lg lg:text-xl xl:text-2xl 2xl:text-[1.75rem] short:text-lg shorter:text-[0.85rem]`}
-            >
-              {title}
-            </p>
-          )}
-
-          {description && (
-            <p
-              ref={descriptionRef}
-              className={`mt-3 ${CAPS} ${MUTED} ${LEADING} text-xs tracking-normal lg:text-sm lg:max-w-[93%] xl:mt-5 xl:text-base 2xl:mt-6 2xl:text-lg short:text-sm shorter:text-[0.75rem]`}
-            >
-              {description}
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* — the numbers --------------------------------------------------- */}
-      {/* the eyebrow labels the cards, so with no numbers to label it goes too
-          rather than leaving a rule over nothing.
-
-          Eyebrow and list share one box, the way "who i am" does on the right:
-          the box is what sits at the design's 10.7%, so the pair still reads as
-          one line across the section, and the space under the rule is a margin
-          rather than the difference between two percentages — that difference
-          is a slice of the section's height, so it opened up on a tall viewport
-          and closed on a short one. Stacked below `lg` the box is static and
-          falls into the column in source order. */}
-      {numbers.length > 0 && (
-        <div className="lg:absolute lg:top-[10.7%] lg:left-[3.9%] lg:w-[30%]">
-          <Eyebrow ref={statsEyebrowRef}>my stats</Eyebrow>
-
-          <ul
-            ref={statsRef}
-            // three across is what the design's count wants; a fourth card
-            // wraps rather than squeezing the labels onto two lines. The top
-            // margin is the design's gap under the rule, sized off the type so
-            // it holds at any height.
-            className="mt-3 grid grid-cols-3 gap-2 sm:mt-4 lg:block lg:space-y-2"
-          >
-            {numbers.map(({ number, label }, i) => (
-              <li
-                // a group item carries no id of its own, and position is the only
-                // thing that identifies a card here
-                key={i}
-                style={{ "--stagger": `${i * STAGGER_STEP}%` } as CSSProperties}
-                // The height is fixed from `lg` up so the cards stay a set whatever
-                // the longest label does; the gap and the type are sized to keep
-                // that label on one line at the low end of each step, since the
-                // design's own 64px gap only fits once the viewport is as wide as
-                // the frame it was drawn on.
-                //
-                // The item is the intro's target and holds nothing but the box it
-                // reserves — the card itself is the element inside. The two are
-                // split because both want `transform`: the intro writes one here
-                // every frame, and a transition on the same element would smear
-                // that animation and then lose to its inline value anyway. Held
-                // apart, the intro moves the item and the hover moves the card.
-                className="lg:ml-(--stagger) lg:h-16 lg:w-[77.6%] xl:h-20 2xl:h-24 min-[112rem]:h-25"
-              >
-                {/* `pointer-events-auto` because <AboutOverlay />'s layer is
-                    transparent to the pointer — see the skills rows below */}
-                <div
-                  className={`pointer-events-auto flex h-full flex-col items-center rounded-sm border-2 border-white ${PLATE} px-2 py-2.5 text-center transition-transform duration-300 ease-out hover:translate-x-4 lg:flex-row lg:items-center lg:gap-8 lg:px-3 lg:py-0 lg:text-left xl:gap-12 xl:px-4 2xl:gap-16 2xl:px-5 min-[112rem]:px-6`}
-                >
-                  <span
-                    className={`font-display font-extrabold text-white ${LEADING} text-xl lg:text-2xl xl:text-3xl 2xl:text-4xl min-[112rem]:text-[2.75rem]`}
-                  >
-                    {number}
-                  </span>
-                  <span
-                    className={`${CAPS} ${MUTED} ${LEADING} text-[0.5625rem] lg:text-[0.625rem] xl:text-[0.6875rem] 2xl:text-[0.8125rem] min-[112rem]:text-base`}
-                  >
-                    {label}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* — the face ------------------------------------------------------ */}
-      {/* The head is scene geometry — <Head />, over in the R3F tree — and this
-          is the hole it sits in: an empty box that <Scene /> measures and
-          matches the face to every frame, so the two can't drift apart as the
-          copy above it rewraps. Nothing is drawn here; the canvas shows through.
-
-          The draft's numbers: 203 of 375 across, which is the 54vw below, and
-          the texture's own 784 x 1519 aspect, which is what makes the box the
-          same shape as the thing filling it. The margins are the draft's 49px
-          above and 31px below, less the column's own gap, and in `vw` for the
-          same reason the width is — they are proportions of the frame, not
-          measurements of one phone.
-
-          The `vh` half of that `min` is a ceiling, not a second opinion. The
-          face is nearly twice as tall as it is wide, so a width traced off a
-          375px frame turns into 150vh of head on a landscape phone or a small
-          laptop window, where 54vw is half of something much wider — a face
-          you could never see at once however far you scrolled. 31vh of width
-          is 60vh of height, which is the most that leaves the whole of it on
-          screen at a glance. On anything shaped like the frame it was drawn
-          for, the `vw` side wins and the draft's proportions stand.
-
-          Gone from `lg` up, where the face is back to the world position it is
-          authored at and the blocks are placed around it. `display: none` is
-          what the scene reads as "no column to sit in", so the two halves stay
-          in step through a resize across the breakpoint. */}
+    <>
+      {/* — the still half ------------------------------------------------ */}
+      {/* Pinned for the whole section from `lg` up, which is what gives the
+          cards beside it something to stack against. Below `lg` it is just the
+          top of an ordinary column and the blocks fall into it in source
+          order. */}
       <div
-        ref={publishFaceSlot}
-        aria-hidden
-        className="mt-[8vw] mb-[3vw] aspect-[784/1519] w-[min(66vw,37vh)] shrink-0 self-center lg:hidden"
-      />
+        ref={stillRef}
+        className="pointer-events-none relative flex min-h-screen w-full flex-col justify-center gap-5 px-(--block-inset) pt-[6vh] pb-[calc(6vh+2.5rem)] sm:gap-6 lg:sticky lg:top-0 lg:block lg:h-screen lg:min-h-0 lg:gap-0 lg:px-0 lg:pt-0 lg:pb-0"
+      >
+        {/* "ABOUT" itself is <Title /> in the scene, where no reader can get at
+            it, so the section's heading lives here */}
+        <h2 className="sr-only">About</h2>
 
-      {/* — my skills, and where and when --------------------------------- */}
-      {/* One row rather than two blocks placed independently: the meta list is
-          set against the foot of the skills list, and that list is as tall as
-          the skill count makes it, so the alignment has to come from a shared
-          container rather than a percentage traced off the design's three
-          rows. The row spans the stat cards' left edge to the skills list's
-          right, which is what puts the meta list under the cards.
-
-          Below `lg` the wrapper is just another item in the column and the two
-          fall into it in source order, so the skills list still comes first. */}
-      <div className="flex flex-col gap-5 sm:gap-6 lg:absolute lg:bottom-[12%] lg:right-[3.4%] lg:left-[3.9%] lg:flex-row lg:items-end lg:gap-0">
-        {skills.length > 0 && (
-          // the design's right-hand column, 64.8%–96.6% of the frame, as a
-          // share of this row; `order` because it reads first in the DOM and
-          // sits second across
-          <div ref={skillsRef} className="lg:order-2 lg:ml-auto lg:w-[34.3%]">
-            <Eyebrow ref={skillsEyebrowRef}>my skills</Eyebrow>
-
-            {/* the rows sit edge to edge in the design, so the dividers are
-                one shared border rather than a gap. The list is narrower than
-                the column the headline sets — 549 of its 607 — so it stops
-                short of the paragraph's right edge exactly as the design has
-                it.
-
-                The frame is drawn by the rows rather than around them — each
-                one carries its own left and right edge, the first the top and
-                the last the bottom, which adds up to the same 1px box with the
-                same shared dividers. The list itself is a bare `<ul>`: no
-                border, no radius, nothing to clip against.
-
-                That split is load-bearing, not style: it settles the hairline
-                at the source. A composited layer is snapped out to whole pixels
-                before it's drawn, and this list is sized in percentages all the
-                way up, so its box lands mid-pixel; a wrapper frame is something
-                the rows can round themselves a fraction wider than and paint
-                their black over — which is how the right border went missing
-                while the left, the top and the dividers stayed. Rows that carry
-                their own edges snap with them, and have nothing left to escape.
-
-                It used to carry a second reason — the rows were frosted, and a
-                rounded, clipping *ancestor* over a backdrop-filter forces a
-                mask pass on its own render surface, which cost most of the
-                section's frame budget. The filters are gone now (see
-                {@link PLATE}), so that half no longer applies. Keep the shape
-                anyway: the hairline reason stands on its own, and the rule the
-                mask pass taught still holds for anything that comes back —
-                nothing on this layer wants a clipping ancestor. */}
-            {/* Between `md` and `lg` the column is wide enough that a single
-                stack leaves the list running well past the copy beside it, so
-                the rows pair off into two columns there and nowhere else. The
-                shared-divider frame can't survive that split — `first` and
-                `last` are the grid's first and last cells, not each column's —
-                so in that range every row closes its own box instead (see the
-                row classes below), which is why the columns take a gap. */}
-            <ul
-              ref={skillsListRef}
-              className="mt-2.5 lg:mt-4 mb-6 lg:mb-0 md:grid md:grid-cols-2 md:gap-2 lg:block lg:w-[90.4%]"
-            >
-              {skills.map(({ skill }, i) => (
-                <li
-                  key={i}
-                  // `pointer-events-auto` because <AboutOverlay />'s layer is
-                  // transparent to the pointer — without it the row never sees a
-                  // hover. Scoped to the plate so the gaps around the list stay
-                  // transparent and the head pieces underneath stay draggable.
-                  className={`group pointer-events-auto flex h-10 items-stretch border-x border-b border-white max-md:first:border-t max-md:first:rounded-t-sm max-md:last:rounded-b-sm md:max-lg:rounded-sm md:max-lg:border-t lg:first:border-t lg:first:rounded-t-sm lg:last:rounded-b-sm ${PLATE} lg:h-12 xl:h-14 2xl:h-16 short:h-10 shorter:h-8`}
-                >
-                  <span className="grid w-10 shrink-0 place-items-center border-r border-white text-white lg:w-12 xl:w-14 2xl:w-18">
-                    {/* the hero's solids, a different one on each row and each
-                        turning at its own rate — see <SolidIcon /> */}
-                    <SolidIcon
-                      kind={solidForRow(i)}
-                      seed={i}
-                      className="size-5 xl:size-7 2xl:size-9"
-                    />
-                  </span>
-                  <span
-                    /* the label alone slides on hover — the icon keeps its
-                       cell, so the divider it sits against stays put */
-                    className={`flex flex-1 items-center px-3 text-white transition-transform duration-300 ease-out group-hover:translate-x-4 ${CAPS} text-sm lg:px-4 lg:text-base xl:px-6 xl:text-xl 2xl:text-2xl short:text-sm shorter:text-xs`}
-                  >
-                    {skill}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* — where and when ---------------------------------------------- */}
-        {/* flush left with the stat cards' column and flush with the foot of
-            the skills list — the row's `items-end` does the second part */}
-        <ul className="space-y-2 lg:order-1 lg:space-y-3">
+        {/* — where and when --------------------------------------------- */}
+        {/* Top of the left column in the design (80, 116 of 1906 x 947), on its
+            own rather than hung off the foot of anything: it and the copy block
+            below are pinned to opposite ends of the same column, so neither can
+            push the other about as the headline rewraps. */}
+        <ul
+          ref={metaRef}
+          className="space-y-2 lg:absolute lg:top-[12.2%] lg:left-[4.2%] lg:space-y-3"
+        >
           <li className="flex items-center gap-3.5">
-            <GlobeIcon className={`${iconSize} text-white`} />
+            <GlobeIcon className={iconSize + " text-white"} />
             <span className={metaText}>born in brazil / based in london</span>
           </li>
           <li className="flex items-center gap-3.5">
-            <PrismIcon className={`${iconSize} text-white`} />
+            <PrismIcon className={iconSize + " text-white"} />
             <span className={metaText}>
               local time <LocalTime />
             </span>
           </li>
           <li className="flex items-center gap-3.5">
-            <StarIcon className={`${iconSize} text-white`} />
+            <StarIcon className={iconSize + " text-white"} />
             <span className={metaText}>since 1993</span>
           </li>
         </ul>
+
+        {/* — who i am ---------------------------------------------------- */}
+        {/* the eyebrow is a marker for the copy under it, so with neither field
+            filled the block goes rather than leaving a rule floating on its own.
+
+            Set against the *foot* of the column (the design's 841 of 947, so
+            11.2% up from the bottom) rather than flowing down from the meta
+            list: the headline is the block whose height the copy decides, and it
+            grows upwards into the empty middle of the column instead of pushing
+            the paragraph down towards <SiteNav />. */}
+        {(title || description) && (
+          <div className="mb-6 lg:absolute lg:bottom-[11.2%] lg:left-[3.7%] lg:mb-0 lg:w-[31.9%]">
+            <Eyebrow ref={eyebrowRef}>who i am</Eyebrow>
+
+            {/* the design breaks this over four lines, but a Text field is one
+                line in the editor, so the breaks are the column's to make — it
+                is sized to wrap the copy the same way. `pre-line` is there for
+                the author who does get a newline in. */}
+            {title && (
+              <p
+                ref={titleRef}
+                className={
+                  "font-display mt-3 font-extrabold text-white " +
+                  CAPS +
+                  " " +
+                  LEADING +
+                  " text-base tracking-normal whitespace-pre-line sm:text-lg lg:text-xl xl:text-2xl 2xl:text-[1.75rem] short:text-lg shorter:text-[0.85rem]"
+                }
+              >
+                {title}
+              </p>
+            )}
+
+            {description && (
+              <p
+                ref={descriptionRef}
+                className={
+                  "mt-3 " +
+                  CAPS +
+                  " " +
+                  MUTED +
+                  " " +
+                  LEADING +
+                  " text-xs tracking-normal lg:max-w-[93%] lg:text-sm xl:mt-5 xl:text-base 2xl:mt-6 2xl:text-lg short:text-sm shorter:text-[0.75rem]"
+                }
+              >
+                {description}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* — the face ---------------------------------------------------- */}
+        {/* The head is scene geometry — <Head />, over in the R3F tree — and
+            this is the hole it sits in: an empty box that <Scene /> matches the
+            face to every frame, so the two cannot drift apart as the copy above
+            it rewraps. Nothing is drawn here; the canvas shows through.
+
+            Gone from `lg` up, where the face is back to the world position it is
+            authored at and the blocks are placed around it. `display: none`
+            takes the box away entirely, which is what ./faceSlot reads as "no
+            column to sit in" — so the two halves stay in step through a resize
+            across the breakpoint. */}
+        <div
+          ref={publishFaceSlot}
+          aria-hidden
+          className="mt-[8vw] mb-[3vw] aspect-[784/1519] w-[min(66vw,37vh)] shrink-0 self-center lg:hidden"
+        />
       </div>
-    </div>
+
+      {/* — the pile ------------------------------------------------------ */}
+      {/* From `lg` up the intro never touches this: the cards scroll in, which
+          is an entrance already. See {@link SkillCard} and {@link STATS_SHIFT}.
+          Below `lg` it fades in with the rest of the column. */}
+      {skills.length > 0 && (
+        <div ref={stackRef} className={rightColumn}>
+          {/* Two figures the pile cannot be laid out without.
+
+              `--lead` is the space above the first card, so it rises into place
+              rather than being there already — see {@link cardFlowVh}. Padding
+              rather than a margin on the first card, which would collapse
+              straight out through the list and move the list itself.
+
+              `h-full` is the room the pinned cards are held in. It has to be a
+              height and not trailing space: a margin on the last card collapses
+              out through the list's bottom edge, and padding sits outside the
+              content box the cards are actually constrained by. See
+              {@link stackFitsVh}. */}
+          <ul
+            style={{ "--lead": cardFlowVh(0) + "vh" } as CSSProperties}
+            className="lg:h-full lg:pt-(--lead)"
+          >
+            {skills.map(({ skill, description }, i) => (
+              <SkillCard
+                // a group item carries no id of its own, and position is the
+                // only thing that identifies a card here — it is also the
+                // card's place in the pile, so this key is load-bearing
+                key={i}
+                ref={i === skills.length - 1 ? lastCardRef : undefined}
+                index={i}
+                count={skills.length}
+                skill={skill}
+                description={description}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* — my stats ------------------------------------------------------ */}
+      {/* Its own full-height box with one sticky child, so it pins near the
+          foot of the screen and holds there for the rest of the section without
+          taking any of the flow the pile beside it needs.
+
+          Sticky from flow 0, so it is pinned the moment the section lands and
+          never moves again — what says *when* it appears is the cue above,
+          which fades it in once the pile is finished. Position and timing kept
+          apart like that is what lets it arrive without sliding. */}
+      {numbers.length > 0 && (
+        <div className={rightColumn}>
+          <ul
+            ref={statsRef}
+            style={{ "--stats-top": STATS_TOP_VH + "vh" } as CSSProperties}
+            className="grid grid-cols-3 gap-2 lg:sticky lg:top-(--stats-top) lg:gap-4"
+          >
+            {numbers.map(({ number, label }, i) => (
+              <li
+                key={i}
+                className={
+                  "pointer-events-auto flex flex-col items-center justify-center gap-2 rounded-sm border-2 border-white " +
+                  STAT_PLATE +
+                  " px-2 py-3 text-center lg:h-[14.3vh] lg:gap-3 lg:py-4"
+                }
+              >
+                <span
+                  className={
+                    "font-display " +
+                    LEADING +
+                    " font-extrabold text-white text-xl lg:text-3xl xl:text-4xl 2xl:text-[2.75rem]"
+                  }
+                >
+                  {number}
+                </span>
+                <span
+                  className={
+                    CAPS +
+                    " " +
+                    MUTED +
+                    " " +
+                    LEADING +
+                    " text-[0.5rem] lg:text-[0.625rem] xl:text-xs 2xl:text-base"
+                  }
+                >
+                  {label}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
   );
 }

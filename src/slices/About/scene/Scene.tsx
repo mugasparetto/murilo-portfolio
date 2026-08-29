@@ -12,14 +12,7 @@ import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import { useCoarsePointer } from "@/app/hooks/pointer";
 import Head, { FACE_HEIGHT, FACE_HOME } from "./Head";
 import Title from "./Title";
-import { AboutOverlayDriver, columnOffset, readFaceSlot } from "./AboutOverlay";
-import {
-  makeRanges,
-  segmentProgress,
-  progressInVhWindow,
-  useScrollVhAbsolute,
-  VhWindow,
-} from "@/app/helpers/scroll";
+import { readFaceSlot } from "./faceSlot";
 import { publishBackdrop } from "@/app/helpers/backdrop";
 import { useScrollY } from "@/app/hooks/ScrollY";
 import { ABOUT_POSE, poseFrame } from "@/app/components/poses";
@@ -339,11 +332,7 @@ function screenToFacePlane(
   return faceRay.ray.intersectPlane(facePlane, out);
 }
 
-type Props = {
-  scrollWindow: VhWindow;
-};
-
-export default function Scene({ scrollWindow }: Props) {
+export default function Scene() {
   const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
   const coarsePointer = useCoarsePointer();
   const head = useRef<THREE.Group | null>(null);
@@ -486,24 +475,23 @@ export default function Scene({ scrollWindow }: Props) {
     // the middle to sit on and the height to scale by in one pair of rays.
     const slot = readFaceSlot();
     if (!slot) {
-      // measured before the layer has been laid out, or across a resize past
+      // measured before the column has been laid out, or across a resize past
       // the breakpoint: better nowhere than a full-size face over the copy
       group.visible = false;
       return;
     }
 
-    const offset = columnOffset(
-      state.camera,
-      fov,
-      size.height,
-      scrollY.current,
-    );
+    // The column is ordinary page content now, so the box's document position
+    // is fixed and the only thing that moves is the page under it — see
+    // ./faceSlot. One subtraction, against a scroll the frame loop has already
+    // read, in place of the projection the old fixed layer needed.
+    const top = slot.pageTop - scrollY.current;
     const x = slot.left + slot.width / 2;
 
     if (
       !screenToFacePlane(
         x,
-        offset + slot.top,
+        top,
         state.camera,
         size.width,
         size.height,
@@ -511,7 +499,7 @@ export default function Scene({ scrollWindow }: Props) {
       ) ||
       !screenToFacePlane(
         x,
-        offset + slot.top + slot.height,
+        top + slot.height,
         state.camera,
         size.width,
         size.height,
@@ -624,9 +612,6 @@ export default function Scene({ scrollWindow }: Props) {
           still={coarsePointer || !up.lg}
         />
       </Suspense>
-
-      {/* the section's HTML is a DOM overlay in <About />; this only drives it */}
-      <AboutOverlayDriver />
     </group>
   );
 }

@@ -246,6 +246,16 @@ export interface AboutSliceDefaultPrimarySkillsItem {
    * - **Documentation**: https://prismic.io/docs/fields/text
    */
   skill: prismic.KeyTextField;
+
+  /**
+   * Description field in *About → Default → Primary → Skills*
+   *
+   * - **Field Type**: Text
+   * - **Placeholder**: *None*
+   * - **API ID Path**: about.default.primary.skills[].description
+   * - **Documentation**: https://prismic.io/docs/fields/text
+   */
+  description: prismic.KeyTextField;
 }
 
 /**

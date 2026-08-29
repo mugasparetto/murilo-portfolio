@@ -14,7 +14,7 @@ import { aboutOnScreen, onAboutVisibility } from "./aboutVisibility";
  * the About section's skills list.
  *
  * It's a drawing rather than a fifth thing on the canvas: this list is DOM on
- * <AboutOverlay />'s layer, and a <Canvas /> per row would mean a WebGL
+ * ordinary DOM, and a <Canvas /> per card would mean a WebGL
  * context per row for a shape twenty triangles wide. What it draws is the real
  * solid all the same — the vertices come from the same geometries <Sky />
  * builds, so the icon is the sky's cube rather than a cube.
@@ -134,8 +134,8 @@ if (typeof document !== "undefined") {
     document.hidden ? halt() : run(),
   );
 
-  // The rows ride <AboutOverlay />'s layer, and the layer spends most of the
-  // page off screen. Same bargain as a backgrounded tab: the section is a
+  // The cards live in the About section, which spends most of the page off
+  // screen. Same bargain as a backgrounded tab: the section is a
   // couple of screenfuls away, nobody can see the solids turn, and the work is
   // landing in frames the hero is trying to hold. `run` restarts the clock, so
   // they come back at the pose they left rather than snapping forward by
@@ -292,7 +292,7 @@ export default function SolidIcon({ kind, seed = 0, className }: Props) {
       viewBox={`0 0 ${BOX} ${BOX}`}
       fill="none"
       stroke="currentColor"
-      strokeWidth={0.9}
+      strokeWidth={0.25}
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}

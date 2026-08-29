@@ -1,144 +1,176 @@
 [
-	{
-		"__TYPE__": "SharedSliceContent",
-		"variation": "default",
-		"primary": {
-			"title": {
-				"__TYPE__": "FieldContent",
-				"value": "i design and build digital experiences that are bold, functional and future-focused.",
-				"type": "Text"
-			},
-			"description": {
-				"__TYPE__": "FieldContent",
-				"value": "i specialise in branding, web design, and development. combining aethetics with performance to create impactful solutions. my approach is minimal, intentional and driven by purpose",
-				"type": "Text"
-			},
-			"numbers": {
-				"__TYPE__": "GroupContentType",
-				"value": [
-					{
-						"__TYPE__": "GroupItemContent",
-						"value": [
-							[
-								"number",
-								{
-									"__TYPE__": "FieldContent",
-									"value": "8+",
-									"type": "Text"
-								}
-							],
-							[
-								"label",
-								{
-									"__TYPE__": "FieldContent",
-									"value": "years of experience",
-									"type": "Text"
-								}
-							]
-						]
-					},
-					{
-						"__TYPE__": "GroupItemContent",
-						"value": [
-							[
-								"number",
-								{
-									"__TYPE__": "FieldContent",
-									"value": "50+",
-									"type": "Text"
-								}
-							],
-							[
-								"label",
-								{
-									"__TYPE__": "FieldContent",
-									"value": "projects",
-									"type": "Text"
-								}
-							]
-						]
-					},
-					{
-						"__TYPE__": "GroupItemContent",
-						"value": [
-							[
-								"number",
-								{
-									"__TYPE__": "FieldContent",
-									"value": "30+",
-									"type": "Text"
-								}
-							],
-							[
-								"label",
-								{
-									"__TYPE__": "FieldContent",
-									"value": "happy clients",
-									"type": "Text"
-								}
-							]
-						]
-					}
-				]
-			},
-			"skills": {
-				"__TYPE__": "GroupContentType",
-				"value": [
-					{
-						"__TYPE__": "GroupItemContent",
-						"value": [
-							[
-								"skill",
-								{
-									"__TYPE__": "FieldContent",
-									"value": "branding",
-									"type": "Text"
-								}
-							]
-						]
-					},
-					{
-						"__TYPE__": "GroupItemContent",
-						"value": [
-							[
-								"skill",
-								{
-									"__TYPE__": "FieldContent",
-									"value": "web design",
-									"type": "Text"
-								}
-							]
-						]
-					},
-					{
-						"__TYPE__": "GroupItemContent",
-						"value": [
-							[
-								"skill",
-								{
-									"__TYPE__": "FieldContent",
-									"value": "development",
-									"type": "Text"
-								}
-							]
-						]
-					},
-					{
-						"__TYPE__": "GroupItemContent",
-						"value": [
-							[
-								"skill",
-								{
-									"__TYPE__": "FieldContent",
-									"value": "experiences",
-									"type": "Text"
-								}
-							]
-						]
-					}
-				]
-			}
-		},
-		"items": []
-	}
+  {
+    "__TYPE__": "SharedSliceContent",
+    "variation": "default",
+    "primary": {
+      "title": {
+        "__TYPE__": "FieldContent",
+        "value": "i design and build digital experiences that are bold, functional and future-focused.",
+        "type": "Text"
+      },
+      "description": {
+        "__TYPE__": "FieldContent",
+        "value": "i specialise in branding, web design, and development. combining aethetics with performance to create impactful solutions. my approach is minimal, intentional and driven by purpose",
+        "type": "Text"
+      },
+      "numbers": {
+        "__TYPE__": "GroupContentType",
+        "value": [
+          {
+            "__TYPE__": "GroupItemContent",
+            "value": [
+              [
+                "number",
+                {
+                  "__TYPE__": "FieldContent",
+                  "value": "8+",
+                  "type": "Text"
+                }
+              ],
+              [
+                "label",
+                {
+                  "__TYPE__": "FieldContent",
+                  "value": "years of experience",
+                  "type": "Text"
+                }
+              ]
+            ]
+          },
+          {
+            "__TYPE__": "GroupItemContent",
+            "value": [
+              [
+                "number",
+                {
+                  "__TYPE__": "FieldContent",
+                  "value": "50+",
+                  "type": "Text"
+                }
+              ],
+              [
+                "label",
+                {
+                  "__TYPE__": "FieldContent",
+                  "value": "projects",
+                  "type": "Text"
+                }
+              ]
+            ]
+          },
+          {
+            "__TYPE__": "GroupItemContent",
+            "value": [
+              [
+                "number",
+                {
+                  "__TYPE__": "FieldContent",
+                  "value": "30+",
+                  "type": "Text"
+                }
+              ],
+              [
+                "label",
+                {
+                  "__TYPE__": "FieldContent",
+                  "value": "happy clients",
+                  "type": "Text"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "skills": {
+        "__TYPE__": "GroupContentType",
+        "value": [
+          {
+            "__TYPE__": "GroupItemContent",
+            "value": [
+              [
+                "skill",
+                {
+                  "__TYPE__": "FieldContent",
+                  "value": "branding",
+                  "type": "Text"
+                }
+              ],
+              [
+                "description",
+                {
+                  "__TYPE__": "FieldContent",
+                  "value": "i build identities that hold up everywhere they land — type, motion, and the rules that keep them consistent.",
+                  "type": "Text"
+                }
+              ]
+            ]
+          },
+          {
+            "__TYPE__": "GroupItemContent",
+            "value": [
+              [
+                "skill",
+                {
+                  "__TYPE__": "FieldContent",
+                  "value": "web design",
+                  "type": "Text"
+                }
+              ],
+              [
+                "description",
+                {
+                  "__TYPE__": "FieldContent",
+                  "value": "layouts drawn for the browser rather than for a canvas, and specified tightly enough to survive the build.",
+                  "type": "Text"
+                }
+              ]
+            ]
+          },
+          {
+            "__TYPE__": "GroupItemContent",
+            "value": [
+              [
+                "skill",
+                {
+                  "__TYPE__": "FieldContent",
+                  "value": "development",
+                  "type": "Text"
+                }
+              ],
+              [
+                "description",
+                {
+                  "__TYPE__": "FieldContent",
+                  "value": "the front end that carries it: typed, fast, and shaped so the design is what ships.",
+                  "type": "Text"
+                }
+              ]
+            ]
+          },
+          {
+            "__TYPE__": "GroupItemContent",
+            "value": [
+              [
+                "skill",
+                {
+                  "__TYPE__": "FieldContent",
+                  "value": "experiences",
+                  "type": "Text"
+                }
+              ],
+              [
+                "description",
+                {
+                  "__TYPE__": "FieldContent",
+                  "value": "the parts that only exist in motion — webgl, scroll, and interfaces that answer back.",
+                  "type": "Text"
+                }
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    "items": []
+  }
 ]

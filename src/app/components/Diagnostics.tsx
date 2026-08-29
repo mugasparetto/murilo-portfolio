@@ -80,8 +80,8 @@ import { pxToVh } from "@/app/helpers/viewport";
  *   any ordinary rule. An important author declaration is the one thing above
  *   it, so this is the only mechanism the drivers can't undo mid-scroll.
  * - **`visibility`, not `display`.** `display: none` zeroes the band's box, and
- *   <AboutOverlay />'s `measure()` reads exactly that box: the column's height
- *   and the face's slot. With the slot gone <Scene /> reads "no column" and
+ *   ./faceSlot's `measureFaceSlot()` reads exactly that box. With the slot gone
+ *   <Scene /> reads "no column" and
  *   hides the head, which would put scene cost in the DOM bucket. Hidden boxes
  *   keep their geometry, so every measurement stays honest while raster, render
  *   surface and composited draw all go.
