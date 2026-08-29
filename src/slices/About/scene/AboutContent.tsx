@@ -85,15 +85,17 @@ type Props = {
  * - right: the skill cards, which stack as the section is scrolled, and the
  *   stats that arrive once the last of them has landed.
  *
- * The pile is the one part of this that moves with the scroll, and it moves
- * entirely in CSS — no intro tween touches it. Each card is `position: sticky`
- * at its own slot, with a
- * beat's worth of flow under it. There is no frame loop and nothing to keep in
- * step — see {@link SkillCard}, and {@link cardFlowVh} for the arithmetic.
+ * The pile is the one part of this that moves with the scroll, and no intro
+ * tween touches it. Each card is `position: sticky` at its own slot, with a
+ * beat's worth of flow under it, so the whole of the *stacking* is three CSS
+ * declarations and the browser — see {@link SkillCard}, and {@link cardFlowVh}
+ * for the arithmetic. Only the fade on top of it is script, and only because
+ * a sticky box is the one subject a `view()` timeline cannot measure honestly
+ * — see {@link useCardArrival}.
  *
  * The one thing sticky can't say is *when* — the stats have to wait for the
  * pile to finish rather than for a distance, so the last card locking into
- * place is what brings them in. See {@link statsRootMargin}.
+ * place is what brings them in. See {@link STATS_EXIT_VH}.
  *
  * Below `lg` the blocks stack into a single column: the meta list, the copy,
  * the face, then the cards and the stats. The cards are ordinary items in that
@@ -174,7 +176,7 @@ const STAT_PLATE = "bg-black/20 backdrop-blur-lg";
 
 /** The first card's top and a card's height: 191 and 235 of 947. */
 const CARD_TOP_VH = 20.2;
-const CARD_HEIGHT_VH = 24.8;
+const CARD_HEIGHT_VH = 20;
 
 /**
  * The step between two cards, 58 of 947 — and also the height of a card's
@@ -195,38 +197,240 @@ const STATS_TOP_VH = 73.7;
  * it shifts along, including the section's own height. At 0 the first card
  * would be rising as the headline was still settling.
  */
-const INTRO_HOLD_VH = 25;
+const INTRO_HOLD_VH = 5;
 
-/** One card's arrival: the scroll from one card locking to the next. */
-const BEAT_VH = 45;
+/**
+ * One card's arrival: the scroll from one card locking to the next.
+ *
+ * The pile's pacing dial, and the only one. A card's own travel is 1:1 with the
+ * wheel — sticky gives it that and cannot be argued with — so the way to spend
+ * more scroll on the same movement is to widen the gap between arrivals, not to
+ * stretch the arrivals themselves. Raising this lengthens the dwell on each
+ * finished card by exactly what it adds, leaves {@link CARD_TRAVEL_VH} and the
+ * fade untouched, and grows {@link sectionVh} to pay for it.
+ */
+const BEAT_VH = 25;
 
 /**
  * Scroll between the last card locking and the bottom of the page.
  *
- * Two jobs, and the second is the one that sets the figure. It is the pause on
- * the finished picture — but it is also, read backwards, exactly how far the
- * reader has to scroll *up* from the end before the stats begin to leave. Card
- * four is pinned for the whole of it, so nothing moves, so the observer
- * watching it has nothing to report: the stats simply hang there. At twenty
- * that was a fifth of a screen of pulling away with no response.
+ * Everything the section still has to do happens in here — the last card
+ * travelling the final stretch to its slot, its fade finishing, the stats being
+ * cued — and every one of them is measured from the page's own end. Cut it too
+ * fine and they all fail together, quietly, because the page simply stops
+ * before they happen. Turned down to 1 — which the exit latency wanted, back
+ * when this was also the exit latency — they landed within 1 to 7vh of the very
+ * last pixel and stopped happening at all.
  *
- * Small, then, and not zero — the last card would otherwise be locking at the
- * very instant the page ran out of scroll, which is the same zero-slack bargain
- * that cost the pile its pinning once already.
+ * It used to double as the exit latency: the stats hung on the last card, the
+ * card is pinned for the whole of this, so nothing moved and nothing could
+ * undo them until the reader had scrolled back up through all of it. That is no
+ * longer true — see {@link STATS_EXIT_VH} — and the two figures are now free to
+ * be what each of them should be.
  *
  * Only this much is needed anyway, because a section's last viewport is
  * unreachable: scrolled to the very bottom, the fold sits on the section's own
- * end. {@link sectionVh} adds that screen on top. The reader still rests on the
- * finished composition for as long as they like — they just cannot scroll
- * through it.
+ * end. {@link sectionVh} adds that screen on top.
  */
-const REST_VH = 1;
+const REST_VH = 25;
+
+/**
+ * How far the reader has to pull away from the bottom of the page before the
+ * stats start to leave — and, read the other way, how close they have to get
+ * before the stats arrive.
+ *
+ * The stats are cued off an empty marker at the foot of the card column rather
+ * than off the last card, and this is why. The card is *pinned* from the moment
+ * it lands: it does not move again, so nothing about it changes as the reader
+ * pulls away, so there is nothing for an observer to see until they have
+ * scrolled back past the lock — the whole of {@link REST_VH}, with the stats
+ * hanging there for all of it. The marker is in flow and never stops moving, so
+ * it answers immediately in both directions.
+ *
+ * It is spent as a root *extension* rather than as page height: the observer
+ * watches for the marker entering a viewport grown this much taller than the
+ * real one, which happens while the marker is still below the fold. So the cue
+ * needs no runway at the end of the section, which is exactly what the section
+ * has least of.
+ *
+ * Must stay under {@link REST_VH}, or the stats would be cued before the pile
+ * they are waiting on has finished. The marker sits at the section's own bottom
+ * edge, so the extension is spent backwards out of the only scroll there is
+ * after the last card locks — which is {@link REST_VH}, and nothing else. Over
+ * that figure the cue fires `STATS_EXIT_VH - REST_VH` early and reverses that
+ * much early too, on a pile the reader can still see moving.
+ *
+ * At 6 against 25 the cue lands 19vh after the lock, which is the margin doing
+ * its job: the stats wait out the pile, and the reader has to pull 6vh back off
+ * the bottom before they start to go.
+ */
+const STATS_EXIT_VH = 6;
 
 /** Binary floating point turns `20.2 + 6.1` into `26.299999999999997`. */
 const vh = (n: number) => Math.round(n * 100) / 100;
 
 /** Where card `i` pins. */
 const cardSlotVh = (i: number) => vh(CARD_TOP_VH + i * CARD_STEP_VH);
+
+/**
+ * A card's arrival: how far below its own slot it starts to appear, and how
+ * much of that distance it spends fading in.
+ *
+ * Sticky gives a card its travel but cannot hide it on the way, so without
+ * these a card is in view from the moment it clears the bottom of the screen:
+ * 60 to 80vh of drifting up before it lands, which reads as the pile arriving
+ * from off the page rather than assembling in front of the reader. Fading it
+ * over the first stretch is what shortens the journey, without touching the
+ * timing that decides when each card locks.
+ *
+ * ── Why it is measured from the slot and not from the screen ──────────────
+ *
+ * These used to be two fixed screen positions — appear at 65vh, solid at 52vh,
+ * the same for every card. That looks right written down and is wrong in
+ * motion, because a card's arrival is not the distance to a line on the screen,
+ * it is the distance to *its own slot* — and every card pins one
+ * {@link CARD_STEP_VH} lower than the last. Fixed lines meant the arrival got
+ * shorter each time while the fade stayed the same length, which reads as the
+ * pile speeding up towards the end: little scroll, a lot happening.
+ *
+ * Anchored to the slot instead, all of it falls out uniform. Every card appears
+ * {@link CARD_TRAVEL_VH} below where it will land, fades over the first
+ * {@link CARD_FADE_VH} of that, and rises the rest of the way solid — the same
+ * arrival, four times, which is what a pile assembling should look like.
+ *
+ * Two invariants come free that used to need watching. A card is solid
+ * `TRAVEL - FADE` above its own slot by construction, so it can no longer still
+ * be fading when it pins — which would freeze it half-drawn, a pinned card
+ * having stopped moving. And each card appears `(BEAT + STEP) - TRAVEL` after
+ * the one before it locked, the same gap every time, so two cards are never in
+ * flight at once.
+ *
+ * Read by {@link useCardArrival} and nowhere else — see there for why the
+ * arrival is measured in script rather than handed to a `view()` timeline,
+ * which is where it lived until it turned out that a sticky subject and
+ * `view()` cannot both be telling the truth.
+ */
+const CARD_TRAVEL_VH = 12;
+const CARD_FADE_VH = 10;
+
+/**
+ * How fast a card climbs into its slot, as a share of the scroll that carries
+ * it. 1 is sticky's own rate; lower is slower, and the same movement then costs
+ * more wheel.
+ *
+ * Spent on the scroll timeline in globals.css and nowhere else, and that is not
+ * an implementation detail — it is the whole reason this figure can exist. An
+ * unpinned sticky card moves exactly with the scroll, and the obvious way to
+ * change that is to write a counter-transform from {@link useCardArrival},
+ * which is already reading every card's rect anyway. It does not work: a sticky
+ * position is the compositor's and a transform written from script is the main
+ * thread's, so the two agree only on the frames script gets and the card
+ * judders on the ones it misses — worst in this section, which is drawing a
+ * WebGL scene throughout. It has to be composited to be smooth, so it lives on
+ * a scroll-driven animation or it does not live anywhere.
+ *
+ * It changes the arrival and nothing else. Where a card locks is still where
+ * sticky says, so {@link cardLockVh} and {@link sectionVh} are untouched and the
+ * page is not a pixel taller — the scroll the climb takes comes out of the dwell
+ * that sat between arrivals. Which is the limit on how low it goes: see
+ * {@link cardDwellVh}.
+ */
+const CARD_SPEED = 0.5;
+
+/**
+ * The scroll one arrival costs: {@link CARD_TRAVEL_VH} of movement at
+ * {@link CARD_SPEED}.
+ *
+ * The card is held {@link CARD_TRAVEL_VH} above where flow puts it as the range
+ * opens and let go of exactly as it lands, so the lift it carries is the
+ * difference between the two. Outside the range `animation-fill-mode: both`
+ * holds it at one end or the other, which is the fallback's clamp for free.
+ */
+const CARD_RUNWAY_VH = vh(CARD_TRAVEL_VH / CARD_SPEED);
+
+/**
+ * The scroll between one card locking and the next appearing.
+ *
+ * The invariant {@link CARD_TRAVEL_VH} used to get for nothing, back when an
+ * arrival cost exactly its own height in wheel. Below zero a card is still
+ * climbing as the next one starts and the pile reads as two things moving
+ * rather than one arriving, so {@link CARD_SPEED} cannot be turned down for
+ * ever without {@link BEAT_VH} following it. The step cancels — a card that
+ * pins one {@link CARD_STEP_VH} lower also starts that much lower — so the beat
+ * is the whole of the gap. Checked in development; see <AboutContent />.
+ */
+const cardDwellVh = () => vh(BEAT_VH - CARD_RUNWAY_VH);
+
+/** Where card `i` is on the screen when it starts to appear, and when it is solid. */
+const cardSpawnVh = (i: number) => vh(cardSlotVh(i) + CARD_TRAVEL_VH);
+const cardSolidVh = (i: number) => vh(cardSpawnVh(i) - CARD_FADE_VH);
+
+/**
+ * The scroll offsets card `i`'s two animations run between, as CSS lengths.
+ *
+ * Measured from the top of the *page* rather than the section, because a scroll
+ * progress timeline is the document's and its range is in document
+ * coordinates — hence `--about-top`, the one figure here that has to be
+ * measured rather than derived, and the only reason script is involved at all.
+ * See {@link usePileTimeline}.
+ *
+ * - `--climb-from` to `--climb-to` is the lift, unwinding linearly: the card
+ *   closes {@link CARD_RUNWAY_VH} of scroll while covering
+ *   {@link CARD_TRAVEL_VH} of screen, and reaches zero exactly at the lock.
+ * - the fade shares its start and finishes where the card would have been
+ *   {@link CARD_FADE_VH} into that climb, so a card is never still fading when
+ *   it pins — the invariant {@link CARD_TRAVEL_VH} describes, restated in
+ *   scroll.
+ * - `--flat-*` is the same fade over the arrival the card has with no lift on
+ *   it, for readers who asked not to see things move.
+ */
+const cardRangeVh = (i: number) => {
+  const lock = cardLockVh(i);
+  const at = (n: number) => `calc(var(--about-top) + ${vh(n)}vh)`;
+
+  return {
+    "--climb-from": at(lock - CARD_RUNWAY_VH),
+    "--climb-to": at(lock),
+    "--fade-to": at(lock - (CARD_TRAVEL_VH - CARD_FADE_VH) / CARD_SPEED),
+    "--flat-from": at(lock - CARD_TRAVEL_VH),
+    "--flat-to": at(lock - (CARD_TRAVEL_VH - CARD_FADE_VH)),
+  };
+};
+
+/**
+ * The offset a card carries as its range opens, unwound to nothing by its lock.
+ *
+ * Measured against where *sticky* would have put the card, not against its
+ * slot, and negative because of it: over the {@link CARD_RUNWAY_VH} the range
+ * spans, sticky carries the card that whole distance up the screen, and the
+ * arrival is only meant to be {@link CARD_TRAVEL_VH} of it. So the card is held
+ * the difference — 8vh at the current figures — *above* where flow has it, and
+ * the keyframe gives that back as the range plays.
+ */
+const CARD_LIFT = vh(CARD_TRAVEL_VH - CARD_RUNWAY_VH) + "vh";
+
+/**
+ * Whether the browser can drive the pile from the scroll itself.
+ *
+ * The one thing that decides which of the two arrivals runs. Read after mount
+ * rather than during render: the server cannot know it, and a `data-` attribute
+ * that disagreed with the markup React sent would be a hydration mismatch.
+ */
+const canDriveFromScroll = () =>
+  typeof CSS !== "undefined" &&
+  typeof CSS.supports === "function" &&
+  CSS.supports("animation-timeline: scroll()");
+
+/**
+ * Whether the deepest card still starts below the fold.
+ *
+ * The one thing anchoring to the slot costs: the spawn line walks down the
+ * screen with the pile, so past a certain count the last card's would be off the
+ * bottom of it — and a card that is meant to start appearing below the fold
+ * instead enters already part-faded. Checked in development; see the warning in
+ * <AboutContent />.
+ */
+const cardSpawnFitsVh = (count: number) => cardSpawnVh(Math.max(1, count) - 1);
 
 /**
  * Where card `i` sits in the column's flow — the number that decides when it
@@ -301,23 +505,14 @@ const cardGapVh = (i: number, count: number) =>
   i === count - 1 ? 0 : vh(cardFlowVh(i + 1) - cardFlowVh(i) - CARD_HEIGHT_VH);
 
 /**
- * The crop that fires the stats: the top of the screen down to just past where
- * the last card comes to rest.
+ * The root the stats' cue is watched against: the viewport, grown
+ * {@link STATS_EXIT_VH} taller at the bottom.
  *
- * The stats wait on the pile finishing rather than on a distance, and the last
- * card locking *is* the pile finishing — so the last card is the thing to
- * watch, and the moment its top edge reaches its own slot is the moment to
- * fire. A degree of slack above the slot so the crossing is unambiguous.
- *
- * This used to be an empty cue box placed a viewport below the lock, which
- * worked but bought a hidden constraint: an element only crosses the fold if
- * the page can be scrolled far enough to push it there, and the last screen of
- * a section cannot. Watching a card that is already on screen needs no runway
- * at all.
+ * A margin in `%` because that is all `rootMargin` takes, and a percentage
+ * there is a share of the root's own height — which is the viewport, so it is a
+ * `vh` by another name.
  */
-const STATS_CUE_SLACK_VH = 1;
-const statsRootMargin = (count: number) =>
-  `0px 0px -${vh(100 - cardSlotVh(count - 1) - STATS_CUE_SLACK_VH)}% 0px`;
+const STATS_ROOT_MARGIN = `0px 0px ${STATS_EXIT_VH}% 0px`;
 
 /** London, since the line above it says that's where the clock is. */
 const TIME_ZONE = "Europe/London";
@@ -601,11 +796,12 @@ type RevealRefs = {
   stack: RefObject<HTMLElement | null>;
   stats: RefObject<HTMLElement | null>;
   /**
-   * The last card, whose locking into place is what brings the stats in from
-   * `lg` up — see {@link statsRootMargin}. Below `lg` there is no pile to wait
-   * for and the stats take their own trigger.
+   * The empty marker at the foot of the card column, whose approach to the
+   * bottom of the page is what brings the stats in and out from `lg` up — see
+   * {@link STATS_EXIT_VH}. Below `lg` there is no pile to wait for and the
+   * stats take their own trigger.
    */
-  lastCard: RefObject<HTMLLIElement | null>;
+  statsCue: RefObject<HTMLDivElement | null>;
 };
 
 /**
@@ -622,7 +818,7 @@ type RevealRefs = {
  * That sequence is one timeline from `lg` up and several below it, for the same
  * reason {@link REVEAL_ROOT_MARGIN} is two figures. From `lg` up the section
  * arrives whole, every block already on screen behind the one trigger, so the
- * beats are spaced against *each other* — {@link BLOCK_LEAD} and friends are
+ * beats are spaced against *each other* — {@link META_LEAD} and friends are
  * what make three blocks read as one reveal rather than three.
  *
  * Below `lg` those same leads would be spacing beats against a clock while the
@@ -660,6 +856,14 @@ function useCopyReveal(
   title: string,
   description: string,
   statCount: number,
+  /**
+   * Only a dependency, and a conservative one: nothing here reads it, and the
+   * cards are not among the elements this hook parks — above `lg` it leaves the
+   * pile alone entirely, below it parks the one container rather than the cards
+   * inside. It is kept because a card count changing is the section changing
+   * shape, and rebuilding a reveal that has already played costs nothing at a
+   * moment that never comes at runtime.
+   */
   skillCount: number,
 ) {
   useGSAP(
@@ -813,10 +1017,10 @@ function useCopyReveal(
         else play();
 
         // The stats are the exception, and the only block here whose timing the
-        // reader sets rather than a clock: they belong to the end of the pile,
-        // which is a scroll away rather than a second away. Watched at the last
-        // card, cropped to just past where it comes to rest, so the two happen
-        // together — see {@link statsRootMargin}.
+        // reader sets rather than a clock: they belong to the end of the
+        // section, which is a scroll away rather than a second away. Watched at
+        // a marker that never stops moving, so it answers the moment the reader
+        // turns around — see {@link STATS_EXIT_VH}.
         //
         // The one reveal here that is not a one-shot, and the only one that
         // should not be. Every other block plays as the section arrives and has
@@ -829,8 +1033,8 @@ function useCopyReveal(
         // in the other order — which is the animation out for nothing, and one
         // that cannot drift from the animation in because it *is* the animation
         // in. Nothing below has to be kept in step by hand.
-        const lastCard = refs.lastCard.current;
-        if (lastCard && statBoxes.length) {
+        const cue = refs.statsCue.current;
+        if (cue && statBoxes.length) {
           const stats = gsap.timeline({ paused: true });
           statsBeat(stats, 0);
 
@@ -844,10 +1048,10 @@ function useCopyReveal(
             },
             {
               threshold: REVEAL_THRESHOLD,
-              rootMargin: statsRootMargin(skillCount),
+              rootMargin: STATS_ROOT_MARGIN,
             },
           );
-          io.observe(lastCard);
+          io.observe(cue);
           observers.push(io);
         }
       } else {
@@ -877,6 +1081,350 @@ function useCopyReveal(
       scope: refs.title,
     },
   );
+}
+
+/**
+ * The card arrival, measured off the scroll — and the fallback for it rather
+ * than the way it normally runs. Where `animation-timeline: scroll()` exists
+ * the pile is driven from globals.css instead and none of this is wired up at
+ * all; see {@link usePileTimeline}, and {@link CARD_SPEED} for why that has to
+ * be where the movement lives.
+ *
+ * What this cannot do is the half that sends the work to the stylesheet: a
+ * climb slower than the scroll carrying it. A correction written from here is
+ * the main thread's and the sticky position under it is the compositor's, and
+ * on any frame this loop misses the two disagree by the whole of the
+ * correction. So the fallback's cards arrive at sticky's own rate. They arrive
+ * on the same beat, in the same place, over the same distance — only faster,
+ * which is a thing nobody can notice without the other one beside it.
+ *
+ * ── Why this is not `animation-timeline: view()` ──────────────────────────
+ *
+ * It was, and the rule was the obvious one: a view-progress timeline on each
+ * card, with {@link cardSpawnVh} and {@link cardSolidVh} turned into
+ * percentages of its `cover` range. It is also silently wrong, because the
+ * subject is `position: sticky` and a view timeline measures the box where it
+ * is actually painted. A pinned card is still on screen, so its cover range is
+ * stretched by the whole length of its pin — and the stops, computed as shares
+ * of the range the card would have had if it had kept moving, then land nowhere
+ * near where they were meant to.
+ *
+ * The pin is long, and longest for the first card, which holds its slot from
+ * the moment it lands until the end of the section. Driving the real geometry
+ * in Chrome 152 and reading back the screen position each card was at when its
+ * fade began:
+ *
+ *     card   slot    fade begins at   travel   intended
+ *       1    20.2vh      20.2vh        0.0vh    44.8vh
+ *       2    26.3vh      39.6vh       13.3vh    44.8vh
+ *       3    32.4vh      62.5vh       30.1vh    44.8vh
+ *       4    38.5vh      75.7vh       37.2vh    44.8vh
+ *
+ * The arrival grows down the stack, and the first card does not arrive at all
+ * so much as appear in place: it is already pinned when its fade starts, so it
+ * brightens standing still — the one thing a scroll-linked fade exists to avoid.
+ * Nothing about the stops was wrong; the range they were shares of was.
+ *
+ * It cannot be corrected from the stylesheet. The stretch is a function of how
+ * long each card stays pinned, which is a function of the section's own height,
+ * so compensating for it would tie every fade to {@link REST_VH} and to the
+ * height of the list the cards are held in — and it is one browser's reading of
+ * a corner the spec still has open, so the next one need not agree. A rect is
+ * what the card is actually doing, and it costs one rAF.
+ *
+ * ── What it costs ─────────────────────────────────────────────────────────
+ *
+ * One `requestAnimationFrame` per scroll burst, and only while the pile exists
+ * and is being looked at — never below `lg`, and never while the section is off
+ * screen. Inside it, every `getBoundingClientRect` before any style is written:
+ * read and write interleaved, each card would force the layout the one before it
+ * had just dirtied, four times a frame, in the section that is also drawing a
+ * WebGL scene.
+ *
+ * Measuring rather than deriving is the same argument as above. The positions
+ * are all knowable from {@link cardFlowVh} and the section's page offset, but
+ * that would be the layout restated in arithmetic — and restating the layout in
+ * a form that then disagreed with it is exactly how the `view()` version got it
+ * wrong. A rect is what the card is actually doing.
+ *
+ * ── The one thing it doesn't do ───────────────────────────────────────────
+ *
+ * The first frame after hydration is unfaded: this is a passive effect, so it
+ * runs after the browser has painted once. It shows only on a reload with the
+ * section already on screen, and the alternative — parking the cards at
+ * `opacity: 0` in CSS and letting script reveal them — trades a frame for a
+ * page that is blank without JavaScript. A frame is cheaper.
+ */
+function useCardArrival(
+  stackRef: RefObject<HTMLDivElement | null>,
+  count: number,
+) {
+  useEffect(() => {
+    const stack = stackRef.current;
+    if (!stack || count === 0) return;
+
+    const cards = Array.from(
+      stack.querySelectorAll<HTMLElement>("[data-about-card]"),
+    );
+    if (cards.length === 0) return;
+
+    // Both stops are the card's own rather than the pile's, which is what makes
+    // every arrival the same length — see {@link CARD_TRAVEL_VH}. Held in `vh`
+    // and turned into pixels inside the frame, since the viewport is the one
+    // part of this that moves. Document order is pile order, so the index is
+    // the card's place in it.
+    const arrival = cards.map((_, i) => ({
+      spawn: cardSpawnVh(i),
+      solid: cardSolidVh(i),
+    }));
+
+    const wide = window.matchMedia(LG_QUERY);
+
+    let frame = 0;
+
+    /** Drops the inline opacity, leaving the cards as they are typeset. */
+    const clear = () => {
+      for (const card of cards) card.style.opacity = "";
+    };
+
+    const paint = () => {
+      frame = 0;
+
+      const screen = window.innerHeight;
+
+      // every read first — see above
+      const tops = cards.map((card) => card.getBoundingClientRect().top);
+
+      for (let i = 0; i < cards.length; i++) {
+        const spawn = (arrival[i].spawn / 100) * screen;
+        const solid = (arrival[i].solid / 100) * screen;
+
+        // 0 at `spawn`, 1 at `solid`, held at both ends: a card is invisible
+        // until it has risen to `spawn` and stays solid once past `solid`,
+        // which is `animation-fill-mode: both` written out
+        const at = (spawn - tops[i]) / (spawn - solid);
+        const progress = at < 0 ? 0 : at > 1 ? 1 : at;
+
+        // Opacity and nothing else. The climb is the stylesheet's alone — see
+        // {@link CARD_SPEED} — so the fallback's cards ride sticky's own 1:1
+        // and there is no transform here to write. Which is just as well: a
+        // `translate` of any value, `0 0` included, is enough to make the card
+        // a containing block and take its 1px borders off the pixel grid. See
+        // {@link CLEAR}, which is the same argument about GSAP's leftovers.
+        cards[i].style.opacity = String(progress);
+      }
+    };
+
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(paint);
+    };
+
+    const listen = () => {
+      // adding a listener that is already on the same target, for the same
+      // event, with the same options is a no-op, so `sync` can be called as
+      // often as it likes
+      window.addEventListener("scroll", schedule, { passive: true });
+      window.addEventListener("resize", schedule, { passive: true });
+    };
+
+    const deafen = () => {
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+
+    /**
+     * When this runs at all, which is on two conditions rather than one.
+     *
+     * Below `lg` there is no pile — no sticky, no slots, the cards are ordinary
+     * blocks in a column and the intro fades the column as a whole. So the
+     * listeners come and go with the breakpoint rather than being filtered
+     * inside the handler, and the inline styles go back on the way down: left
+     * behind, a card that had faded in on a wide window would still be carrying
+     * that opacity in a layout that never asked for it.
+     *
+     * And only while the section is on screen. A `scroll` listener is a
+     * page-wide cost paid on every frame of every scroll, and the cards it moves
+     * are inside one section that spends most of the page out of view — the same
+     * argument ./aboutVisibility already makes for the ticker and the clock, and
+     * the same store answers it. Its observer takes the section at `threshold:
+     * 0` with no margin, so a card cannot be on screen when the flag is false.
+     *
+     * Leaving the screen does not clear: the cards should still be however the
+     * scroll last left them when the reader comes back to them.
+     */
+    const sync = () => {
+      cancelAnimationFrame(frame);
+      frame = 0;
+
+      // The stylesheet has the pile — see {@link usePileTimeline}, whose own
+      // listener is registered before this one and so has already had its say
+      // on the change that brought us here. A CSS animation outranks an inline
+      // style, so the two running together would not actually fight; what it
+      // would cost is a scroll listener and four rects a frame maintaining
+      // styles nothing reads, which is the whole of what the handover saves.
+      if (stack.dataset.aboutTimeline !== undefined) {
+        deafen();
+        clear();
+        return;
+      }
+
+      if (!wide.matches) {
+        deafen();
+        clear();
+        return;
+      }
+
+      if (!aboutOnScreen()) {
+        deafen();
+        return;
+      }
+
+      listen();
+      paint();
+    };
+
+    sync();
+    wide.addEventListener("change", sync);
+    const unwatch = onAboutVisibility(sync);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      wide.removeEventListener("change", sync);
+      unwatch();
+      deafen();
+      clear();
+    };
+  }, [stackRef, count]);
+}
+
+/**
+ * Hands the pile to the stylesheet, where the browser can take it.
+ *
+ * The scroll timeline in globals.css can say everything about a card's arrival
+ * except *where the section is*: a scroll progress timeline is the document's,
+ * its range is in document coordinates, and CSS has no way to ask how far down
+ * the page an element sits. So that one number is measured here and published
+ * as `--about-top`, and the ranges in {@link cardRangeVh} are written as it
+ * plus a figure in `vh` — every other number in the arrival stays a constant
+ * the stylesheet resolves for itself.
+ *
+ * It is the section's distance from the top of the *page*, so it moves whenever
+ * anything above About changes height, not only when About does — hence the
+ * observer on the documentElement as well as on the section. Both are watched
+ * because either can move it without the other noticing: a rewrap in the hero
+ * pushes the section down without resizing it, and a card count changing
+ * resizes the section without moving it.
+ *
+ * The attribute it sets is both the switch and the whole of the handover:
+ * {@link useCardArrival} reads it and stands down, so there is no state to keep
+ * in step and no render spent saying which of the two is running. Whether the
+ * rule actually took is then asked of a card rather than assumed — see
+ * `ranged`, which is the difference between this degrading to the fallback and
+ * it degrading to every card arriving over the whole length of the page.
+ *
+ * Nothing here runs per frame. The measurement is a rAF-coalesced reflow
+ * handler, the same shape as the face slot's, and between reflows this hook
+ * costs nothing at all — no scroll listener, no rects, no styles. That is the
+ * entire point: the arrival stops being work.
+ */
+function usePileTimeline(
+  sectionRef: RefObject<HTMLElement | null>,
+  stackRef: RefObject<HTMLDivElement | null>,
+  count: number,
+) {
+  useEffect(() => {
+    const section = sectionRef.current;
+    const stack = stackRef.current;
+    if (!section || !stack || count === 0 || !canDriveFromScroll()) return;
+
+    const wide = window.matchMedia(LG_QUERY);
+    let pending = 0;
+
+    /**
+     * Publishes the section's distance from the top of the page, then arms the
+     * rule that reads it — strictly in that order. The other way round is not a
+     * race that usually comes out right: it is a frame of every card playing
+     * against `calc(0px + …)`, which puts the whole arrival somewhere near the
+     * top of the document.
+     */
+    const measure = () => {
+      pending = 0;
+      // rounded because it is spent inside a `calc` several times per card, and
+      // a sub-pixel scroll offset says nothing a reader can see
+      const top = Math.round(
+        section.getBoundingClientRect().top + window.scrollY,
+      );
+      stack.style.setProperty("--about-top", top + "px");
+      stack.dataset.aboutTimeline = "";
+    };
+
+    /**
+     * Whether the ranges actually took — asked of a card, not of the feature.
+     *
+     * {@link canDriveFromScroll} can only answer for `animation-timeline`, and
+     * that is not the whole of what globals.css asks for. The ranges are
+     * `calc()` over a custom property, and an engine that took the timeline but
+     * not the range would drop `animation-range` to its initial `normal` —
+     * which is not a small degradation but the loudest one available, every
+     * card playing its whole arrival across the entire length of the document.
+     * No `@supports` test covers a declaration that specific, so the answer
+     * comes from the computed style of a card that is really carrying it.
+     *
+     * A resolved range is a pair of lengths, so `px` is the whole of the test.
+     *
+     * The *longhand* is what it reads, and that matters. `animation-range` is a
+     * shorthand, and a shorthand is the least portable thing to ask
+     * `getComputedStyle` for — an engine that declines to serialize one hands
+     * back `""`, which reads here as "the range didn't take" and bars a browser
+     * that was driving the pile perfectly well. It fails to the fallback rather
+     * than to something broken, so it would never show up as a bug; it would
+     * just quietly cost that engine the composited arrival. The longhand is
+     * always serialized, and asking for it costs exactly the same.
+     */
+    const ranged = () => {
+      const card = stack.querySelector<HTMLElement>("[data-about-card]");
+      return (
+        !!card &&
+        getComputedStyle(card)
+          .getPropertyValue("animation-range-start")
+          .includes("px")
+      );
+    };
+
+    /**
+     * Re-measures, and re-decides whether the stylesheet keeps the pile.
+     *
+     * Below `lg` the rule sits behind a media query, so there is nothing to
+     * verify and nothing to hand back — {@link useCardArrival} idles and clears
+     * there too. The check is asked only where its answer means something, and
+     * asked again if the reader resizes into it.
+     */
+    const sync = () => {
+      measure();
+      if (wide.matches && !ranged()) delete stack.dataset.aboutTimeline;
+    };
+
+    const schedule = () => {
+      if (!pending) pending = requestAnimationFrame(sync);
+    };
+
+    sync();
+
+    const observer = new ResizeObserver(schedule);
+    observer.observe(document.documentElement);
+    observer.observe(section);
+    window.addEventListener("resize", schedule, { passive: true });
+    wide.addEventListener("change", sync);
+
+    return () => {
+      cancelAnimationFrame(pending);
+      observer.disconnect();
+      window.removeEventListener("resize", schedule);
+      wide.removeEventListener("change", sync);
+      delete stack.dataset.aboutTimeline;
+      stack.style.removeProperty("--about-top");
+    };
+  }, [sectionRef, stackRef, count]);
 }
 
 /** A rule and a label — the design's section markers. */
@@ -967,10 +1515,12 @@ function StarIcon({ className }: { className?: string }) {
  * of the header row below. A covered card shows its header and nothing else
  * because the card on top of it starts exactly where its own body does.
  *
- * There is no first-card special case any more. Card 0 sits at flow 0, which is
- * already past its own `top` when the section lands, so it is pinned from the
- * section's first frame — the design's opening state, one card, open, waiting.
- * It falls out of the same rule as the rest instead of being exempted from it.
+ * There is no first-card special case. Card 0 starts a screen and a hold below
+ * the section's top edge like every other card starts a beat below the one
+ * before it — see {@link cardFlowVh} — so it rises into its slot on the scroll
+ * rather than being there when the section lands. It falls out of the same rule
+ * as the rest instead of being exempted from it, which is what let the fade it
+ * used to need to arrive on go away.
  *
  * `z-index` is the stacking order itself: later cards paint over earlier ones,
  * which is what turns four overlapping boxes into a pile rather than a mess.
@@ -979,14 +1529,11 @@ function StarIcon({ className }: { className?: string }) {
  * card is an ordinary block in the column, open, at its natural height.
  */
 function SkillCard({
-  ref,
   index,
   count,
   skill,
   description,
 }: {
-  /** set on the last card only — see {@link statsRootMargin} */
-  ref?: Ref<HTMLLIElement>;
   index: number;
   count: number;
   skill: KeyTextField;
@@ -994,7 +1541,9 @@ function SkillCard({
 }) {
   return (
     <li
-      ref={ref}
+      // the hook {@link useCardArrival} collects the pile by, in document
+      // order, which is pile order
+      data-about-card=""
       style={
         {
           "--slot": cardSlotVh(index) + "vh",
@@ -1004,6 +1553,10 @@ function SkillCard({
           // the run-out that keeps the finished pile pinned — see
           // {@link cardGapVh}
           "--gap": cardGapVh(index, count) + "vh",
+          // the scroll this card's arrival plays over, for the timeline in
+          // globals.css — inert until <AboutContent /> arms it, and ignored
+          // entirely by the rAF fallback
+          ...cardRangeVh(index),
           zIndex: index,
         } as CSSProperties
       }
@@ -1082,7 +1635,7 @@ export default function AboutContent({
   const metaRef = useRef<HTMLUListElement>(null);
   const stackRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLUListElement>(null);
-  const lastCardRef = useRef<HTMLLIElement>(null);
+  const statsCueRef = useRef<HTMLDivElement>(null);
 
   useCopyReveal(
     {
@@ -1093,13 +1646,19 @@ export default function AboutContent({
       meta: metaRef,
       stack: stackRef,
       stats: statsRef,
-      lastCard: lastCardRef,
+      statsCue: statsCueRef,
     },
     title ?? "",
     description ?? "",
     numbers.length,
     skills.length,
   );
+
+  // The pile's arrival, from the stylesheet where the browser can do it and
+  // from a rAF where it can't — see {@link CARD_SPEED} for why the difference
+  // is the movement itself rather than only where the work happens.
+  usePileTimeline(sectionRef, stackRef, skills.length);
+  useCardArrival(stackRef, skills.length);
 
   /**
    * Re-measure the face's box whenever the page could have reflowed.
@@ -1159,13 +1718,39 @@ export default function AboutContent({
     if (process.env.NODE_ENV === "production") return;
 
     const fits = stackFitsVh(skills.length);
-    if (fits <= 100) return;
+    if (fits > 100) {
+      console.warn(
+        `<AboutContent />: ${skills.length} skill cards make a pile ${fits}vh ` +
+          `tall, which is more than the screen. The lower cards will lose their ` +
+          `pinning and the last will grow through the stats — see stackFitsVh.`,
+      );
+    }
 
-    console.warn(
-      `<AboutContent />: ${skills.length} skill cards make a pile ${fits}vh ` +
-        `tall, which is more than the screen. The lower cards will lose their ` +
-        `pinning and the last will grow through the stats — see stackFitsVh.`,
-    );
+    // The other end of the same problem: the arrivals are measured from the
+    // slots, so the spawn line walks down the screen with them and eventually
+    // walks off it.
+    const spawn = cardSpawnFitsVh(skills.length);
+    if (spawn > 100) {
+      console.warn(
+        `<AboutContent />: with ${skills.length} skill cards the last one ` +
+          `starts appearing at ${spawn}vh, which is below the fold. It will ` +
+          `enter the screen already part-faded — shorten CARD_TRAVEL_VH or ` +
+          `CARD_STEP_VH. See cardSpawnFitsVh.`,
+      );
+    }
+
+    // And the invariant that used to hold by construction, back when an arrival
+    // cost exactly its own height in scroll: a slower card needs more of the
+    // beat to arrive in, and can run out of it.
+    const dwell = cardDwellVh();
+    if (dwell < 0) {
+      console.warn(
+        `<AboutContent />: at CARD_SPEED ${CARD_SPEED} an arrival takes ` +
+          `${CARD_RUNWAY_VH}vh of scroll, which is ${-dwell}vh more than the ` +
+          `beat between two cards, so two will be climbing at once — raise ` +
+          `BEAT_VH or CARD_SPEED. See cardDwellVh.`,
+      );
+    }
   }, [skills.length]);
 
   const iconSize = "size-4 shrink-0 xl:size-5 2xl:size-6";
@@ -1307,8 +1892,16 @@ export default function AboutContent({
           is an entrance already. See {@link SkillCard} and {@link STATS_SHIFT}.
           Below `lg` it fades in with the rest of the column. */}
       {skills.length > 0 && (
-        <div ref={stackRef} className={rightColumn}>
-          {/* Two figures the pile cannot be laid out without.
+        <div
+          ref={stackRef}
+          // The distance every card is held above its slot as its range opens;
+          // the ranges themselves are per-card and sit on the cards. Set here
+          // rather than in globals.css so the arithmetic stays in one file with
+          // the constants it is made of — the stylesheet holds no geometry.
+          style={{ "--about-lift": CARD_LIFT } as CSSProperties}
+          className={rightColumn}
+        >
+          {/* The one figure the pile cannot be laid out without.
 
               `--lead` is the space above the first card, so it rises into place
               rather than being there already — see {@link cardFlowVh}. Padding
@@ -1321,7 +1914,11 @@ export default function AboutContent({
               content box the cards are actually constrained by. See
               {@link stackFitsVh}. */}
           <ul
-            style={{ "--lead": cardFlowVh(0) + "vh" } as CSSProperties}
+            style={
+              {
+                "--lead": cardFlowVh(0) + "vh",
+              } as CSSProperties
+            }
             className="lg:h-full lg:pt-(--lead)"
           >
             {skills.map(({ skill, description }, i) => (
@@ -1330,7 +1927,6 @@ export default function AboutContent({
                 // only thing that identifies a card here — it is also the
                 // card's place in the pile, so this key is load-bearing
                 key={i}
-                ref={i === skills.length - 1 ? lastCardRef : undefined}
                 index={i}
                 count={skills.length}
                 skill={skill}
@@ -1338,6 +1934,18 @@ export default function AboutContent({
               />
             ))}
           </ul>
+
+          {/* The stats' cue: an empty marker sitting at the foot of the column,
+              which the list above fills exactly. Everything else down here is
+              pinned and therefore still, so this is the only thing left that
+              keeps moving with the page — which is what lets the stats answer a
+              change of direction rather than waiting out the pile. See
+              {@link STATS_EXIT_VH}. */}
+          <div
+            ref={statsCueRef}
+            aria-hidden
+            className="hidden lg:block lg:h-px"
+          />
         </div>
       )}
 

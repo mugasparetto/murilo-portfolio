@@ -28,12 +28,16 @@
 }
 
 /*
- * Height breakpoints, for the blocks that are positioned as percentages of a
- * `h-screen` layer — see <AboutContent />, whose two right-hand blocks are
- * anchored at 10.7% and 56.1% while the copy between them is sized in `rem`.
- * The band closes with the viewport; the type doesn't, so it needs a step of
- * its own. `lg`'s width test is folded in because that percentage layout only
- * exists from `lg` up, and because it keeps these off a landscape phone, where
+ * Height breakpoints, for the type inside a layer that is positioned as
+ * percentages of the viewport — see <AboutContent />, whose still half is a
+ * `h-screen` box with its blocks pinned at shares of it (the copy block 11.2%
+ * up from the bottom, the meta list 12.2% down from the top) while the copy
+ * itself is sized in `rem`. The band between them closes with the viewport; the
+ * type doesn't, so it needs a step of its own — which is why `short:` and
+ * `shorter:` are spent on the headline and the paragraph.
+ *
+ * `lg`'s width test is folded in because that percentage layout only exists
+ * from `lg` up, and because it keeps these off a landscape phone, where
  * a collapsing URL bar would flip a height query mid-scroll.
  *
  * Written as `min-width`/`max-height` rather than the modern `(height < 50rem)`
@@ -92,5 +96,84 @@ body {
   .cta-button:hover .cta-icon-lead,
   .cta-button:hover .cta-icon-copy {
     transition: none;
+  }
+}
+
+/*
+ * The About pile's arrival — see `useCardArrival` in
+ * src/slices/About/scene/AboutContent.tsx, which is the fallback for this and
+ * carries the whole argument.
+ *
+ * Two scroll-driven animations per card, both hung on the document's own scroll
+ * progress. This is the only way a card can climb *slower* than the wheel that
+ * carries it and still be smooth. A sticky card's position belongs to the
+ * compositor; a correction written from script belongs to the main thread, and
+ * the two agree only on the frames script actually gets — on the frames it
+ * misses the card reverts to the compositor's 1:1 and then snaps back, which
+ * reads as the pile juddering vertically. A scroll timeline is composited, so
+ * there is nothing left to disagree with.
+ *
+ * Every number is a custom property set in the markup: the ranges are the
+ * section's measured top plus a figure in `vh`, and the lift is one distance
+ * shared by every card. The keyframes hold no geometry at all.
+ *
+ * `both` is what makes the range the whole animation — before it a card is held
+ * at the lift and invisible, after it at its slot and solid. That is the
+ * fallback's clamped progress, for free.
+ *
+ * The longhands are deliberate: the `animation` shorthand would reset
+ * `animation-duration` to `0s`, and a scroll-driven animation wants the `auto`
+ * that fills its range, which is the initial value it keeps by not being named.
+ */
+@keyframes about-card-lift {
+  from {
+    translate: 0 var(--about-lift);
+  }
+  to {
+    translate: 0 0;
+  }
+}
+
+@keyframes about-card-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@supports (animation-timeline: scroll()) {
+  @media (min-width: 64rem) {
+    /*
+     * The attribute is set by script once the section's top has been measured
+     * into `--about-top`, never in the markup — without that figure the ranges
+     * are meaningless and every card would play against the whole page.
+     */
+    [data-about-timeline] [data-about-card] {
+      animation-name: about-card-lift, about-card-fade;
+      animation-timing-function: linear, linear;
+      animation-fill-mode: both, both;
+      animation-timeline: scroll(root block), scroll(root block);
+      animation-range:
+        var(--climb-from) var(--climb-to),
+        var(--climb-from) var(--fade-to);
+    }
+
+    /*
+     * The damping is the part of the movement the scroll didn't ask for, so it
+     * is the part `prefers-reduced-motion` takes. With the lift gone the card
+     * is back to sticky's own 1:1 — which is the rate the rAF fallback runs at
+     * for everyone, it having no lift to drop — so the fade moves to the range
+     * that arrival takes.
+     */
+    @media (prefers-reduced-motion: reduce) {
+      [data-about-timeline] [data-about-card] {
+        animation-name: none, about-card-fade;
+        animation-range:
+          normal,
+          var(--flat-from) var(--flat-to);
+      }
+    }
   }
 }
