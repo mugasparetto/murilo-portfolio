@@ -815,7 +815,7 @@ const NAV_CLEAR_SM = "calc(max(var(--block-inset), 1.5rem) + 3rem + 1.25rem)";
  * showing its address bar) eats this gap from the same side. A few `vh` of it
  * is the whole margin, and it costs the composition a line of air.
  */
-const STATS_AIR_SM = "4vh";
+const STATS_AIR_SM = "10vh";
 
 /**
  * A floor under the top of the pile below `lg` — a guard, not a layout.
@@ -898,7 +898,7 @@ const FACE_H_SM = `calc(${FACE_W_SM} * 1519 / 784)`;
 
 /** The face's own margins: the air over it, and the air under it. */
 const FACE_LEAD_SM = "8vw";
-const FACE_AIR_SM = "3vw";
+const FACE_AIR_SM = "13vw";
 
 /**
  * Where the face pins below `lg` — by its *foot*, one margin over the deck.
@@ -2629,7 +2629,7 @@ export default function AboutContent({
           publishFaceFlow(el);
         }}
         style={{ "--still-h-sm": stillMinHSm } as CSSProperties}
-        className="pointer-events-none relative flex min-h-(--still-h-sm) w-full flex-col justify-center gap-5 px-(--block-inset) pt-[6vh] pb-[calc(6vh+2.5rem)] sm:gap-6 lg:sticky lg:top-0 lg:block lg:h-screen lg:min-h-0 lg:gap-0 lg:px-0 lg:pt-0 lg:pb-0"
+        className="pointer-events-none relative flex min-h-(--still-h-sm) w-full flex-col justify-center gap-5 px-(--block-inset) pt-[6vh] pb-4 sm:gap-6 lg:sticky lg:top-0 lg:block lg:h-screen lg:min-h-0 lg:gap-0 lg:px-0 lg:pt-0 lg:pb-0"
       >
         {/* "ABOUT" itself is <Title /> in the scene, where no reader can get at
             it, so the section's heading lives here */}
@@ -2740,7 +2740,7 @@ export default function AboutContent({
         ref={publishFaceSlot}
         aria-hidden
         style={{ "--face-top": faceTopSm(skills.length) } as CSSProperties}
-        className="pointer-events-none sticky top-(--face-top) mt-[8vw] mb-[3vw] aspect-[784/1519] w-[min(66vw,37vh)] shrink-0 self-center lg:hidden"
+        className="pointer-events-none sticky top-(--face-top) mt-[8vw] mb-[23vw] aspect-[784/1519] w-[min(66vw,37vh)] shrink-0 self-center lg:hidden"
       />
 
       {/* — the pile ------------------------------------------------------ */}
