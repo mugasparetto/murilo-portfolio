@@ -622,6 +622,113 @@ const stackFitsVh = (count: number) =>
 const cardGapVh = (i: number, count: number) =>
   i === count - 1 ? 0 : vh(cardFlowVh(i + 1) - cardFlowVh(i) - CARD_HEIGHT_VH);
 
+/* --------------------------------------------------------------------------
+   The pile below `lg`
+
+   The same three declarations, in the units a phone actually has. Nothing
+   above this line reaches here: there is no pinned still half for the cards to
+   stack against, no fixed section height to spend, and no scroll-driven
+   arrival — the column is ordinary flow, the pile fades in with it (see
+   {@link usePileTimeline}), and all `sticky` is asked for is the stacking.
+
+   `rem` rather than `vh` for the pile's own geometry, because down here a card
+   is typeset rather than placed: its header is `h-14` and its body is text at
+   a fixed size, so the pile is made of the type's units and not the viewport's
+   — a short phone should not get a shallower pile, it should get less of the
+   page around it. The two figures that are `vh` are scroll rather than layout,
+   and scroll is measured in screens.
+   -------------------------------------------------------------------------- */
+
+/**
+ * The step between two cards below `lg` — `h-14`, the header row's own height,
+ * and so the same equality the pile keeps from `lg` up: a covered card shows
+ * its header and nothing else because the card on top of it starts exactly
+ * where its own body does. Change one and change the other.
+ */
+const CARD_STEP_REM = 3.5;
+
+/** Where card 0 pins below `lg`; every card after it one step lower. */
+const CARD_TOP_REM = 4.5;
+const cardSlotRem = (i: number) => CARD_TOP_REM + i * CARD_STEP_REM + "rem";
+
+/**
+ * A floor under a card's height below `lg`, where it is otherwise whatever its
+ * copy needs.
+ *
+ * There to make the pile *leave* tidily rather than to size anything. Cards
+ * unstack in order of their bottom edges, and each pins a step lower than the
+ * one before it, so equal heights unzip the deck from the top card down — the
+ * arrival read backwards. Uneven ones do not: a card two steps down but three
+ * lines shorter reaches its own bottom edge first and slides out from under
+ * the card covering it. The floor is set above what the design's copy needs,
+ * so in practice every card is exactly this tall and the order is the deck's.
+ */
+const CARD_MIN_REM = "8.5rem";
+
+/**
+ * The scroll between two arrivals below `lg`, spent as the gap under a card —
+ * the mobile {@link BEAT_VH}, and the pile's one pacing dial. An arrival costs
+ * this plus the card's own height less a step, the card behind it having that
+ * much of a head start.
+ */
+const CARD_BEAT_VH = "16vh";
+
+/**
+ * The room under the last card, which is the whole of the finished pile's
+ * dwell.
+ *
+ * A box rather than trailing space, for the reason the list's `lg:h-full` is
+ * one: a margin on the last card collapses out through the list, and padding
+ * sits outside the content box the cards are actually constrained by, so
+ * neither buys the pile a pixel. See the spacer at the foot of the list.
+ *
+ * At zero the last card would never pin at all — its own bottom edge would be
+ * the list's, which is the one place sticky cannot hold it.
+ */
+const CARD_HOLD_VH = "15vh";
+
+/** Half {@link CARD_HOLD_VH} — the middle of the window above. */
+const HALF_HOLD_VH = parseFloat(CARD_HOLD_VH) / 2 + "vh";
+
+/**
+ * The run-out under the pile below `lg` — the mobile answer to the screen
+ * {@link sectionVh} adds from `lg` up, and the same argument word for word:
+ * scrolled to the very bottom the fold rests on the page's own end, so the
+ * last screen of it can never be scrolled *through*. Whatever still had to
+ * happen in there never happens.
+ *
+ * Two things did. The last card was left a third of a screen short of its slot
+ * when the scroll ran out — it never joined the pile at all — and the stats,
+ * sitting in the last 92px of the document, never crossed the crop their
+ * observer watches through, so they stayed at the `opacity: 0` the intro parks
+ * them at. That second one is older than the pile below `lg`: it was there to
+ * be found on the plain column this replaces. See {@link REVEAL_ROOT_MARGIN},
+ * whose `base` edge is a fifth of the viewport and so cannot be cleared by a
+ * block that ends with the page.
+ *
+ * ── Why it is a window and not a figure ───────────────────────────────────
+ *
+ * This is the room under the *list*, and both of its bounds are the last
+ * card's. It has to be at least `100vh - slot - card - dwell` or that card
+ * never pins, and at most `100vh - slot - card` or the deck is already coming
+ * apart when the scroll runs out — the reader left holding a pile with one
+ * header swallowed and the spacing gone wrong, which is worse than an
+ * unfinished one because it reads as broken rather than as more to come. The
+ * two are exactly {@link CARD_HOLD_VH} apart, which is the dwell restated: the
+ * finished pile's hold is also the room this figure has to be wrong in.
+ *
+ * So the middle of it, and the dwell is the tolerance. That matters more than
+ * it looks, because `100vh` is the *large* viewport and a phone showing its
+ * address bar has less — the same figure then lands nearer the top of the
+ * window, and the window is what stops it landing past it.
+ *
+ * `vh` for that reason rather than `dvh`, which would move the composition
+ * every time the bar slid away, or `svh`, which would under-provide by exactly
+ * the bar.
+ */
+const cardRunOutSm = (count: number) =>
+  `calc(100vh - ${cardSlotRem(Math.max(1, count) - 1)} - ${CARD_MIN_REM} - ${HALF_HOLD_VH})`;
+
 /**
  * The scroll offsets stat box `i`'s arrival runs between, as CSS lengths — the
  * same shape as {@link cardRangeVh}, off the same measured `--about-top`, and
@@ -1948,8 +2055,15 @@ function StarIcon({ className }: { className?: string }) {
  * `z-index` is the stacking order itself: later cards paint over earlier ones,
  * which is what turns four overlapping boxes into a pile rather than a mess.
  *
- * Below `lg` none of this applies — every `lg:` prefix above says so — and the
- * card is an ordinary block in the column, open, at its natural height.
+ * Below `lg` the same three declarations, off the mobile figures — see the
+ * arithmetic under {@link CARD_STEP_REM}. What is different is what holds the
+ * pile up. From `lg` up the section is a fixed height with a pinned still half
+ * beside it, so the list can be given the column and the pile simply stays;
+ * down here the column is ordinary flow, so the pile's dwell is a box at the
+ * foot of the list ({@link CARD_HOLD_VH}) and, once past it, the deck unstacks
+ * from the top card down as the list's own bottom edge comes up to meet it.
+ * The card keeps its natural height, with {@link CARD_MIN_REM} under it so
+ * that exit stays in order.
  */
 function SkillCard({
   index,
@@ -1972,6 +2086,25 @@ function SkillCard({
           "--slot": cardSlotVh(index) + "vh",
           "--card-h": CARD_HEIGHT_VH + "vh",
           "--header-h": CARD_STEP_VH + "vh",
+          // the same three, below `lg`: where this card pins, the floor under
+          // its height, and the beat under it. The header's own height is the
+          // step here too, but it is `h-14` in the markup rather than a
+          // property — see {@link CARD_STEP_REM}.
+          "--slot-sm": cardSlotRem(index),
+          "--card-min-sm": CARD_MIN_REM,
+          // Over the card rather than under it, and so none over the first.
+          //
+          // Which way round the beat is written is not a matter of taste here:
+          // a sticky box is held inside its containing block by its *margin*
+          // box, so a gap written underneath a card is part of what has to fit
+          // and the card starts being pushed up a beat early. With every card
+          // but the last carrying one, the pile came apart in the order of
+          // those margins rather than in the order of the deck — the third
+          // card sliding out from under the fourth while the fourth sat
+          // pinned. Written above, a card's margin box ends where the card
+          // does, the bottom edges run in deck order, and the pile unstacks
+          // from the top card down. The spacing is identical either way.
+          "--gap-sm": index === 0 ? "0px" : CARD_BEAT_VH,
           // a beat's worth of runway for every card but the last, whose gap is
           // the run-out that keeps the finished pile pinned — see
           // {@link cardGapVh}
@@ -1984,9 +2117,13 @@ function SkillCard({
         } as CSSProperties
       }
       className={
-        "pointer-events-auto relative mb-3 border-y border-white " +
+        "pointer-events-auto sticky top-(--slot-sm) mt-(--gap-sm) " +
+        "min-h-(--card-min-sm) border-y border-white " +
         PLATE +
-        " lg:sticky lg:top-(--slot) lg:mb-(--gap) lg:h-(--card-h)"
+        // `min-h-0` because the floor is in `rem` and the height above it in
+        // `vh`: on a short window the two would otherwise cross and the mobile
+        // minimum would quietly win in a layout that has no use for it.
+        " lg:top-(--slot) lg:mt-0 lg:mb-(--gap) lg:h-(--card-h) lg:min-h-0"
       }
     >
       {/* The header row. Its height *is* {@link CARD_STEP_VH} from `lg` up --
@@ -2025,7 +2162,7 @@ function SkillCard({
             MUTED +
             " " +
             LEADING +
-            " px-[5%] pr-[32%] pb-6 text-[0.625rem] tracking-normal lg:absolute lg:bottom-[14%] lg:left-[5%] lg:w-1/2 lg:p-0 lg:text-[0.6875rem] xl:text-xs 2xl:text-sm short:w-(--card-blurb-w)"
+            " px-[5%] pr-[32%] pb-0 text-[0.625rem] tracking-normal lg:absolute lg:bottom-[14%] lg:left-[5%] lg:w-1/2 lg:p-0 lg:text-[0.6875rem] xl:text-xs 2xl:text-sm short:w-(--card-blurb-w)"
           }
         >
           {description}
@@ -2226,7 +2363,7 @@ export default function AboutContent({
             push the other about as the headline rewraps. */}
         <ul
           ref={metaRef}
-          className="space-y-2 lg:absolute lg:top-[10%] lg:left-[4.2%] lg:space-y-3"
+          className="space-y-2 order-2 lg:absolute lg:top-[10%] lg:left-[4.2%] lg:space-y-3"
         >
           <li className="flex items-center gap-3.5">
             <GlobeIcon className={iconSize + " text-white"} />
@@ -2254,7 +2391,7 @@ export default function AboutContent({
             grows upwards into the empty middle of the column instead of pushing
             the paragraph down towards <SiteNav />. */}
         {(title || description) && (
-          <div className="mb-6 lg:absolute lg:bottom-[11.2%] lg:left-[3.7%] lg:mb-0 lg:w-[31.9%]">
+          <div className="mb-6 order-1 lg:absolute lg:bottom-[11.2%] lg:left-[3.7%] lg:mb-0 lg:w-[31.9%]">
             <Eyebrow ref={eyebrowRef}>who i am</Eyebrow>
 
             {/* the design breaks this over four lines, but a Text field is one
@@ -2309,7 +2446,7 @@ export default function AboutContent({
         <div
           ref={publishFaceSlot}
           aria-hidden
-          className="mt-[8vw] mb-[3vw] aspect-[784/1519] w-[min(66vw,37vh)] shrink-0 self-center lg:hidden"
+          className="mt-[8vw] mb-[3vw] aspect-[784/1519] w-[min(66vw,37vh)] shrink-0 self-center order-3 lg:hidden"
         />
       </div>
 
@@ -2359,6 +2496,22 @@ export default function AboutContent({
                 description={description}
               />
             ))}
+
+            {/* The finished pile's dwell below `lg`, and the only reason the
+                last card pins at all — see {@link CARD_HOLD_VH}. Inside the
+                list because the cards are constrained by the list's content
+                box and nothing else: padding under it would sit outside that
+                box, and a margin under the last card would collapse straight
+                out through it.
+
+                `aria-hidden` keeps it out of the list a reader is given, which
+                still has one item per skill. From `lg` up the column's own
+                height is the dwell and this goes entirely. */}
+            <li
+              aria-hidden
+              style={{ height: CARD_HOLD_VH }}
+              className="lg:hidden"
+            />
           </ul>
 
           {/* The stats' cue, for browsers that cannot scroll them in: an empty
@@ -2388,7 +2541,23 @@ export default function AboutContent({
           lets it arrive without sliding: the box does not travel to get here,
           it rises the last {@link STATS_SHIFT} into a place it already had. */}
       {numbers.length > 0 && (
-        <div className={rightColumn}>
+        <div
+          // The run-out below `lg`, carried as this block's floor rather than
+          // as a box of its own — see {@link cardRunOutSm}. What the last card
+          // needs is room under the *list*, and the stats are the first of it;
+          // a floor here is that room with their own height already counted,
+          // however many boxes the author gives them. From `lg` up the block
+          // is placed rather than in flow and the section's height carries the
+          // run-out, so the floor goes.
+          style={
+            skills.length > 0
+              ? ({
+                  "--run-out-sm": cardRunOutSm(skills.length),
+                } as CSSProperties)
+              : undefined
+          }
+          className={rightColumn + " min-h-(--run-out-sm) lg:min-h-0"}
+        >
           <ul
             ref={statsRef}
             style={
@@ -2441,6 +2610,16 @@ export default function AboutContent({
             ))}
           </ul>
         </div>
+      )}
+
+      {/* With no stats under it the pile has nothing to hang the run-out on,
+          so it becomes a box — the same figure, the same two reasons. */}
+      {numbers.length === 0 && skills.length > 0 && (
+        <div
+          aria-hidden
+          style={{ height: cardRunOutSm(skills.length) }}
+          className="lg:hidden"
+        />
       )}
     </>
   );
