@@ -23,6 +23,7 @@ import {
   aboutOnScreenOnServer,
   onAboutVisibility,
 } from "./aboutVisibility";
+import { useBreakpoints, BREAKPOINTS } from "@/app/hooks/breakpoints";
 
 gsap.registerPlugin(useGSAP, SplitText);
 
@@ -186,6 +187,60 @@ const CARD_HEIGHT_VH = 20;
  * body does. Change one and change the other.
  */
 const CARD_STEP_VH = 6.1;
+
+/**
+ * The two figures above as CSS lengths rather than as plain `vh` — what the
+ * markup actually gets.
+ *
+ * `vh` is exact for this composition only while the viewport keeps the design
+ * frame's aspect. A card's *height* is a share of the design's 947, but its
+ * *width* is a share of its 1519, handed to it by the column
+ * (`lg:left-[64.2%] lg:right-[3.1%]`, so 32.7vw). On the frame the two agree
+ * and the card is the wide band the design draws. On a portrait tablet they do
+ * not: 1024x1366 clears `lg` by a hair, so the column collapses to 335px while
+ * the height holds at 273 — a card very nearly square, with a header 6.1vh of
+ * a much taller screen and an icon two thirds of the card's width sitting on
+ * top of the blurb.
+ *
+ * So each gains a ceiling in `vw` — the same figure taken against the design's
+ * width instead of its height, 1519:947 making 1vh worth 0.6234vw — and a
+ * floor in `rem`, because the type inside them does not scale with either: the
+ * header sets 16px and the blurb up to six lines of 11px, and a card taken
+ * down to the pure ratio at 1024 would have nowhere to put them. The ceiling
+ * is what the design asks for and the floor is what the copy needs; the `vh`
+ * figure still wins whenever it is the smallest of the three, so a wide window
+ * is never handed a card the shape of a narrow one.
+ *
+ * The ceiling falls below the `vh` figure once the viewport is taller than
+ * about 1.6 times its width, which is the design frame's own aspect. So this
+ * is not only the portrait tablet: a 4:3 monitor and a small landscape tablet
+ * are inside it too, and both were already drawing a card squarer and an icon
+ * wider than the design's share. Every viewport these bind on is one they move
+ * *towards* 2.6:1, and 16:9 and wider is untouched to the pixel. `short:`
+ * cannot reach them at all — 50rem of height puts 20vh under the floor, so the
+ * card's own `vh` figure is always the smallest term there.
+ *
+ * ── What a clamped step is allowed to touch ───────────────────────────────
+ *
+ * The step is the one figure the scroll arithmetic might be expected to
+ * notice, and it does not: a card pins at `CARD_TOP + i * STEP` and flows at
+ * `80 + i * (BEAT + STEP)`, so
+ *
+ *     lock = flow - slot = 80 + i * BEAT - CARD_TOP
+ *
+ * and the step cancels straight out of it — the same cancellation
+ * {@link cardDwellVh} is built on. Every offset in {@link cardRangeVh} and the
+ * whole of {@link sectionVh} are untouched, and stay the plain `vh` numbers
+ * they are. What does have to follow is the gap under a card, which is flow
+ * spacing *less the card's own height* and so has to be written as that
+ * subtraction rather than as its result — see {@link cardGap}.
+ *
+ * The `vh` functions themselves are left alone. {@link stackFitsVh} and
+ * {@link cardSpawnFitsVh} still read them, and both are upper bounds: a clamp
+ * only ever makes the pile shorter than they assume.
+ */
+const CARD_HEIGHT = `min(${CARD_HEIGHT_VH}vh, max(12.47vw, 11rem))`;
+const CARD_STEP = `min(${CARD_STEP_VH}vh, max(3.8vw, 2.75rem))`;
 
 /** Where the stats pin: 698 of 947, with the design's 135 of height under it. */
 const STATS_TOP_VH = 73.7;
@@ -383,6 +438,12 @@ const statsCueVh = (stats: number) => vh(restVh(stats) - STATS_LEAD_VH);
 
 /** Where card `i` pins. */
 const cardSlotVh = (i: number) => vh(CARD_TOP_VH + i * CARD_STEP_VH);
+
+/**
+ * The same, as the CSS length the markup gets — the top figure is still `vh`,
+ * the step is {@link CARD_STEP} and so is only nominally 6.1 of them.
+ */
+const cardSlot = (i: number) => `calc(${CARD_TOP_VH}vh + ${i} * ${CARD_STEP})`;
 
 /**
  * A card's arrival: how far below its own slot it starts to appear, and how
@@ -618,9 +679,19 @@ const stackFitsVh = (count: number) =>
  *
  * Uniform, and none under the last — holding the finished pile is the list's
  * own height, not trailing space inside it. See {@link stackFitsVh}.
+ *
+ * `cardFlowVh(i + 1) - cardFlowVh(i) - CARD_HEIGHT_VH`, written as the
+ * subtraction rather than as the 11.1 it comes to, and it has to be: flow
+ * spacing is what the lock timing is made of and is fixed at `BEAT + STEP`, so
+ * a card given less height than the nominal {@link CARD_HEIGHT_VH} has to be
+ * given exactly that much more gap, or every card below it flows early and
+ * locks late. With the height and the step clamped the same way, the sum is
+ * invariant and {@link cardLockVh} keeps telling the truth.
  */
-const cardGapVh = (i: number, count: number) =>
-  i === count - 1 ? 0 : vh(cardFlowVh(i + 1) - cardFlowVh(i) - CARD_HEIGHT_VH);
+const cardGap = (i: number, count: number) =>
+  i === count - 1
+    ? "0px"
+    : `calc(${vh(BEAT_VH)}vh + ${CARD_STEP} - ${CARD_HEIGHT})`;
 
 /* --------------------------------------------------------------------------
    The pile below `lg`
@@ -663,7 +734,7 @@ const cardSlotRem = (i: number) => CARD_TOP_REM + i * CARD_STEP_REM + "rem";
  * the card covering it. The floor is set above what the design's copy needs,
  * so in practice every card is exactly this tall and the order is the deck's.
  */
-const CARD_MIN_REM = "8.5rem";
+const CARD_MIN_REM = "6.75rem";
 
 /**
  * The scroll between two arrivals below `lg`, spent as the gap under a card —
@@ -685,7 +756,7 @@ const CARD_BEAT_VH = "16vh";
  * At zero the last card would never pin at all — its own bottom edge would be
  * the list's, which is the one place sticky cannot hold it.
  */
-const CARD_HOLD_VH = "15vh";
+const CARD_HOLD_VH = "20vh";
 
 /** Half {@link CARD_HOLD_VH} — the middle of the window above. */
 const HALF_HOLD_VH = parseFloat(CARD_HOLD_VH) / 2 + "vh";
@@ -2083,9 +2154,12 @@ function SkillCard({
       data-about-card=""
       style={
         {
-          "--slot": cardSlotVh(index) + "vh",
-          "--card-h": CARD_HEIGHT_VH + "vh",
-          "--header-h": CARD_STEP_VH + "vh",
+          // All three clamped rather than plain `vh` — see {@link CARD_HEIGHT}
+          // for why a portrait viewport cannot be given the figures a
+          // landscape one is, and for why the scroll arithmetic does not care.
+          "--slot": cardSlot(index),
+          "--card-h": CARD_HEIGHT,
+          "--header-h": CARD_STEP,
           // the same three, below `lg`: where this card pins, the floor under
           // its height, and the beat under it. The header's own height is the
           // step here too, but it is `h-14` in the markup rather than a
@@ -2107,8 +2181,9 @@ function SkillCard({
           "--gap-sm": index === 0 ? "0px" : CARD_BEAT_VH,
           // a beat's worth of runway for every card but the last, whose gap is
           // the run-out that keeps the finished pile pinned — see
-          // {@link cardGapVh}
-          "--gap": cardGapVh(index, count) + "vh",
+          // {@link cardGap}, which carries the card's clamped height back out
+          // so the flow spacing the lock is measured against stays put
+          "--gap": cardGap(index, count),
           // the scroll this card's arrival plays over, for the timeline in
           // globals.css — inert until <AboutContent /> arms it, and ignored
           // entirely by the rAF fallback
@@ -2162,7 +2237,7 @@ function SkillCard({
             MUTED +
             " " +
             LEADING +
-            " px-[5%] pr-[32%] pb-0 text-[0.625rem] tracking-normal lg:absolute lg:bottom-[14%] lg:left-[5%] lg:w-1/2 lg:p-0 lg:text-[0.6875rem] xl:text-xs 2xl:text-sm short:w-(--card-blurb-w)"
+            " px-[5%] pr-[32%] pb-5 text-[0.625rem] tracking-normal md:pb-0 lg:absolute lg:bottom-[14%] lg:left-[5%] lg:w-1/2 lg:p-0 lg:text-[0.6875rem] xl:text-xs 2xl:text-sm short:w-(--card-blurb-w)"
           }
         >
           {description}
@@ -2171,11 +2246,24 @@ function SkillCard({
 
       {/* The sky's solids, a different one on each card and each turning at its
           own rate — see <SolidIcon />. It replaces the design's placed bitmap,
-          which is a reference crop and already soft at this size. */}
+          which is a reference crop and already soft at this size.
+
+          Square, so its height decides its width — and the width is the half
+          that has to be answered for, because the blurb is beside it and not
+          under it. 86% of the card is 33% of the column on the design frame
+          and two thirds of it on a portrait tablet, so the height carries the
+          same figure a second time as a ceiling in `vw`: 0.86 * 20vh at
+          1519:947. The clamp on {@link CARD_HEIGHT} shortens the card; this is
+          what keeps the solid from simply filling the shorter card instead.
+
+          `short:` is left as the plain percentage, and overrides this outright
+          — a card that is already at its `vh` height there (see
+          {@link CARD_HEIGHT}) wants the shorter solid the variant was added
+          for, not a second clamp on top of it. */}
       <SolidIcon
         kind={solidForRow(index)}
         seed={index}
-        className="pointer-events-none absolute right-[4%] bottom-4 size-16 text-white lg:top-1/2 lg:bottom-auto lg:aspect-square lg:h-[86%] lg:w-auto lg:-translate-y-1/2 short:h-[70%]"
+        className="pointer-events-none absolute right-[4%] bottom-4 size-16 text-white lg:top-1/2 lg:bottom-auto lg:aspect-square lg:h-[min(calc(0.86*var(--card-h)),10.8vw)] lg:w-auto lg:-translate-y-1/2 short:h-[70%]"
       />
     </li>
   );
@@ -2196,6 +2284,8 @@ export default function AboutContent({
   const stackRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLUListElement>(null);
   const statsCueRef = useRef<HTMLDivElement>(null);
+
+  const { up } = useBreakpoints(BREAKPOINTS);
 
   useCopyReveal(
     {
@@ -2509,7 +2599,7 @@ export default function AboutContent({
                 height is the dwell and this goes entirely. */}
             <li
               aria-hidden
-              style={{ height: CARD_HOLD_VH }}
+              style={{ height: up.md ? "10vh" : CARD_HOLD_VH }}
               className="lg:hidden"
             />
           </ul>
