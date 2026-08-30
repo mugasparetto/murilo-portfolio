@@ -485,7 +485,22 @@ export default function Scene() {
     // is fixed and the only thing that moves is the page under it — see
     // ./faceSlot. One subtraction, against a scroll the frame loop has already
     // read, in place of the projection the old fixed layer needed.
-    const top = slot.pageTop - scrollY.current;
+    //
+    // The box also *pins*, and holds the top of the composition while the cards
+    // stack under it. Sticky is one clamp on the subtraction above and the
+    // whole of it is here: held at `pinTop` once the page has carried the box
+    // that far up, and let go again at `pinUntil` — which the layout never
+    // reaches, the section running to the end of the page. The three figures
+    // are the measurement's, not this loop's; see ./faceSlot for why they are
+    // written out rather than answered with a rect per frame.
+    const flow = slot.pageTop - scrollY.current;
+    const top =
+      slot.pinTop === null
+        ? flow
+        : Math.min(
+            Math.max(flow, slot.pinTop),
+            slot.pinUntil - scrollY.current,
+          );
     const x = slot.left + slot.width / 2;
 
     if (
