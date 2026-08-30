@@ -447,7 +447,7 @@ const CARD_FADE_VH = 10;
  * that sat between arrivals. Which is the limit on how low it goes: see
  * {@link cardDwellVh}.
  */
-const CARD_SPEED = 0.5;
+const CARD_SPEED = 0.65;
 
 /**
  * The scroll one arrival costs: {@link CARD_TRAVEL_VH} of movement at
@@ -2025,7 +2025,7 @@ function SkillCard({
             MUTED +
             " " +
             LEADING +
-            " px-[5%] pr-[32%] pb-6 text-[0.625rem] tracking-normal lg:absolute lg:bottom-[14%] lg:left-[5%] lg:w-1/2 lg:p-0 lg:text-[0.6875rem] xl:text-xs 2xl:text-sm"
+            " px-[5%] pr-[32%] pb-6 text-[0.625rem] tracking-normal lg:absolute lg:bottom-[14%] lg:left-[5%] lg:w-1/2 lg:p-0 lg:text-[0.6875rem] xl:text-xs 2xl:text-sm short:w-(--card-blurb-w)"
           }
         >
           {description}
@@ -2038,7 +2038,7 @@ function SkillCard({
       <SolidIcon
         kind={solidForRow(index)}
         seed={index}
-        className="pointer-events-none absolute right-[4%] bottom-4 size-16 text-white lg:top-1/2 lg:bottom-auto lg:aspect-square lg:h-[86%] lg:w-auto lg:-translate-y-1/2"
+        className="pointer-events-none absolute right-[4%] bottom-4 size-16 text-white lg:top-1/2 lg:bottom-auto lg:aspect-square lg:h-[86%] lg:w-auto lg:-translate-y-1/2 short:h-[70%]"
       />
     </li>
   );
@@ -2401,7 +2401,7 @@ export default function AboutContent({
                 "--stats-shift": STATS_SHIFT + "px",
               } as CSSProperties
             }
-            className="grid grid-cols-3 gap-2 lg:sticky lg:top-(--stats-top) lg:gap-4"
+            className="grid grid-cols-3 gap-2 lg:sticky lg:top-(--stats-top) lg:gap-[0.75vw]"
           >
             {numbers.map(({ number, label }, i) => (
               <li
@@ -2413,7 +2413,7 @@ export default function AboutContent({
                 className={
                   "pointer-events-auto flex flex-col items-center justify-center gap-2 rounded-sm border-2 border-white " +
                   PLATE +
-                  " px-2 py-3 text-center lg:h-[14.3vh] lg:gap-3 lg:py-4"
+                  " px-2 py-3 text-center lg:h-[14.3vh] lg:gap-3 lg:py-4 short:gap-1"
                 }
               >
                 <span

@@ -53,6 +53,25 @@
 @custom-variant short (@media (min-width: 64rem) and (max-height: 50rem));
 @custom-variant shorter (@media (min-width: 64rem) and (max-height: 40rem));
 
+/*
+ * The viewport height as a plain number of px, and the one width that needs it.
+ *
+ * A skill card's blurb is sized as a share of the *card* while the thing that
+ * squeezes it is the *viewport's height* — and calc() cannot divide one length
+ * by another, so a percentage can't be driven by `vh` directly. atan2() is the
+ * way out: the angle whose tangent is 100vh/1px is the height itself, and
+ * tan() hands it back as a bare number that a percentage can be multiplied by.
+ *
+ * The line is the one the design asks for — half the card at an 800px
+ * viewport, 80% of it at 500px, i.e. `130 - 0.1h` — and the clamp holds both
+ * ends, so the copy neither overruns the solid on the right below 500px nor
+ * grows past `lg:w-1/2` at the `short:` threshold, where the two meet exactly.
+ */
+:root {
+  --vh-px: tan(atan2(100vh, 1px));
+  --card-blurb-w: clamp(65%, calc((126 - 0.1 * var(--vh-px)) * 1%), 70%);
+}
+
 *,
 *::after,
 *::before {
