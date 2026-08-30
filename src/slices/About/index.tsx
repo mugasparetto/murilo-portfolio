@@ -33,25 +33,28 @@ const About: FC<AboutProps> = ({ slice }) => {
   /**
    * How much scroll this section is worth.
    *
-   * A function of the skill count rather than a figure typed here, because
-   * from `lg` up the still half of this section is *pinned*: it is one
+   * A function of what is in it rather than a figure typed here, because from
+   * `lg` up the still half of this section is *pinned*: it is one
    * `sticky top-0 h-screen` box, so nothing about the section's height is a
-   * measurement of its content — it is purely how much wheel the card stack is
-   * given to play through. Typed as a class, a fifth skill added in Prismic
-   * would get the same 350vh four of them share, with every beat shortening to
-   * make room. See <AboutContent />, which sizes the cards' flow gaps off the
-   * same three figures so the two can't drift.
+   * measurement of its content — it is purely how much wheel the things that
+   * scroll through it are given to play in. Typed as a class, a fifth skill
+   * added in Prismic would get the same height four of them share, with every
+   * beat shortening to make room. See <AboutContent />, which sizes the cards'
+   * flow gaps off the same figures so the two can't drift.
    *
-   * Four skills come out at exactly the 350vh this section has always been.
+   * Both counts, because both blocks are scrolled in: the cards decide the
+   * bulk of it and the stats the tail they arrive over — a fourth stat box
+   * needs its own scroll as much as a fifth card does.
    *
    * Only applied from `lg` up — below it the section is an ordinary column and
    * its height is whatever the copy needs, so this goes through a custom
    * property that a `lg:` class picks up rather than straight onto `height`.
    */
   const count = slice.primary.skills.length;
+  const stats = slice.primary.numbers.length;
   const height = useMemo(
-    () => ({ "--about-h": `${sectionVh(count)}vh` }) as CSSProperties,
-    [count],
+    () => ({ "--about-h": `${sectionVh(count, stats)}vh` }) as CSSProperties,
+    [count, stats],
   );
 
   // Register scene once

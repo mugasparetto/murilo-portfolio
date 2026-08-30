@@ -143,6 +143,73 @@ body {
   }
 }
 
+/*
+ * The About stats' arrival — see `statRangeVh` in
+ * src/slices/About/scene/AboutContent.tsx.
+ *
+ * One animation rather than the pile's two, because unlike a card these boxes
+ * have nothing else writing to them: a stat box is sticky from flow 0 and
+ * pinned from the moment the section lands, so it never travels and the rise
+ * here is the whole of its movement. The pile has to keep its lift and its fade
+ * apart only because they play over different ranges.
+ *
+ * The rise and the fade used to be a GSAP timeline fired by an observer at the
+ * foot of the card column. Everything about the movement is the same; what
+ * changed is who drives it. A timeline plays at its own pace once cued, so
+ * scrolling on did nothing to it and scrolling back undid it in a rush; a range
+ * is simply read backwards, at exactly the rate the wheel is turned. The
+ * count-off is geometry now too — each box's range opens a `STATS_STAGGER_VH`
+ * later than the last — which is why nothing here has to say "stagger" and why
+ * the boxes unwind in the right order for free.
+ */
+@keyframes about-stat-arrive {
+  from {
+    opacity: 0;
+    translate: 0 var(--stats-shift);
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+/*
+ * The left column's arrival — see `revealRangeVh` in
+ * src/slices/About/scene/AboutContent.tsx.
+ *
+ * One keyframe for all four groups the intro is made of: the headline's masked
+ * words, the eyebrow above them, the paragraph below them, and the meta rows at
+ * the top of the column. They differ in where they start from and in when, and
+ * both of those are the element's own — `--copy-shift` is the distance, the
+ * range is the moment — so there is one animation here and, as everywhere else
+ * in this section, no geometry.
+ *
+ * `--copy-shift` is a length for the three settling blocks (COPY_SHIFT, signed:
+ * the eyebrow and the meta rows drop in from above, the paragraph rises from
+ * below) and a percentage for the words, which is the whole reason those two
+ * can share a keyframe at all. A translate percentage resolves against the
+ * element's own box, so `100%` is one full line box below the mask's edge —
+ * the word hidden completely, at every breakpoint the type steps through.
+ *
+ * `--reveal-opacity` is where the fade ends: 1 for everything but the eyebrow,
+ * which the design sets at 0.72 and which an animation filling forwards at 1
+ * would quietly overrule.
+ *
+ * Nothing here needs a `prefers-reduced-motion` arm. The elements are marked
+ * from script, and the hook that marks them hands that reader the headline as
+ * typeset — unsplit, unmarked, and so unanimated.
+ */
+@keyframes about-copy-arrive {
+  from {
+    opacity: 0;
+    translate: 0 var(--copy-shift);
+  }
+  to {
+    opacity: var(--reveal-opacity);
+    translate: 0 0;
+  }
+}
+
 @supports (animation-timeline: scroll()) {
   @media (min-width: 64rem) {
     /*
@@ -174,6 +241,69 @@ body {
           normal,
           var(--flat-from) var(--flat-to);
       }
+    }
+
+    /*
+     * The stats, on the same terms: the attribute is the section's, set once
+     * `--about-top` has been measured into it, and `both` holds each box
+     * invisible before its range and solid after.
+     *
+     * The reader is the only clock here. Every figure — where the range opens,
+     * how long it runs, how far apart the three of them start — is `vh` in
+     * AboutContent, so this rule holds no geometry either.
+     */
+    [data-about-timeline] [data-about-stat] {
+      animation-name: about-stat-arrive;
+      /*
+       * GSAP's `power2.out`, which is what the tween these replace was eased
+       * with — the one place this differs from the pile, whose `linear` is not
+       * a taste but a requirement: a card's climb is a correction against
+       * sticky's own 1:1 and has to unwind at exactly the rate it accumulates.
+       * Nothing is being corrected here, so the box keeps the curve it had.
+       */
+      animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
+      animation-fill-mode: both;
+      animation-timeline: scroll(root block);
+      animation-range: var(--stat-from) var(--stat-to);
+    }
+
+    /*
+     * The rise is the part nobody asked for; the fade is how the box says it
+     * has arrived at all. So the translate goes and the range stays, exactly
+     * as the pile drops its lift and keeps its fade.
+     */
+    @media (prefers-reduced-motion: reduce) {
+      [data-about-timeline] [data-about-stat] {
+        --stats-shift: 0px;
+      }
+    }
+
+    /*
+     * The left column, on the same terms as the two blocks above it: the
+     * attribute is the section's, set once `--about-top` has been measured,
+     * and `both` holds each element at its start pose until its own range
+     * opens and at its end pose ever after.
+     *
+     * The one difference is who marks the elements. The cards and the stat
+     * boxes carry their ranges in the markup; these are marked from script,
+     * because the headline's words do not exist until SplitText has made them
+     * and everything under the headline is spaced off how many it made. See
+     * `useCopyReveal`.
+     */
+    [data-about-timeline] [data-about-reveal] {
+      /* both are written per element, inline; these are only so that a mark
+         that somehow arrived without them fades in place rather than not at
+         all */
+      --copy-shift: 0px;
+      --reveal-opacity: 1;
+
+      animation-name: about-copy-arrive;
+      /* GSAP's `power2.out` — REVEAL and COPY were both eased with it, and
+         this is the one figure of theirs that survived the move to scroll */
+      animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
+      animation-fill-mode: both;
+      animation-timeline: scroll(root block);
+      animation-range: var(--reveal-from) var(--reveal-to);
     }
   }
 }

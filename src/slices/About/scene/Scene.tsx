@@ -450,7 +450,7 @@ export default function Scene() {
     // getting narrower at a fixed window shape, and the fit handles the window
     // itself getting narrower than the shape it was all drawn at.
     if (up.lg) {
-      const scale = (up.xl ? 1 : LG_FACE_SCALE) * faceFit;
+      const scale = (up.xl ? 0.92 : LG_FACE_SCALE) * faceFit;
 
       group.scale.setScalar(scale);
       group.position.set(

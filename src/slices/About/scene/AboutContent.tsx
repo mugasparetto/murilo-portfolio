@@ -85,17 +85,21 @@ type Props = {
  * - right: the skill cards, which stack as the section is scrolled, and the
  *   stats that arrive once the last of them has landed.
  *
- * The pile is the one part of this that moves with the scroll, and no intro
- * tween touches it. Each card is `position: sticky` at its own slot, with a
+ * From `lg` up the whole section moves with the scroll, and nothing in it moves
+ * on a clock: the copy in the left column arrives on a range per block (see
+ * {@link revealRangeVh}), the pile stacks, and the stats follow it.
+ *
+ * Each card is `position: sticky` at its own slot, with a
  * beat's worth of flow under it, so the whole of the *stacking* is three CSS
  * declarations and the browser — see {@link SkillCard}, and {@link cardFlowVh}
  * for the arithmetic. Only the fade on top of it is script, and only because
  * a sticky box is the one subject a `view()` timeline cannot measure honestly
  * — see {@link useCardArrival}.
  *
- * The one thing sticky can't say is *when* — the stats have to wait for the
- * pile to finish rather than for a distance, so the last card locking into
- * place is what brings them in. See {@link STATS_EXIT_VH}.
+ * The stats are scrolled in the same way, and off the same scroll: their ranges
+ * open a beat after the last card locks, so what brings them in is the pile
+ * having finished rather than a clock started when it did. See
+ * {@link statRangeVh}, and {@link restVh} for the scroll that pays for it.
  *
  * Below `lg` the blocks stack into a single column: the meta list, the copy,
  * the face, then the cards and the stats. The cards are ordinary items in that
@@ -113,7 +117,7 @@ type Props = {
  */
 
 /** Design fills: #FFFFFF for the display type, #E8E8E8 for the supporting copy. */
-const MUTED = "text-[#E8E8E8]";
+const MUTED = "text-white/72";
 
 /** ls 1.4/14, 1.6/16 and 2/20 in the design — all of them 0.1em. */
 const CAPS = "uppercase tracking-[0.1em]";
@@ -160,9 +164,6 @@ const LEADING = "leading-[1.46]";
  */
 const PLATE = "bg-black/40 backdrop-blur-lg";
 
-/** The stat boxes are drawn lighter and heavier than the cards: 20% and 2px. */
-const STAT_PLATE = "bg-black/20 backdrop-blur-lg";
-
 /* --------------------------------------------------------------------------
    The pile's arithmetic
 
@@ -175,7 +176,7 @@ const STAT_PLATE = "bg-black/20 backdrop-blur-lg";
    -------------------------------------------------------------------------- */
 
 /** The first card's top and a card's height: 191 and 235 of 947. */
-const CARD_TOP_VH = 20.2;
+const CARD_TOP_VH = 19;
 const CARD_HEIGHT_VH = 20;
 
 /**
@@ -194,10 +195,12 @@ const STATS_TOP_VH = 73.7;
  * first card's top edge crosses the fold.
  *
  * The knob to turn if the pile starts too early or too late — everything after
- * it shifts along, including the section's own height. At 0 the first card
- * would be rising as the headline was still settling.
+ * it shifts along, including the section's own height. It is also the room the
+ * intro has: the copy arrives over the scroll before card 0 climbs, so a
+ * headline long enough to run past that is answered here. See
+ * {@link pileStartVh}.
  */
-const INTRO_HOLD_VH = 5;
+const INTRO_HOLD_VH = 0;
 
 /**
  * One card's arrival: the scroll from one card locking to the next.
@@ -211,63 +214,172 @@ const INTRO_HOLD_VH = 5;
  */
 const BEAT_VH = 25;
 
+/* --------------------------------------------------------------------------
+   The stats' arrival
+
+   Scroll, like the pile's — not seconds. The three boxes used to be cued by an
+   observer and then played on a clock, which is the one beat in the section
+   whose pace the reader did not set: it fired at a line and ran at its own
+   speed from there, so scrolling on made no difference to it and scrolling back
+   undid it in a rush rather than by exactly as much as had been taken back.
+
+   The distances are unchanged — {@link STATS_SHIFT} up, the same fade, the same
+   count-off. Only what drives them is different, and these are the same figures
+   restated in the units the scroll actually has: `vh` rather than seconds.
+   -------------------------------------------------------------------------- */
+
+/**
+ * How much scroll passes after the last card locks before the first stat box
+ * begins to arrive.
+ *
+ * The composition's one rule about these two blocks: the stats belong to the
+ * *end* of the pile, so nothing of theirs may start while a card is still
+ * moving. The lock is the pile's last movement, and this is the beat after it.
+ */
+const STATS_LEAD_VH = 2;
+
+/** One box's arrival: the scroll its rise and its fade play over, together. */
+const STATS_ARRIVE_VH = 11;
+
+/**
+ * The count-off, box to box — the old `ROW_STAGGER` in the units the scroll
+ * has. Short against {@link STATS_ARRIVE_VH} for the same reason it was short
+ * against the tween's half-second: three boxes should read as one block
+ * arriving unevenly, not as three separate arrivals.
+ */
+const STATS_STAGGER_VH = 5;
+
+/**
+ * What is left under the finished stats before the document ends.
+ *
+ * Not slack. An arrival that completes on the page's final pixel reads as
+ * having been cut off whatever it actually did, because the reader runs out of
+ * scroll at the same moment it runs out of animation and cannot tell the two
+ * apart.
+ */
+const STATS_DWELL_VH = 3;
+
+/* --------------------------------------------------------------------------
+   The left column's arrival
+
+   The last of the section's three blocks to stop being a timeline, and it went
+   for the reason the stats did: the intro was played *at* the reader rather
+   than by them. An observer fired as the section landed and a GSAP sequence ran
+   from there at its own pace — so scrolling on did nothing to it, scrolling
+   back undid nothing, and a reader who turned around halfway found the copy
+   finishing behind them.
+
+   The distances are the ones the timeline had, restated in the units the scroll
+   has: {@link REVEAL_RISE} up out of the mask, {@link COPY_SHIFT} either side
+   of the headline, the same order, the same count-off. What changed is who
+   drives them — and that the spacing is geometry now, so the beats hold their
+   relation to each other on the way back up without anything being written
+   twice.
+
+   It costs the section no height. The whole intro runs inside the scroll card
+   0 already has before it starts to climb — see {@link pileStartVh}, which is
+   the invariant, and the warning in {@link useCopyReveal} that says when a
+   headline has outgrown it.
+   -------------------------------------------------------------------------- */
+
+/**
+ * How much scroll passes after the section lands before the first word climbs.
+ *
+ * Zero, and deliberately: the still half is pinned from that moment, the camera
+ * flight from the hero has just come to rest, and the reader's next turn of the
+ * wheel is what the copy is waiting for. Raise it to hold the section still for
+ * a beat before anything moves.
+ */
+const COPY_LEAD_VH = 0;
+
+/**
+ * One word's climb out of its mask, and the count-off between two of them.
+ *
+ * The old `REVEAL`'s 0.6s and 0.06s at the ratio they had — the stagger is a
+ * tenth of the arrival, which is what makes a headline read word by word rather
+ * than as a block sliding up. Unlike the seconds they replace, these are spent
+ * per word: a longer headline now takes proportionally more *scroll*, which is
+ * the one thing that can push the intro into the pile. See {@link introRunVh}.
+ */
+const WORD_ARRIVE_VH = 9;
+const WORD_STAGGER_VH = 0.9;
+
+/** One settle: the eyebrow, the paragraph, and each meta row. `COPY`'s 0.5s. */
+const COPY_ARRIVE_VH = 8;
+
+/**
+ * The old `META_LEAD` and `ROW_STAGGER` in the units the scroll has — the top
+ * of the column set off against the copy at the foot of it, and the count-off
+ * inside the meta list itself.
+ */
+const META_LEAD_VH = 2;
+const ROW_STAGGER_VH = 1.8;
+
+/** Binary floating point turns `20.2 + 6.1` into `26.299999999999997`. */
+const vh = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * The scroll from the last card's lock to the last stat box being solid — the
+ * whole of the arrival, stagger included.
+ */
+const statsRunVh = (count: number) =>
+  vh(
+    STATS_LEAD_VH + STATS_STAGGER_VH * Math.max(0, count - 1) + STATS_ARRIVE_VH,
+  );
+
 /**
  * Scroll between the last card locking and the bottom of the page.
  *
  * Everything the section still has to do happens in here — the last card
- * travelling the final stretch to its slot, its fade finishing, the stats being
- * cued — and every one of them is measured from the page's own end. Cut it too
- * fine and they all fail together, quietly, because the page simply stops
- * before they happen. Turned down to 1 — which the exit latency wanted, back
- * when this was also the exit latency — they landed within 1 to 7vh of the very
- * last pixel and stopped happening at all.
+ * travelling the final stretch to its slot, its fade finishing, and now the
+ * whole of the stats' arrival rather than merely the cue for it. Every one of
+ * them is measured from the page's own end, so cutting it fine does not make
+ * them worse, it stops them happening: at 1 they landed within 1 to 7vh of the
+ * very last pixel and stopped happening at all.
  *
- * It used to double as the exit latency: the stats hung on the last card, the
- * card is pinned for the whole of this, so nothing moved and nothing could
- * undo them until the reader had scrolled back up through all of it. That is no
- * longer true — see {@link STATS_EXIT_VH} — and the two figures are now free to
- * be what each of them should be.
+ * Which is why it is a function of the stat count rather than a figure typed
+ * here — the same argument {@link sectionVh} makes about the cards. Scrolling
+ * the stats in costs {@link statsRunVh} of wheel that being *told* to play them
+ * did not, and a fourth box added in Prismic asks for another
+ * {@link STATS_STAGGER_VH} of it. Typed as a constant, the fourth box would
+ * have to find that scroll inside a runway three boxes already fill, and would
+ * finish under the fold.
  *
- * Only this much is needed anyway, because a section's last viewport is
- * unreachable: scrolled to the very bottom, the fold sits on the section's own
- * end. {@link sectionVh} adds that screen on top.
+ * With no stats at all there is nothing to make room for and the old 5 stands,
+ * which is still what the last card's own fade wants.
+ *
+ * A section's last viewport is unreachable anyway — scrolled to the very
+ * bottom, the fold sits on the section's own end — so {@link sectionVh} adds
+ * that screen on top of this.
  */
-const REST_VH = 25;
+const REST_MIN_VH = 5;
+const restVh = (stats: number) =>
+  stats === 0 ? REST_MIN_VH : vh(statsRunVh(stats) + STATS_DWELL_VH);
 
 /**
- * How far the reader has to pull away from the bottom of the page before the
- * stats start to leave — and, read the other way, how close they have to get
- * before the stats arrive.
+ * Where the *fallback* cues the stats, as a root extension in `vh` — see
+ * {@link statsCueMargin}, and {@link useCopyReveal} for when it is used at all,
+ * which is only where the browser cannot drive an animation from the scroll.
+ *
+ * Placed to fire exactly where the scrolled arrival starts, so the two paths
+ * agree on the moment even though they disagree on everything after it: one
+ * scrubs, the other plays. Derived rather than typed for that reason — a change
+ * to {@link STATS_LEAD_VH} moves both.
  *
  * The stats are cued off an empty marker at the foot of the card column rather
- * than off the last card, and this is why. The card is *pinned* from the moment
- * it lands: it does not move again, so nothing about it changes as the reader
- * pulls away, so there is nothing for an observer to see until they have
- * scrolled back past the lock — the whole of {@link REST_VH}, with the stats
- * hanging there for all of it. The marker is in flow and never stops moving, so
- * it answers immediately in both directions.
+ * than off the last card, and that is worth keeping even here. The card is
+ * *pinned* from the moment it lands: it does not move again, so nothing about
+ * it changes as the reader pulls away, and there would be nothing for an
+ * observer to see until they had scrolled back past the lock — the whole of
+ * {@link restVh}, with the stats hanging there for all of it. The marker is in
+ * flow and never stops moving, so it answers in both directions.
  *
  * It is spent as a root *extension* rather than as page height: the observer
  * watches for the marker entering a viewport grown this much taller than the
  * real one, which happens while the marker is still below the fold. So the cue
- * needs no runway at the end of the section, which is exactly what the section
- * has least of.
- *
- * Must stay under {@link REST_VH}, or the stats would be cued before the pile
- * they are waiting on has finished. The marker sits at the section's own bottom
- * edge, so the extension is spent backwards out of the only scroll there is
- * after the last card locks — which is {@link REST_VH}, and nothing else. Over
- * that figure the cue fires `STATS_EXIT_VH - REST_VH` early and reverses that
- * much early too, on a pile the reader can still see moving.
- *
- * At 6 against 25 the cue lands 19vh after the lock, which is the margin doing
- * its job: the stats wait out the pile, and the reader has to pull 6vh back off
- * the bottom before they start to go.
+ * needs no runway of its own at the end of the section.
  */
-const STATS_EXIT_VH = 6;
-
-/** Binary floating point turns `20.2 + 6.1` into `26.299999999999997`. */
-const vh = (n: number) => Math.round(n * 100) / 100;
+const statsCueVh = (stats: number) => vh(restVh(stats) - STATS_LEAD_VH);
 
 /** Where card `i` pins. */
 const cardSlotVh = (i: number) => vh(CARD_TOP_VH + i * CARD_STEP_VH);
@@ -448,7 +560,7 @@ const cardSpawnFitsVh = (count: number) => cardSpawnVh(Math.max(1, count) - 1);
  * arrive on. The cards do not animate in; they scroll in.
  */
 const cardFlowVh = (i: number) =>
-  vh(100 + INTRO_HOLD_VH + i * (BEAT_VH + CARD_STEP_VH));
+  vh(80 + INTRO_HOLD_VH + i * (BEAT_VH + CARD_STEP_VH));
 
 /** The scroll, measured from the section's top edge, at which card `i` pins. */
 const cardLockVh = (i: number) => vh(cardFlowVh(i) - cardSlotVh(i));
@@ -457,16 +569,22 @@ const cardLockVh = (i: number) => vh(cardFlowVh(i) - cardSlotVh(i));
  * The section's own height, for <About /> to set on it.
  *
  * The section is pinned from `lg` up, so its height measures nothing about its
- * content — it is purely how much wheel the pile gets, which is why it has to
- * come off the card count. Typed as a class, a fifth skill would get the same
- * height four of them share and every beat would shorten to make room.
+ * content — it is purely how much wheel the things inside it are given, which
+ * is why it has to come off the two counts. Typed as a class, a fifth skill
+ * would get the same height four of them share and every beat would shorten to
+ * make room; a fourth stat box would have no scroll to arrive over.
+ *
+ * The cards decide the bulk of it and the stats the tail — see {@link restVh},
+ * which is where the second count is spent, and which is the whole of the
+ * difference the stats being scrolled in rather than played makes to the
+ * page's length.
  *
  * The extra screen is not slack: the bottom of the page puts the fold on the
  * section's own end, so the last 100vh of any section can never be scrolled
  * *through*. Without it the final card would never reach its slot.
  */
-export const sectionVh = (count: number) =>
-  vh(cardLockVh(Math.max(1, count) - 1) + 100 + REST_VH);
+export const sectionVh = (count: number, stats: number) =>
+  vh(cardLockVh(Math.max(1, count) - 1) + 100 + restVh(stats));
 
 /**
  * What the card list's height has to satisfy, as an assertion rather than a
@@ -505,14 +623,125 @@ const cardGapVh = (i: number, count: number) =>
   i === count - 1 ? 0 : vh(cardFlowVh(i + 1) - cardFlowVh(i) - CARD_HEIGHT_VH);
 
 /**
- * The root the stats' cue is watched against: the viewport, grown
- * {@link STATS_EXIT_VH} taller at the bottom.
+ * The scroll offsets stat box `i`'s arrival runs between, as CSS lengths — the
+ * same shape as {@link cardRangeVh}, off the same measured `--about-top`, and
+ * for the same reason: a scroll progress timeline is the document's, so its
+ * range is in document coordinates and CSS cannot ask where the section starts.
+ *
+ * The whole of the count-off is here. One keyframe, one range per box, each
+ * beginning {@link STATS_STAGGER_VH} later than the last — which is a stagger
+ * expressed as geometry rather than as a delay, and is why the boxes unwind in
+ * the right order on the way back up without anything being written twice. A
+ * reversed timed stagger has to be asked for; a range simply reads backwards.
+ *
+ * `skills` is here because the anchor is the pile's end rather than anything
+ * about the stats themselves: they start {@link STATS_LEAD_VH} after the last
+ * card locks, so where they start moves with the card count. See {@link restVh}
+ * for the runway this is spent out of.
+ */
+const statRangeVh = (i: number, skills: number) => {
+  const start = vh(
+    cardLockVh(Math.max(1, skills) - 1) + STATS_LEAD_VH + i * STATS_STAGGER_VH,
+  );
+  const at = (n: number) => `calc(var(--about-top) + ${vh(n)}vh)`;
+
+  return {
+    "--stat-from": at(start),
+    "--stat-to": at(start + STATS_ARRIVE_VH),
+  };
+};
+
+/**
+ * The root the fallback's cue is watched against: the viewport, grown
+ * {@link statsCueVh} taller at the bottom.
  *
  * A margin in `%` because that is all `rootMargin` takes, and a percentage
  * there is a share of the root's own height — which is the viewport, so it is a
  * `vh` by another name.
  */
-const STATS_ROOT_MARGIN = `0px 0px ${STATS_EXIT_VH}% 0px`;
+const statsCueMargin = (stats: number) => `0px 0px ${statsCueVh(stats)}% 0px`;
+
+/**
+ * The scroll one element of the intro arrives over, as CSS lengths — the same
+ * shape as {@link cardRangeVh} and {@link statRangeVh}, off the same measured
+ * `--about-top`, and for the same reason: a scroll progress timeline is the
+ * document's, so its range is in document coordinates and CSS cannot ask where
+ * the section starts.
+ *
+ * One builder for all four groups, because the only thing that separates them
+ * is where their range opens. What each one starts *from* is the other half of
+ * the arrival and travels with the element — see `--copy-shift` in globals.css.
+ *
+ * Measured from the section's top edge, which from `lg` up is the moment the
+ * still half pins: at 0 the composition has just landed and nothing in it will
+ * move again on its own.
+ */
+const revealRangeVh = (start: number, run = COPY_ARRIVE_VH) => {
+  const at = (n: number) => `calc(var(--about-top) + ${vh(n)}vh)`;
+
+  return {
+    "--reveal-from": at(start),
+    "--reveal-to": at(start + run),
+  };
+};
+
+/** Where word `i` of the headline begins to climb, and the range it climbs over. */
+const wordStartVh = (i: number) => vh(COPY_LEAD_VH + i * WORD_STAGGER_VH);
+const wordRangeVh = (i: number) =>
+  revealRangeVh(wordStartVh(i), WORD_ARRIVE_VH);
+
+/**
+ * The old `settle` label: the scroll at which the headline's last word lands,
+ * and so the moment the eyebrow and the paragraph close on it from either side.
+ *
+ * Derived from the word count rather than typed, exactly as the label was
+ * placed at the end of the words' tween rather than at a delay guessed against
+ * it — the handoff has to move with the copy, or a headline one line longer
+ * hands off while it is still writing itself.
+ */
+const copySettleVh = (words: number) =>
+  vh(wordStartVh(Math.max(1, words) - 1) + WORD_ARRIVE_VH);
+
+/** The eyebrow's and the paragraph's shared range, hung off that settle. */
+const copyRangeVh = (words: number) => revealRangeVh(copySettleVh(words));
+
+/**
+ * Meta row `i`, counting off a {@link META_LEAD_VH} behind the settle.
+ *
+ * The stagger is geometry here, the same way the stats' is: each row's range
+ * opens a {@link ROW_STAGGER_VH} later than the last, so the three of them
+ * unwind in the right order on the way back up with nothing having asked for
+ * it. A timed stagger has to be reversed; a range is simply read backwards.
+ */
+const metaRangeVh = (i: number, words: number) =>
+  revealRangeVh(vh(copySettleVh(words) + META_LEAD_VH + i * ROW_STAGGER_VH));
+
+/**
+ * The whole intro, end to end.
+ *
+ * The last thing to land is the last meta row, which is the one block hung
+ * *behind* the settle rather than on it — so with a meta list rendered the run
+ * is its lead and its count-off, and without one it is the settle itself. Both
+ * then take the one arrival that every block below the words shares.
+ */
+const introRunVh = (words: number, rows: number) => {
+  const settle = copySettleVh(words);
+  const last =
+    rows > 0 ? settle + META_LEAD_VH + (rows - 1) * ROW_STAGGER_VH : settle;
+
+  return vh(last + COPY_ARRIVE_VH);
+};
+
+/**
+ * The scroll the intro has to itself: card 0 starts climbing here.
+ *
+ * The composition's rule about these two blocks, and the mirror of
+ * {@link STATS_LEAD_VH} at the other end of the section — nothing of the pile's
+ * may start while the copy is still arriving. Checked in development; see
+ * {@link useCopyReveal}, and {@link INTRO_HOLD_VH}, which is the knob that buys
+ * the copy more of it.
+ */
+const pileStartVh = () => vh(cardLockVh(0) - CARD_RUNWAY_VH);
 
 /** London, since the line above it says that's where the clock is. */
 const TIME_ZONE = "Europe/London";
@@ -635,6 +864,12 @@ const CLEAR = "transform";
  * The stagger is what makes it read word-by-word rather than as a block, and
  * it's short enough that a long headline still finishes in about a second — the
  * whole reveal is `stagger × (words - 1) + duration`.
+ *
+ * Seconds, so from `lg` up this is the fallback's copy of the movement: where
+ * the browser can drive an animation from the scroll the same rise is spent as
+ * {@link WORD_ARRIVE_VH} and {@link WORD_STAGGER_VH}, at the same ratio and in
+ * the same order. Change one and change the other — they are one animation
+ * written twice, in the two units the two paths have.
  */
 const REVEAL_RISE = 100;
 const REVEAL = {
@@ -692,8 +927,14 @@ const EYEBROW_OPACITY = 0.72;
  * there is nothing for a transform to disturb — and they are the one block that
  * has to announce itself rather than simply having been there.
  *
- * From `lg` up it is also the distance they leave on: the beat is reversed
- * rather than rewritten, so out is in backwards and the two cannot drift.
+ * It is also the distance they leave on, on both sides and by construction. In
+ * the ranged version there is no "out" to write at all: a range read backwards
+ * is the arrival backwards. In the fallback the same timeline is `reverse()`d
+ * rather than rewritten. Either way the two cannot drift.
+ *
+ * Spent from the stylesheet from `lg` up, as `--stats-shift` — one figure, two
+ * readers, so it is published to the markup rather than restated in CSS. See
+ * {@link statRangeVh}.
  */
 const STATS_SHIFT = 16;
 
@@ -705,15 +946,22 @@ const STATS_SHIFT = 16;
  *
  * `ROW_STAGGER` is the count-off inside the meta list, short enough that three
  * rows are done well inside the tween's own half-second.
+ *
+ * The fallback's, like {@link REVEAL} — {@link META_LEAD_VH} and
+ * {@link ROW_STAGGER_VH} are the same two figures in `vh`. `ROW_STAGGER` is
+ * still spent on the stats as well, which have no lead of their own down there.
  */
 const META_LEAD = 0.15;
 const ROW_STAGGER = 0.12;
 
 /**
- * When it fires.
+ * When the fallback fires.
  *
  * Two different questions on the two sides of `lg`, because the section is two
- * different shapes there.
+ * different shapes there — and from `lg` up a question only a browser that
+ * cannot scroll the intro in still has to ask. Where the ranges take, there is
+ * no trigger and no moment: the copy is at whatever point of its arrival the
+ * scroll says it is.
  *
  * -- From `lg` up: the pinned box's top edge -------------------------------
  *
@@ -783,8 +1031,9 @@ const LG_QUERY = "(min-width: 64rem)";
  */
 type RevealRefs = {
   /**
-   * The pinned box, and from `lg` up the thing whose arrival starts
-   * everything — see {@link REVEAL_ROOT_MARGIN}.
+   * The pinned box, and what the fallback's one trigger from `lg` up is
+   * watched at — see {@link REVEAL_ROOT_MARGIN}. Unwatched where the intro is
+   * ranged, which has no trigger to place at all.
    */
   still: RefObject<HTMLElement | null>;
   title: RefObject<HTMLElement | null>;
@@ -797,23 +1046,39 @@ type RevealRefs = {
   stats: RefObject<HTMLElement | null>;
   /**
    * The empty marker at the foot of the card column, whose approach to the
-   * bottom of the page is what brings the stats in and out from `lg` up — see
-   * {@link STATS_EXIT_VH}. Below `lg` there is no pile to wait for and the
-   * stats take their own trigger.
+   * bottom of the page cues the stats where they cannot be scrolled in — see
+   * {@link statsCueVh}, and `scrolled` for when that is. Unwatched otherwise,
+   * and unwatched below `lg`, where there is no pile to wait for and the stats
+   * take their own trigger.
    */
   statsCue: RefObject<HTMLDivElement | null>;
 };
 
 /**
- * Plays {@link REVEAL} over the words of `refs.title` the first time the
- * section comes into view and {@link COPY} over the two blocks around it as
- * that finishes — once, and only then: each observer is dropped as it fires, so
- * scrolling back up doesn't replay it.
+ * The section's intro — the headline's words climbing out of their masks, the
+ * eyebrow above and the paragraph below closing on them as they land, and the
+ * meta list counting off at the top of the same column.
  *
- * That is the whole of the intro from `lg` up. The cards arrive on the scroll
- * and the stats wait on the cards, so neither is on this timeline — and the
- * stats are the one thing here that plays *backwards* as well, since the card
- * they wait on can leave again. See the trigger below.
+ * From `lg` up, where the browser can drive an animation from the scroll, none
+ * of that is a timeline. This hook splits the headline, works out where each of
+ * the four groups arrives, and writes those ranges onto the elements for the
+ * rule in globals.css to read — see {@link revealRangeVh}. The reader is the
+ * clock and the only one, in both directions: scrolling on advances the intro
+ * by exactly as much as was scrolled, and a reader who turns around halfway
+ * through finds it exactly as far along as they left it.
+ *
+ * That is the third and last of the section's blocks to come off a clock. The
+ * cards went first, then the stats, and the argument was the same each time: a
+ * timeline fired at a line plays at its own pace from there, so it cannot be
+ * scrolled through, scrolled back, or stopped by stopping. What survives of it
+ * is the geometry — the same distances, the same order, the same handoff at the
+ * headline's last word, restated in the units the scroll has.
+ *
+ * ── Everything below is the fallback ──────────────────────────────────────
+ *
+ * The timelines are kept for the two cases the stylesheet cannot serve: a
+ * browser with no `animation-timeline`, and below `lg`, where the section is an
+ * ordinary column rather than a pinned composition.
  *
  * That sequence is one timeline from `lg` up and several below it, for the same
  * reason {@link REVEAL_ROOT_MARGIN} is two figures. From `lg` up the section
@@ -829,27 +1094,28 @@ type RevealRefs = {
  * {@link REVEAL_ROOT_MARGIN} `base` edge and plays as it clears the fold, and
  * the scroll does the spacing the leads do above.
  *
- * The stats are the one block whose trigger differs rather than only its
- * timing. From `lg` up they wait on the cue at the foot of the pile, because
- * "once the last card lands" is the whole point of the composition and is a
- * scroll away rather than a second away. Below `lg` there is no pile to wait
- * for and they clear the fold like everything else.
+ * Every observer down there is a one-shot: it drops itself as it fires, so a
+ * beat plays on the way down and stays played on the way back up. The stats are
+ * the exception, and the only thing in the fallback that plays backwards as
+ * well — they belong to the end of the pile, which the reader can leave again.
+ * See the trigger below.
  *
- * The split is made once, up front, and the words are parked at their start
- * pose right away: waiting for the trigger to split would flash the finished
- * headline for a frame if the section were ever already on screen. Splitting
- * into words rather than lines is also what makes it safe to do before the
- * display face has swapped in — the masked words are inline-blocks and re-wrap
- * on their own, where a line split would be measured against the fallback and
- * stay that way.
+ * ── Both paths ────────────────────────────────────────────────────────────
+ *
+ * The split is made once, up front, whichever path is taken. Splitting into
+ * words rather than lines is what makes it safe to do before the display face
+ * has swapped in: the masked words are inline-blocks and re-wrap on their own,
+ * where a line split would be measured against the fallback and stay that way.
  *
  * The copy is a dependency, so an edit in Prismic re-splits rather than
- * animating spans that no longer hold it, and so is the stat count — see the
- * boxes being read off the list below.
+ * animating spans that no longer hold it, and so are the two counts — the
+ * stats' because the fallback reads the boxes off the list below, the skills'
+ * because the pile is what the intro has to keep out of the way of.
  *
  * The headline is what the whole sequence hangs off — it carries the split, the
- * observer and the timeline everything else is hung on — so with no headline
- * rendered there's nothing for the rest to follow and it all stays as typeset.
+ * settle every other block is placed against, and the scope this runs in — so
+ * with no headline rendered there is nothing for the rest to follow and it all
+ * stays as typeset.
  */
 function useCopyReveal(
   refs: RevealRefs,
@@ -857,12 +1123,11 @@ function useCopyReveal(
   description: string,
   statCount: number,
   /**
-   * Only a dependency, and a conservative one: nothing here reads it, and the
-   * cards are not among the elements this hook parks — above `lg` it leaves the
-   * pile alone entirely, below it parks the one container rather than the cards
-   * inside. It is kept because a card count changing is the section changing
-   * shape, and rebuilding a reveal that has already played costs nothing at a
-   * moment that never comes at runtime.
+   * The pile, which the intro has to be finished ahead of. Nothing here
+   * animates a card — above `lg` this hook leaves the pile alone entirely,
+   * below it parks the one container rather than the cards inside — but the
+   * count is what says how much scroll card 0 leaves the copy, and a long
+   * enough headline can outgrow it. See the warning below.
    */
   skillCount: number,
 ) {
@@ -872,29 +1137,39 @@ function useCopyReveal(
       if (!el) return;
 
       // whoever asked not to see things move gets the headline as typeset, with
-      // nothing split, parked or observed — same bargain as <SolidIcon />
+      // nothing split, parked, marked or observed — same bargain as
+      // <SolidIcon />. It is also the whole of the reduced-motion arm for the
+      // ranged path below: an unmarked element is one the stylesheet never
+      // finds, so there is no rule up there to write an exception to.
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
       // Read here rather than through `useBreakpoints`, the same way the motion
-      // query above is: everything below is built once and dropped as it fires,
-      // so a subscription would only re-render the section for a figure nothing
+      // query above is: everything below is built once and left alone, so a
+      // subscription would only re-render the section for a figure nothing
       // reads again. A resize across `lg` before the section has arrived keeps
       // the layout it mounted with — re-running the effect there would re-split
-      // the headline and re-park its words to move the triggers, on a viewport
-      // that has just changed shape under the reader.
+      // the headline and re-park its words on a viewport that has just changed
+      // shape under the reader.
       const wide = window.matchMedia(LG_QUERY).matches;
+
+      // Whether the intro belongs to the stylesheet rather than to this hook.
+      //
+      // Asked of the feature rather than of the armed attribute, which is not
+      // set yet: `usePileTimeline` is a passive effect and this is a layout
+      // one, so it has not run. If it later finds the ranges did not resolve it
+      // disarms the section, and the copy is then simply there, unanimated —
+      // which is the quiet failure to have, the loud one being a block that
+      // stays invisible with nothing to say why.
+      const scrolled = wide && canDriveFromScroll();
 
       // `mask` wraps each word in its own `overflow: clip` box — the hard edge
       // the words climb out from
       const split = SplitText.create(el, { type: "words", mask: "words" });
-      gsap.set(split.words, { opacity: 0, yPercent: REVEAL_RISE });
 
-      // parked the same way and for the same reason, each on its own side of
-      // the headline; the eyebrow is always there, the paragraph is a field
+      // One on each side of the headline; the eyebrow is always there, the
+      // paragraph is a field.
       const eyebrow = refs.eyebrow.current;
       const paragraph = refs.description.current;
-      if (eyebrow) gsap.set(eyebrow, { opacity: 0, y: -COPY_SHIFT });
-      if (paragraph) gsap.set(paragraph, { opacity: 0, y: COPY_SHIFT });
 
       // The meta rows are read off their list rather than collected through
       // refs of their own: they're fixed markup, so the DOM already holds them
@@ -902,6 +1177,120 @@ function useCopyReveal(
       const metaRows = refs.meta.current
         ? Array.from(refs.meta.current.children)
         : [];
+
+      if (scrolled) {
+        // ── the intro, driven from the scroll ─────────────────────────────
+        //
+        // Nothing is parked here and nothing is observed. The rule's
+        // `animation-fill-mode: both` holds every element at its start pose
+        // from the moment the section is armed, which is the parking; each
+        // range opening is the trigger; and the distance between two of them is
+        // the count-off. All this has to do is publish the geometry.
+        const marked: HTMLElement[] = [];
+
+        /**
+         * Publishes one element's arrival — the scroll it plays over, and how
+         * far from its place it starts. The attribute is what the stylesheet
+         * finds it by, and what the cleanup takes back.
+         */
+        const arrive = (
+          target: Element,
+          range: Record<string, string>,
+          shift: string,
+        ) => {
+          const node = target as HTMLElement;
+          for (const [prop, value] of Object.entries(range)) {
+            node.style.setProperty(prop, value);
+          }
+          node.style.setProperty("--copy-shift", shift);
+          node.dataset.aboutReveal = "";
+          marked.push(node);
+        };
+
+        const words = split.words.length;
+
+        // A percentage rather than a length, which is {@link REVEAL_RISE}
+        // measured against the word's own mask — the same figure the tween
+        // spent as `yPercent`, and the reason the words can share a keyframe
+        // with the blocks that move a fixed 16px.
+        split.words.forEach((word, i) =>
+          arrive(word, wordRangeVh(i), REVEAL_RISE + "%"),
+        );
+
+        // The handoff, in scroll rather than in seconds. Both blocks share the
+        // one range and start from opposite sides of the headline, so they
+        // still read as the copy gathering around it rather than as a third and
+        // a fourth thing arriving.
+        const settle = copyRangeVh(words);
+        /*
+         * Writing to elements held in the caller's refs, which the compiler
+         * reads as a hook argument being modified. It is the same write
+         * `gsap.set` makes on the other path and in the same place — this is a
+         * layout effect, not render — and it is only visible to the rule here
+         * because a style property set by hand is something it can see through
+         * and a tween is not. The elements are the section's own DOM; nothing
+         * React owns is touched.
+         */
+        /* eslint-disable react-hooks/immutability */
+        if (eyebrow) {
+          arrive(eyebrow, settle, -COPY_SHIFT + "px");
+          // the one element whose fade does not end at 1 — see
+          // {@link EYEBROW_OPACITY}, and the rule in globals.css
+          eyebrow.style.setProperty(
+            "--reveal-opacity",
+            String(EYEBROW_OPACITY),
+          );
+        }
+        if (paragraph) arrive(paragraph, settle, COPY_SHIFT + "px");
+
+        metaRows.forEach((row, i) =>
+          arrive(row, metaRangeVh(i, words), -COPY_SHIFT + "px"),
+        );
+        /* eslint-enable react-hooks/immutability */
+
+        // The one thing this geometry cannot check for itself, and the only way
+        // the intro can outgrow its runway: the stagger is spent per word now,
+        // so a long enough headline is still writing itself as card 0 starts to
+        // climb. Nothing breaks — the two simply overlap, where the composition
+        // says the copy is finished before the pile begins.
+        if (process.env.NODE_ENV !== "production" && skillCount > 0) {
+          const run = introRunVh(words, metaRows.length);
+          const room = pileStartVh();
+          if (run > room) {
+            console.warn(
+              `<AboutContent />: the intro takes ${run}vh of scroll but the ` +
+                `first card starts climbing at ${room}vh, so the copy is ` +
+                `still arriving as the pile is — shorten the headline, tighten ` +
+                `WORD_STAGGER_VH, or raise INTRO_HOLD_VH, which moves the ` +
+                `whole pile later. See introRunVh.`,
+            );
+          }
+        }
+
+        return () => {
+          for (const node of marked) {
+            delete node.dataset.aboutReveal;
+            node.style.removeProperty("--reveal-from");
+            node.style.removeProperty("--reveal-to");
+            node.style.removeProperty("--copy-shift");
+            node.style.removeProperty("--reveal-opacity");
+          }
+          // puts the original text node back, taking the spans and everything
+          // set on them with it
+          split.revert();
+        };
+      }
+
+      // ── the fallback, and the whole of the intro below `lg` ─────────────
+      //
+      // Here the elements are parked by script, because here it is script that
+      // moves them. The words go to their start pose right away rather than on
+      // the trigger: waiting for the trigger to park them would flash the
+      // finished headline for a frame if the section were ever already on
+      // screen.
+      gsap.set(split.words, { opacity: 0, yPercent: REVEAL_RISE });
+      if (eyebrow) gsap.set(eyebrow, { opacity: 0, y: -COPY_SHIFT });
+      if (paragraph) gsap.set(paragraph, { opacity: 0, y: COPY_SHIFT });
       if (metaRows.length) {
         gsap.set(metaRows, { opacity: 0, y: -COPY_SHIFT });
       }
@@ -913,9 +1302,10 @@ function useCopyReveal(
       const stack = refs.stack.current;
       if (!wide && stack) gsap.set(stack, { opacity: 0 });
 
-      // The stat boxes count off on both sides of `lg`. What differs is only
-      // what says "now": the cue at the foot of the pile above, the block's own
-      // top below.
+      // The stat boxes count off on a timeline in both of the cases that reach
+      // this far: the browser that cannot scroll them in, and below `lg`, where
+      // there is no pile for them to wait on and the block clears the fold like
+      // any other.
       const stats = refs.stats.current;
       const statBoxes = stats ? Array.from(stats.children) : [];
       if (statBoxes.length) {
@@ -932,9 +1322,10 @@ function useCopyReveal(
         tl.to(split.words, { opacity: 1, yPercent: 0, ...REVEAL });
 
         // the handoff sits where the words actually end — a moment that moves
-        // with the word count — rather than at a delay guessed against it. Two
-        // tweens off the one label rather than one over both, because they
-        // fade to different places; the label is what keeps them together.
+        // with the word count, exactly as {@link copySettleVh} does on the
+        // other path — rather than at a delay guessed against it. Two tweens
+        // off the one label rather than one over both, because they fade to
+        // different places; the label is what keeps them together.
         tl.addLabel("settle");
         if (eyebrow) {
           tl.to(eyebrow, { opacity: EYEBROW_OPACITY, y: 0, ...COPY }, "settle");
@@ -1016,23 +1407,23 @@ function useCopyReveal(
         if (still) whenVisible(still, play);
         else play();
 
-        // The stats are the exception, and the only block here whose timing the
-        // reader sets rather than a clock: they belong to the end of the
-        // section, which is a scroll away rather than a second away. Watched at
-        // a marker that never stops moving, so it answers the moment the reader
-        // turns around — see {@link STATS_EXIT_VH}.
+        // The stats. What this approximates is a scrub: the cue is placed at
+        // the scroll the ranges would have opened at (see {@link statsCueVh})
+        // and the beat then plays at its own pace from there instead of at the
+        // reader's. Watched at a marker that never stops moving, so it at least
+        // answers the moment the reader turns around rather than waiting out
+        // the pinned pile.
         //
         // The one reveal here that is not a one-shot, and the only one that
         // should not be. Every other block plays as the section arrives and has
-        // no reason to be undone — but the stats are tied to a card that can
-        // leave again, and a reader who scrolls back up past the pile finishing
-        // ought to find them gone, exactly as they found them the first time.
-        //
-        // So the beat is built once, paused, and driven both ways. `reverse()`
-        // runs that same tween backwards — the fade, the rise and the stagger,
-        // in the other order — which is the animation out for nothing, and one
-        // that cannot drift from the animation in because it *is* the animation
-        // in. Nothing below has to be kept in step by hand.
+        // no reason to be undone — but the stats belong to the end of the pile,
+        // and a reader who scrolls back up past it finishing ought to find them
+        // gone, exactly as they found them the first time. A range does that by
+        // simply being read backwards; a timeline has to be told, so it is
+        // built once, paused, and driven both ways. `reverse()` runs that same
+        // tween backwards — the fade, the rise and the stagger, in the other
+        // order — which cannot drift from the animation in because it *is* the
+        // animation in.
         const cue = refs.statsCue.current;
         if (cue && statBoxes.length) {
           const stats = gsap.timeline({ paused: true });
@@ -1048,7 +1439,7 @@ function useCopyReveal(
             },
             {
               threshold: REVEAL_THRESHOLD,
-              rootMargin: STATS_ROOT_MARGIN,
+              rootMargin: statsCueMargin(statCount),
             },
           );
           io.observe(cue);
@@ -1127,7 +1518,7 @@ function useCopyReveal(
  *
  * It cannot be corrected from the stylesheet. The stretch is a function of how
  * long each card stays pinned, which is a function of the section's own height,
- * so compensating for it would tie every fade to {@link REST_VH} and to the
+ * so compensating for it would tie every fade to {@link restVh} and to the
  * height of the list the cards are held in — and it is one browser's reading of
  * a corner the spec still has open, so the next one need not agree. A rect is
  * what the card is actually doing, and it costs one rAF.
@@ -1156,12 +1547,15 @@ function useCopyReveal(
  * page that is blank without JavaScript. A frame is cheaper.
  */
 function useCardArrival(
+  /** where the handover is published — see {@link usePileTimeline} */
+  sectionRef: RefObject<HTMLElement | null>,
   stackRef: RefObject<HTMLDivElement | null>,
   count: number,
 ) {
   useEffect(() => {
+    const section = sectionRef.current;
     const stack = stackRef.current;
-    if (!stack || count === 0) return;
+    if (!section || !stack || count === 0) return;
 
     const cards = Array.from(
       stack.querySelectorAll<HTMLElement>("[data-about-card]"),
@@ -1262,7 +1656,7 @@ function useCardArrival(
       // style, so the two running together would not actually fight; what it
       // would cost is a scroll listener and four rects a frame maintaining
       // styles nothing reads, which is the whole of what the handover saves.
-      if (stack.dataset.aboutTimeline !== undefined) {
+      if (section.dataset.aboutTimeline !== undefined) {
         deafen();
         clear();
         return;
@@ -1294,19 +1688,31 @@ function useCardArrival(
       deafen();
       clear();
     };
-  }, [stackRef, count]);
+  }, [sectionRef, stackRef, count]);
 }
 
 /**
- * Hands the pile to the stylesheet, where the browser can take it.
+ * Hands the section's scroll-driven arrivals to the stylesheet, where the
+ * browser can take them: the intro in the left column, the pile, and behind it
+ * the stats.
  *
- * The scroll timeline in globals.css can say everything about a card's arrival
+ * The scroll timelines in globals.css can say everything about those arrivals
  * except *where the section is*: a scroll progress timeline is the document's,
  * its range is in document coordinates, and CSS has no way to ask how far down
  * the page an element sits. So that one number is measured here and published
- * as `--about-top`, and the ranges in {@link cardRangeVh} are written as it
- * plus a figure in `vh` — every other number in the arrival stays a constant
+ * as `--about-top`, and the ranges in {@link revealRangeVh},
+ * {@link cardRangeVh} and {@link statRangeVh} are written as it plus a figure
+ * in `vh` — every other number in any of the three arrivals stays a constant
  * the stylesheet resolves for itself.
+ *
+ * One measurement for all of them, published on the *section* rather than on
+ * any one block. They live in different subtrees — the copy is in the pinned
+ * half on the left, the pile is a column on the right, the stats are their own
+ * box beside it — and the figure is a fact about the section rather than about
+ * any of them, so the element they all inherit from is where it belongs. It is
+ * also what lets the attribute below arm and disarm the three together: they
+ * are one geometry, and a browser that resolves the ranges for one resolves
+ * them for all.
  *
  * It is the section's distance from the top of the *page*, so it moves whenever
  * anything above About changes height, not only when About does — hence the
@@ -1318,24 +1724,28 @@ function useCardArrival(
  * The attribute it sets is both the switch and the whole of the handover:
  * {@link useCardArrival} reads it and stands down, so there is no state to keep
  * in step and no render spent saying which of the two is running. Whether the
- * rule actually took is then asked of a card rather than assumed — see
+ * rule actually took is then asked of an element rather than assumed — see
  * `ranged`, which is the difference between this degrading to the fallback and
  * it degrading to every card arriving over the whole length of the page.
  *
  * Nothing here runs per frame. The measurement is a rAF-coalesced reflow
  * handler, the same shape as the face slot's, and between reflows this hook
  * costs nothing at all — no scroll listener, no rects, no styles. That is the
- * entire point: the arrival stops being work.
+ * entire point: the arrivals stop being work.
  */
 function usePileTimeline(
   sectionRef: RefObject<HTMLElement | null>,
-  stackRef: RefObject<HTMLDivElement | null>,
   count: number,
+  stats: number,
 ) {
   useEffect(() => {
     const section = sectionRef.current;
-    const stack = stackRef.current;
-    if (!section || !stack || count === 0 || !canDriveFromScroll()) return;
+    // No count guard: the intro reads this figure too, and the left column is
+    // always rendered. It used to return early with neither the pile nor the
+    // stats present, which was true then and is a section-wide blackout now —
+    // the copy's ranges would resolve against `calc(0px + …)` and the whole
+    // reveal would be placed somewhere near the top of the document.
+    if (!section || !canDriveFromScroll()) return;
 
     const wide = window.matchMedia(LG_QUERY);
     let pending = 0;
@@ -1354,12 +1764,13 @@ function usePileTimeline(
       const top = Math.round(
         section.getBoundingClientRect().top + window.scrollY,
       );
-      stack.style.setProperty("--about-top", top + "px");
-      stack.dataset.aboutTimeline = "";
+      section.style.setProperty("--about-top", top + "px");
+      section.dataset.aboutTimeline = "";
     };
 
     /**
-     * Whether the ranges actually took — asked of a card, not of the feature.
+     * Whether the ranges actually took — asked of an element, not of the
+     * feature.
      *
      * {@link canDriveFromScroll} can only answer for `animation-timeline`, and
      * that is not the whole of what globals.css asks for. The ranges are
@@ -1380,28 +1791,40 @@ function usePileTimeline(
      * than to something broken, so it would never show up as a bug; it would
      * just quietly cost that engine the composited arrival. The longhand is
      * always serialized, and asking for it costs exactly the same.
+     *
+     * A card if there is one, a stat box or a marked word otherwise. All three
+     * carry the same kind of declaration off the same custom property, so any
+     * of them answers for the rest — and a section with stats but no skills, or
+     * with neither, would have no card to ask.
+     *
+     * The words are there to be asked by the time this runs: they are marked
+     * from {@link useCopyReveal}, which is a layout effect, and this is a
+     * passive one.
      */
     const ranged = () => {
-      const card = stack.querySelector<HTMLElement>("[data-about-card]");
+      const subject = section.querySelector<HTMLElement>(
+        "[data-about-card], [data-about-stat], [data-about-reveal]",
+      );
       return (
-        !!card &&
-        getComputedStyle(card)
+        !!subject &&
+        getComputedStyle(subject)
           .getPropertyValue("animation-range-start")
           .includes("px")
       );
     };
 
     /**
-     * Re-measures, and re-decides whether the stylesheet keeps the pile.
+     * Re-measures, and re-decides whether the stylesheet keeps the arrivals.
      *
-     * Below `lg` the rule sits behind a media query, so there is nothing to
+     * Below `lg` the rules sit behind a media query, so there is nothing to
      * verify and nothing to hand back — {@link useCardArrival} idles and clears
-     * there too. The check is asked only where its answer means something, and
-     * asked again if the reader resizes into it.
+     * there too, and the stats take their own trigger. The check is asked only
+     * where its answer means something, and asked again if the reader resizes
+     * into it.
      */
     const sync = () => {
       measure();
-      if (wide.matches && !ranged()) delete stack.dataset.aboutTimeline;
+      if (wide.matches && !ranged()) delete section.dataset.aboutTimeline;
     };
 
     const schedule = () => {
@@ -1421,10 +1844,10 @@ function usePileTimeline(
       observer.disconnect();
       window.removeEventListener("resize", schedule);
       wide.removeEventListener("change", sync);
-      delete stack.dataset.aboutTimeline;
-      stack.style.removeProperty("--about-top");
+      delete section.dataset.aboutTimeline;
+      section.style.removeProperty("--about-top");
     };
-  }, [sectionRef, stackRef, count]);
+  }, [sectionRef, count, stats]);
 }
 
 /** A rule and a label — the design's section markers. */
@@ -1568,7 +1991,7 @@ function SkillCard({
     >
       {/* The header row. Its height *is* {@link CARD_STEP_VH} from `lg` up --
           that equality is what a collapsed card in the pile shows. */}
-      <div className="flex h-14 items-center gap-3 px-[5%] lg:h-(--header-h) lg:gap-4">
+      <div className="flex h-14 items-center gap-3 px-[5%] lg:h-(--header-h) lg:gap-2">
         <span
           className={
             CAPS +
@@ -1654,11 +2077,14 @@ export default function AboutContent({
     skills.length,
   );
 
-  // The pile's arrival, from the stylesheet where the browser can do it and
-  // from a rAF where it can't — see {@link CARD_SPEED} for why the difference
-  // is the movement itself rather than only where the work happens.
-  usePileTimeline(sectionRef, stackRef, skills.length);
-  useCardArrival(stackRef, skills.length);
+  // The section's three scroll-driven arrivals — the copy, the pile, and the
+  // stats behind it — armed from one measurement. See {@link CARD_SPEED} for
+  // why the pile's fallback differs in the movement itself rather than only in
+  // where the work happens, and `scrolled` in {@link useCopyReveal} for the
+  // other two, which keep the timelines they used to run on for the browsers
+  // that need them.
+  usePileTimeline(sectionRef, skills.length, numbers.length);
+  useCardArrival(sectionRef, stackRef, skills.length);
 
   /**
    * Re-measure the face's box whenever the page could have reflowed.
@@ -1800,7 +2226,7 @@ export default function AboutContent({
             push the other about as the headline rewraps. */}
         <ul
           ref={metaRef}
-          className="space-y-2 lg:absolute lg:top-[12.2%] lg:left-[4.2%] lg:space-y-3"
+          className="space-y-2 lg:absolute lg:top-[10%] lg:left-[4.2%] lg:space-y-3"
         >
           <li className="flex items-center gap-3.5">
             <GlobeIcon className={iconSize + " text-white"} />
@@ -1935,12 +2361,13 @@ export default function AboutContent({
             ))}
           </ul>
 
-          {/* The stats' cue: an empty marker sitting at the foot of the column,
-              which the list above fills exactly. Everything else down here is
-              pinned and therefore still, so this is the only thing left that
-              keeps moving with the page — which is what lets the stats answer a
-              change of direction rather than waiting out the pile. See
-              {@link STATS_EXIT_VH}. */}
+          {/* The stats' cue, for browsers that cannot scroll them in: an empty
+              marker sitting at the foot of the column, which the list above
+              fills exactly. Everything else down here is pinned and therefore
+              still, so this is the only thing left that keeps moving with the
+              page — which is what lets that fallback answer a change of
+              direction rather than waiting out the pile. See
+              {@link statsCueVh}. */}
           <div
             ref={statsCueRef}
             aria-hidden
@@ -1955,22 +2382,37 @@ export default function AboutContent({
           taking any of the flow the pile beside it needs.
 
           Sticky from flow 0, so it is pinned the moment the section lands and
-          never moves again — what says *when* it appears is the cue above,
-          which fades it in once the pile is finished. Position and timing kept
-          apart like that is what lets it arrive without sliding. */}
+          never moves again — what says *when* it appears is the scroll, on a
+          range per box that opens once the pile has finished (see
+          {@link statRangeVh}). Position and timing kept apart like that is what
+          lets it arrive without sliding: the box does not travel to get here,
+          it rises the last {@link STATS_SHIFT} into a place it already had. */}
       {numbers.length > 0 && (
         <div className={rightColumn}>
           <ul
             ref={statsRef}
-            style={{ "--stats-top": STATS_TOP_VH + "vh" } as CSSProperties}
+            style={
+              {
+                "--stats-top": STATS_TOP_VH + "vh",
+                // the rise, shared by every box; the ranges are per box and sit
+                // on the boxes. Here rather than in globals.css for the same
+                // reason `--about-lift` is on the pile — the stylesheet holds
+                // no geometry.
+                "--stats-shift": STATS_SHIFT + "px",
+              } as CSSProperties
+            }
             className="grid grid-cols-3 gap-2 lg:sticky lg:top-(--stats-top) lg:gap-4"
           >
             {numbers.map(({ number, label }, i) => (
               <li
                 key={i}
+                // the hook and the stylesheet both find the boxes by this, the
+                // same way they find the cards
+                data-about-stat=""
+                style={statRangeVh(i, skills.length) as CSSProperties}
                 className={
                   "pointer-events-auto flex flex-col items-center justify-center gap-2 rounded-sm border-2 border-white " +
-                  STAT_PLATE +
+                  PLATE +
                   " px-2 py-3 text-center lg:h-[14.3vh] lg:gap-3 lg:py-4"
                 }
               >
