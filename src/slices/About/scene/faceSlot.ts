@@ -24,57 +24,27 @@
  * to be computed twice, once by the old fixed layer's driver and once by
  * <Scene />, so that a head could not end up a frame behind its own hole.
  *
- * ── The box pins ───────────────────────────────────────────────────────────
- *
- * Below `lg` the hole is `position: sticky`: the cards stack for most of a
- * screen after the face would otherwise have left the top of it, and a head
- * that leaves while its own skills are still arriving takes the whole top of
- * the composition with it. So the box holds at {@link FaceSlot.pinTop} once
- * the page has carried it that far up.
- *
- * That costs this module the one sentence it was built on, and it is worth
- * being exact about which one. A pinned box's *rect* is no longer where it was
- * laid out, so `box.top + scrollY` stops being its document position — but the
- * document position itself is as fixed as it ever was, and sticky's whole
- * definition is one clamp against it:
- *
- *     screen y = min(max(page y - scroll, pinTop), pinUntil - scroll)
- *
- * Three figures, all of them reflow-time, and one `min` of a `max` in the
- * frame — which is why this is written out rather than answered with a rect
- * per frame. A rect in the frame loop is a forced layout in every frame the
- * section is drawn in, on the hardware least able to afford one, and it is the
- * exact cost the arrangement above exists to avoid.
- *
- * The flow position it clamps has to come from somewhere the pin cannot reach,
- * so it comes from the block above the box — see {@link publishFaceFlow}.
+ * The box is in ordinary flow and has to stay that way for any of the above to
+ * hold: a `sticky` hole is one whose rect is no longer where it was laid out,
+ * so `box.top + scrollY` stops being a document position and starts walking
+ * down the page with the reader. It was pinned once, while the cards below it
+ * stacked, and that cost this module its own premise — the pin had to be
+ * modelled here as a clamp, off an anchor measured from a block that could not
+ * pin, so that the frame loop could keep its subtraction. With the cards back
+ * in flow the pin has nothing to hold and the premise is simply true again.
  */
 
 export type FaceSlot = {
   /** viewport x of the box's left edge; the page never scrolls sideways */
   left: number;
-  /** the box's top edge in *document* coordinates, as laid out — before any pin */
+  /** the box's top edge in *document* coordinates */
   pageTop: number;
   width: number;
   height: number;
-  /** the viewport y the box pins at, or null where it does not pin at all */
-  pinTop: number | null;
-  /**
-   * The document y the pin is given up at — the foot of the box's containing
-   * block, less the box's own height. It never binds as the layout stands, the
-   * section running to the end of the page, and is here because sticky has two
-   * ends and half of a clamp is the kind of thing that comes true later.
-   */
-  pinUntil: number;
 };
 
-const state: {
-  el: HTMLElement | null;
-  flow: HTMLElement | null;
-  slot: FaceSlot | null;
-} = {
+const state: { el: HTMLElement | null; slot: FaceSlot | null } = {
   el: null,
-  flow: null,
   slot: null,
 };
 
@@ -98,43 +68,16 @@ export function measureFaceSlot() {
   }
 
   const box = el.getBoundingClientRect();
-  if (box.width <= 0) {
-    state.slot = null;
-    return;
-  }
 
-  const style = getComputedStyle(el);
-  const pinTop = style.position === "sticky" ? parseFloat(style.top) : NaN;
-
-  // Where the box was *laid out*, which is what the clamp is written against.
-  //
-  // Its own rect cannot say: a box measured while it is pinned reports where
-  // the pin is holding it, and adding the scroll to that gives a document
-  // position that walks down the page as the reader scrolls. The block above
-  // it is in ordinary flow and cannot pin, so its foot plus this box's own top
-  // margin is the one figure here that is always the truth. Without an anchor
-  // — nothing published, or a layout where the box does not pin — the box's
-  // own rect is exactly right and is what gets used.
-  const anchor = state.flow?.getBoundingClientRect();
-  const pageTop =
-    anchor && Number.isFinite(pinTop)
-      ? anchor.bottom + window.scrollY + parseFloat(style.marginTop)
-      : box.top + window.scrollY;
-
-  // the containing block, and so the pin's far end: a sticky box is held
-  // inside the parent it was laid out in
-  const held = el.parentElement?.getBoundingClientRect();
-
-  state.slot = {
-    left: box.left,
-    pageTop,
-    width: box.width,
-    height: box.height,
-    pinTop: Number.isFinite(pinTop) ? pinTop : null,
-    pinUntil: held
-      ? held.bottom + window.scrollY - box.height
-      : Number.POSITIVE_INFINITY,
-  };
+  state.slot =
+    box.width > 0
+      ? {
+          left: box.left,
+          pageTop: box.top + window.scrollY,
+          width: box.width,
+          height: box.height,
+        }
+      : null;
 }
 
 /** Where the box is, for <Scene /> — the only caller. */
@@ -151,21 +94,5 @@ export function readFaceSlot() {
  */
 export function publishFaceSlot(el: HTMLElement | null) {
   state.el = el;
-  measureFaceSlot();
-}
-
-/**
- * Hands over the block the face's flow position is read off — the still half,
- * whose foot is where the box is laid out.
- *
- * A second ref rather than something walked to from the box itself
- * (`previousElementSibling`, `offsetTop`) because both of those are readings of
- * the layout that happen to work: the first goes wrong the day a marker is
- * added between them, and the second is a corner of the spec that browsers do
- * not have to agree on for sticky boxes. This is the block <AboutContent />
- * already holds a ref to, said out loud.
- */
-export function publishFaceFlow(el: HTMLElement | null) {
-  state.flow = el;
   measureFaceSlot();
 }

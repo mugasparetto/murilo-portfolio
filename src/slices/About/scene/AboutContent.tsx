@@ -17,13 +17,12 @@ import SplitText from "gsap/SplitText";
 import { useGSAP } from "@gsap/react";
 
 import SolidIcon, { solidForRow } from "./SolidIcon";
-import { measureFaceSlot, publishFaceFlow, publishFaceSlot } from "./faceSlot";
+import { measureFaceSlot, publishFaceSlot } from "./faceSlot";
 import {
   aboutOnScreen,
   aboutOnScreenOnServer,
   onAboutVisibility,
 } from "./aboutVisibility";
-import { useBreakpoints, BREAKPOINTS } from "@/app/hooks/breakpoints";
 
 gsap.registerPlugin(useGSAP, SplitText);
 
@@ -694,103 +693,21 @@ const cardGap = (i: number, count: number) =>
     : `calc(${vh(BEAT_VH)}vh + ${CARD_STEP} - ${CARD_HEIGHT})`;
 
 /* --------------------------------------------------------------------------
-   The pile below `lg`
+   Below `lg`
 
-   The same three declarations, in the units a phone actually has. Nothing
-   above this line reaches here: there is no pinned still half for the cards to
-   stack against, no fixed section height to spend, and no scroll-driven
-   arrival — the column is ordinary flow, the pile fades in with it (see
-   {@link usePileTimeline}), and all `sticky` is asked for is the stacking.
+   Almost nothing, and that is the arrangement rather than an omission. The
+   pile from `lg` up is three declarations and a page of arithmetic to place
+   them; down here the cards are ordinary blocks in an ordinary column, so
+   there is no slot to compute, no dwell to hold and no run-out to leave. The
+   column is as tall as its content, and the reader scrolls it.
 
-   `rem` rather than `vh` for the pile's own geometry, because down here a card
-   is typeset rather than placed: its header is `h-14` and its body is text at
-   a fixed size, so the pile is made of the type's units and not the viewport's
-   — a short phone should not get a shallower pile, it should get less of the
-   page around it. The figures that are `vh` are scroll rather than layout, and
-   scroll is measured in screens.
-
-   The one thing the viewport does decide is *where* the pile pins, which is
-   the whole of what is different here: below `lg` the page ends on the stats,
-   so the deck is hung off the foot of the screen rather than off the top of
-   it. See {@link cardSlotSm}.
+   The one figure left is what the page has to *end* on, the last block in the
+   column being the last thing before <SiteNav />.
    -------------------------------------------------------------------------- */
 
 /**
- * The step between two cards below `lg` — `h-14`, the header row's own height,
- * and so the same equality the pile keeps from `lg` up: a covered card shows
- * its header and nothing else because the card on top of it starts exactly
- * where its own body does. Change one and change the other.
- */
-const CARD_STEP_REM = 3.5;
-
-/**
- * A floor under a card's height below `lg`, where it is otherwise whatever its
- * copy needs.
- *
- * There to make the pile *leave* tidily rather than to size anything. Cards
- * unstack in order of their bottom edges, and each pins a step lower than the
- * one before it, so equal heights unzip the deck from the top card down — the
- * arrival read backwards. Uneven ones do not: a card two steps down but three
- * lines shorter reaches its own bottom edge first and slides out from under
- * the card covering it. The floor is set above what the design's copy needs,
- * so in practice every card is exactly this tall and the order is the deck's.
- */
-const CARD_MIN_REM = "6.75rem";
-
-/**
- * The scroll between two arrivals below `lg`, spent as the gap under a card —
- * the mobile {@link BEAT_VH}, and the pile's one pacing dial. An arrival costs
- * this plus the card's own height less a step, the card behind it having that
- * much of a head start.
- */
-const CARD_BEAT_VH = "16vh";
-
-/**
- * The room under the last card, which is the whole of the finished pile's
- * dwell — and, since the pile is placed off the foot of the screen, three
- * things at once: how long the finished deck is held, half of it is the air
- * between the deck and the stats under it, and the whole of it is the room
- * {@link cardSlotSm} is allowed to be wrong in.
- *
- * A box rather than trailing space, for the reason the list's `lg:h-full` is
- * one: a margin on the last card collapses out through the list, and padding
- * sits outside the content box the cards are actually constrained by, so
- * neither buys the pile a pixel. See the spacer at the foot of the list.
- *
- * At zero the last card would never pin at all — its own bottom edge would be
- * the list's, which is the one place sticky cannot hold it.
- *
- * A screen is worth more on a tablet than on a phone, and this is spent in
- * screens, so `md` gets its own figure: 20vh of an iPad is a hold you could
- * park a card in.
- *
- * It is the tolerance {@link STATS_AIR_SM} is spent out of, and the only thing
- * it decides besides how long the finished deck is held: the deck is placed
- * against the stats rather than against this, so a change here moves nothing
- * in the composition.
- */
-const CARD_HOLD_VH = "20vh";
-const MD_HOLD_VH = "10vh";
-
-/**
- * The stats row's own height below `lg`, as an estimate the layout is allowed
- * to be a little wrong about.
- *
- * `py-3` twice, a `text-xl` number over a `text-[0.5rem]` label at
- * {@link LEADING}, the `gap-2` between them and the 2px border either side —
- * 4.81rem, and the same figure at every width below `lg`, nothing in the box
- * being sized off the viewport there.
- *
- * It is a constant here because the pile is placed *above* the stats (see
- * {@link cardSlotSm}) and no length in CSS can ask how tall a later sibling
- * is. A label that wraps to a second line makes the boxes taller than this,
- * and the whole of what that costs is the air over them: the dwell is the
- * tolerance, and it is worth a dozen of these.
- */
-const STATS_H_SM = "4.8rem";
-
-/**
- * The room left under the stats, which is what the page now ends on.
+ * The room left under the last block in the column, which is what the page now
+ * ends on.
  *
  * <SiteNav /> is fixed to the bottom left, so the last thing in the column has
  * to clear it: the bar's own inset (`--block-inset` below md, `1.5rem` from md
@@ -801,149 +718,6 @@ const STATS_H_SM = "4.8rem";
  * a gap.
  */
 const NAV_CLEAR_SM = "calc(max(var(--block-inset), 1.5rem) + 3rem + 1.25rem)";
-
-/**
- * The air between the finished deck and the stats under it.
- *
- * The design has them touching, and this is that figure with the estimate's
- * tolerance added to it. The room under the list has to be at least
- * `100vh - slot - card - dwell` for the last card to pin and at most
- * `100vh - slot - card` before the deck starts coming apart — written as this
- * gap, that window is `0` to a whole {@link CARD_HOLD_VH}. Nought is therefore
- * the edge of it, and the edge is the wrong place to stand: {@link STATS_H_SM}
- * is an estimate, and every way it can be wrong (a label wrapping, a phone
- * showing its address bar) eats this gap from the same side. A few `vh` of it
- * is the whole margin, and it costs the composition a line of air.
- */
-const STATS_AIR_SM = "10vh";
-
-/**
- * A floor under the top of the pile below `lg` — a guard, not a layout.
- *
- * It binds only under about 500px of viewport, where the deck, the stats and
- * the nav no longer fit on a screen together and something has to give.
- * Clamped at the *top* of the pile with the steps added after, so what a short
- * window gets is the deck pushed down off its anchor rather than a deck with
- * its steps eaten.
- */
-const PILE_TOP_MIN_REM = "1.5rem";
-
-/**
- * Where card `i` of `count` pins below `lg` — measured up from the foot of the
- * screen rather than down from its top.
- *
- * From `lg` up the pile has a column of its own and the stats are placed at
- * the bottom of it, so a slot is a plain figure off the top and neither has to
- * be arranged around the other. Below `lg` they are two blocks in one column
- * and the page *ends* on the stats, so the last thing the reader is left
- * holding is the finished pile, the stats under it, and the nav under those. A
- * slot fixed near the top of the screen cannot make that picture: the deck
- * lands at the top, the stats end the page at the bottom, and what is between
- * them is most of a viewport of nothing — which is exactly what a phone was
- * being shown.
- *
- * So the deck is hung off the bottom. The last card pins with its foot half a
- * dwell clear of the stats, the stats clear the nav by {@link NAV_CLEAR_SM},
- * and every card above the last pins one {@link CARD_STEP_REM} higher: the
- * same deck with the same steps, read upwards from where it has to end instead
- * of downwards from where it starts.
- *
- * ── Why the run-out is no longer a figure of its own ──────────────────────
- *
- * It used to be, and it was the room under the list: at least
- * `100vh - slot - card - dwell` or the last card never pins, at most
- * `100vh - slot - card` or the deck is already coming apart as the scroll runs
- * out. Both bounds are the last card's, both are written off its slot — so
- * with the slot itself put half a dwell inside that window, what is left under
- * the stats comes out at {@link NAV_CLEAR_SM} exactly, and the run-out is
- * simply the stats standing where the design wanted them. One figure decides
- * both, which is why it can no longer be true that the deck finishes and the
- * stats sit a screen below it.
- *
- * The dwell is the tolerance either way round, and it is what
- * {@link STATS_H_SM} being an estimate is paid for out of.
- *
- * `100vh` rather than `dvh`, which would walk the whole pile up the screen
- * every time the address bar slid away, or `svh`, which would under-provide by
- * exactly the bar. `vh` is the *large* viewport, so a phone showing its bar
- * lands the deck a little high — the direction the dwell has room in.
- */
-const pileTopSm = (count: number) =>
-  `max(${PILE_TOP_MIN_REM}, 100vh - ${NAV_CLEAR_SM} - ${STATS_H_SM} - ${STATS_AIR_SM} - ${CARD_MIN_REM} - ${
-    (Math.max(1, count) - 1) * CARD_STEP_REM
-  }rem)`;
-
-const cardSlotSm = (i: number, count: number) =>
-  `calc(${pileTopSm(count)} + ${i * CARD_STEP_REM}rem)`;
-
-/* --------------------------------------------------------------------------
-   The face, above the pile
-
-   Where the head sits below `lg` — see ./faceSlot and <Scene />, which put the
-   geometry in the box these two figures size.
-   -------------------------------------------------------------------------- */
-
-/**
- * The face's own size below `lg` — the width it has always been, and the
- * height its aspect gives back.
- *
- * Not a derived figure and not allowed to become one. The head is the section's
- * subject and it is drawn at the size a phone can see it at; what the
- * composition around it can afford is the composition's problem, not the
- * head's. It is written out here rather than left in the markup only because
- * the two figures below are arithmetic on it.
- */
-const FACE_W_SM = "min(66vw, 37vh)";
-const FACE_H_SM = `calc(${FACE_W_SM} * 1519 / 784)`;
-
-/** The face's own margins: the air over it, and the air under it. */
-const FACE_LEAD_SM = "8vw";
-const FACE_AIR_SM = "13vw";
-
-/**
- * Where the face pins below `lg` — by its *foot*, one margin over the deck.
- *
- * The head does not leave while its own skills are still arriving: the cards
- * stack for the better part of a screen after it would otherwise have gone off
- * the top, and what it takes with it is the whole top of the composition. So
- * it holds, and it holds where the design has it — sat on the deck, with as
- * much of it showing as the screen has room for and the rest of it above the
- * top edge.
- *
- * Which is why this is a subtraction and not an offset, and why it is usually
- * *negative*: a face taller than the room over the deck pins with its top off
- * the screen and is cropped by it, exactly as a block scrolling past would be.
- * The design's frame crops two thirds of it. Nothing here decides how much —
- * the face is its own size, the deck is hung off the foot of the screen, and
- * the crop is whatever is left over. A tall enough window crops nothing and the
- * figure simply goes positive.
- */
-const faceTopSm = (count: number) =>
-  `calc(${pileTopSm(count)} - ${FACE_AIR_SM} - ${FACE_H_SM})`;
-
-/**
- * The screen the copy opens on, which is what is left of the first one once
- * the face has taken its share.
- *
- * The face used to be inside this block and centred with the copy, so the
- * block was simply `min-h-screen`. It is a sibling now — it has to be, a
- * sticky box being held inside the block it was laid out in, and a face held
- * inside the copy's screen would come unpinned the moment the cards began —
- * and this is the same screen written as the subtraction it became: copy,
- * face, and the two margins between them adding back up to one viewport.
- *
- * A floor, not a height. Where the copy needs more than this it takes more, and
- * the face follows it down the page — the block below `lg` being ordinary
- * content, whose height is whatever the copy needs.
- */
-const stillMinHSm = `calc(100vh - ${FACE_H_SM} - ${FACE_LEAD_SM} - ${FACE_AIR_SM})`;
-
-/**
- * The room under the pile when there are no stats to stand in it — the same
- * two figures with the stats' own height included, so the deck lands where it
- * would have landed with them.
- */
-const pileRunOutSm = `calc(${STATS_H_SM} + ${NAV_CLEAR_SM})`;
 
 /**
  * The scroll offsets stat box `i`'s arrival runs between, as CSS lengths — the
@@ -1157,10 +931,12 @@ function LocalTime() {
  * the whole class of problem: at rest the section paints exactly as it would
  * with none of this on it, which is the only state worth guaranteeing.
  *
- * It is also why nothing in this hook is allowed to tween a *card*: those carry
- * the stack driver's transform, and two writers on one property is a fight
- * neither wins. The intro moves the wrapper around them instead — see the
- * parking in {@link useCopyReveal}.
+ * It is also why nothing in this hook may tween a *card* from `lg` up: up there
+ * a card carries the stack driver's transform, and two writers on one property
+ * is a fight neither wins. Below `lg` there is no driver — the stylesheet's
+ * rules are behind a media query and {@link useCardArrival} stands down — so
+ * the cards are the intro's alone, and it deals them in. See
+ * {@link CARD_ENTER_X}.
  *
  * Transform only. The opacities stay — <Eyebrow /> is tweened to the 0.72 its
  * own class already carries, so clearing that would be a no-op with a flash of
@@ -1232,6 +1008,44 @@ const COPY = {
 const EYEBROW_OPACITY = 0.72;
 
 /**
+ * How a skill card enters below `lg`: in from the side, fading as it comes,
+ * and the side alternating down the deck — card 0 from the left, card 1 from
+ * the right, and so on.
+ *
+ * From `lg` up the pile arrives by being *scrolled*: every card rises into its
+ * slot and the intro never touches it — see {@link STATS_SHIFT}. Below `lg`
+ * there is no pile and no slot, so the column has to say something for itself,
+ * and a block that only fades says the least of it. Dealt from alternating
+ * sides it reads as a hand being laid out: the direction is what separates one
+ * card from the next, and it is the one thing a fade cannot carry.
+ *
+ * A px figure rather than a share of the card, which is {@link COPY_SHIFT}'s
+ * argument turned around. The card is a full-width block, so a percentage
+ * would throw it a tenth of the way across a phone and a third of the way
+ * across a tablet for the same declaration. This is a card being dealt, not a
+ * card travelling, and a deal is the same length whatever it is dealt onto.
+ *
+ * Far enough that the card starts outside the column, which is why the pile
+ * clips — see the `overflow-x-clip` on it, without which the throw is a page
+ * that scrolls sideways for the length of one tween.
+ */
+const CARD_ENTER_X = 48;
+const cardEnterX = (i: number) => (i % 2 ? CARD_ENTER_X : -CARD_ENTER_X);
+
+/**
+ * The deal itself: {@link COPY}'s curve, over a little longer because the
+ * distance is a little further. `clearProps` for {@link CLEAR}'s reason, and
+ * here it is the whole of why a card may be tweened at all — the transform is
+ * gone by the time the card is at rest, so the hairline it is drawn with is
+ * back on the pixel grid.
+ */
+const CARD_ENTER = {
+  duration: 0.6,
+  ease: "power2.out",
+  clearProps: CLEAR,
+} as const;
+
+/**
  * From `lg` up the intro doesn't touch the card column at all — the cards do not
  * animate in, they scroll in.
  *
@@ -1242,8 +1056,10 @@ const EYEBROW_OPACITY = 0.72;
  * ancestor of a sticky element, which is a coordinate system its offsets then
  * resolve against.
  *
- * Below `lg` the column still fades in with everything else: there is no sticky
- * there, no pile, and nothing else to make the cards feel like they arrived.
+ * Below `lg` the cards arrive one at a time and under their own steam: there
+ * is no sticky there, no pile, and nothing else to make them feel like they
+ * arrived — so each is dealt in from its own side as it clears the fold. See
+ * {@link CARD_ENTER_X}.
  *
  * The stats keep a settle on both sides. Theirs is one pinned box that holds
  * its place for the whole section rather than a pile moving through it, so
@@ -1349,9 +1165,12 @@ const REVEAL_ROOT_MARGIN = {
    * one, and silently so, for a block that comes to rest a nav's height above
    * the fold and stops there: its top never reaches the crop line, the
    * observer never fires, and the boxes sit at the `opacity: 0` the intro
-   * parks them at with nothing on screen to say why. That is the bug the old
-   * mobile run-out was paying a whole screen of empty page to avoid — see
-   * {@link cardSlotSm}, which spends that screen on the composition instead.
+   * parks them at with nothing on screen to say why. That is exactly what a
+   * phone was being shown: the section's last block, permanently blank, with
+   * the reader already at the bottom of the page and nowhere left to scroll to
+   * fix it. The one thing that would have cleared the crop is a screen of
+   * empty page under the boxes, which is a whole viewport of nothing spent on
+   * an observer's margin.
    *
    * So: no crop. The boxes count off as they crest the bottom edge, which is
    * also the first moment there is anything to look at.
@@ -1380,7 +1199,11 @@ type RevealRefs = {
   description: RefObject<HTMLElement | null>;
   /** the meta list at the top of the left column */
   meta: RefObject<HTMLElement | null>;
-  /** the column the cards stack in — faded, never moved; see {@link STATS_SHIFT} */
+  /**
+   * The column the cards stack in. Untouched from `lg` up, where the pile
+   * arrives by being scrolled (see {@link STATS_SHIFT}); below it, what the
+   * intro wants from this is the cards inside — see {@link CARD_ENTER_X}.
+   */
   stack: RefObject<HTMLElement | null>;
   stats: RefObject<HTMLElement | null>;
   /**
@@ -1431,7 +1254,10 @@ type RevealRefs = {
  * thumb-flicks below the fold, finished before they were ever seen. So each of
  * the column's blocks takes its own trigger at the same
  * {@link REVEAL_ROOT_MARGIN} `base` edge and plays as it clears the fold, and
- * the scroll does the spacing the leads do above.
+ * the scroll does the spacing the leads do above. A card counts as a block for
+ * that purpose: down there the pile is not one trigger but one per card, each
+ * dealt in from its own side as the reader reaches it — see
+ * {@link CARD_ENTER_X}.
  *
  * Every observer down there is a one-shot: it drops itself as it fires, so a
  * beat plays on the way down and stays played on the way back up. The stats are
@@ -1462,11 +1288,11 @@ function useCopyReveal(
   description: string,
   statCount: number,
   /**
-   * The pile, which the intro has to be finished ahead of. Nothing here
-   * animates a card — above `lg` this hook leaves the pile alone entirely,
-   * below it parks the one container rather than the cards inside — but the
-   * count is what says how much scroll card 0 leaves the copy, and a long
-   * enough headline can outgrow it. See the warning below.
+   * The pile, which the intro has to be finished ahead of. Above `lg` this hook
+   * leaves it alone entirely — the cards scroll in — and below `lg` it deals
+   * them in one at a time; either way the count is what says how much scroll
+   * card 0 leaves the copy, and a long enough headline can outgrow it. See the
+   * warning below.
    */
   skillCount: number,
 ) {
@@ -1634,17 +1460,25 @@ function useCopyReveal(
         gsap.set(metaRows, { opacity: 0, y: -COPY_SHIFT });
       }
 
-      // Below `lg` only. Above it the cards arrive by scrolling and the intro
-      // has nothing to say about them — see {@link STATS_SHIFT}. Parking the
-      // column here regardless would leave it at `opacity: 0` for ever, since
-      // nothing up there would then be tweening it back.
+      // Below `lg` only, and the cards themselves rather than the column around
+      // them: each is parked off to the side it will be dealt from. Above `lg`
+      // the cards arrive by scrolling and the intro has nothing to say about
+      // them — see {@link STATS_SHIFT} — and parking them here regardless would
+      // leave the pile at `opacity: 0` for ever, since nothing up there would
+      // then be tweening it back.
       const stack = refs.stack.current;
-      if (!wide && stack) gsap.set(stack, { opacity: 0 });
+      const cards =
+        !wide && stack
+          ? Array.from(stack.querySelectorAll<HTMLElement>("[data-about-card]"))
+          : [];
+      if (cards.length) {
+        gsap.set(cards, { opacity: 0, x: (i: number) => cardEnterX(i) });
+      }
 
       // The stat boxes count off on a timeline in both of the cases that reach
       // this far: the browser that cannot scroll them in, and below `lg`, where
-      // there is no pile for them to wait on and the block clears the fold like
-      // any other.
+      // what they wait on is the last card rather than the whole pinned pile —
+      // see the gate in that branch.
       const stats = refs.stats.current;
       const statBoxes = stats ? Array.from(stats.children) : [];
       if (statBoxes.length) {
@@ -1684,9 +1518,13 @@ function useCopyReveal(
         );
       };
 
-      /** The card column, arriving whole. */
-      const stackBeat = (tl: gsap.core.Timeline, at: gsap.Position) => {
-        if (stack) tl.to(stack, { opacity: 1, ...COPY }, at);
+      /** One card, dealt in from its own side — see {@link CARD_ENTER_X}. */
+      const cardBeat = (
+        tl: gsap.core.Timeline,
+        card: Element,
+        at: gsap.Position,
+      ) => {
+        tl.to(card, { opacity: 1, x: 0, ...CARD_ENTER }, at);
       };
 
       /** The stats, counting off behind whatever cued them. */
@@ -1799,16 +1637,62 @@ function useCopyReveal(
         if (refs.meta.current) {
           whenVisible(refs.meta.current, () => metaBeat(gsap.timeline(), 0));
         }
-        if (stack) whenVisible(stack, () => stackBeat(gsap.timeline(), 0));
+        // The stats, held behind the last card.
+        //
+        // The two triggers are only tens of pixels of scroll apart and they are
+        // in the wrong order: the stats' own block crests the bottom edge while
+        // the card above it is still short of the crop the cards are watched
+        // through, so on the geometry alone the boxes would count off just
+        // ahead of the card they belong behind. Not by enough to read as a
+        // sequence — by exactly enough to read as a mistake.
+        //
+        // So the trigger says *when the stats may play* and this says *not
+        // before the pile has been dealt*, which are two different questions
+        // and were only ever one by accident. The gate keeps the reader's
+        // scroll in charge either way: the boxes still wait for the fold, and a
+        // reader who has already scrolled past the last card finds them playing
+        // the moment it lands.
+        //
+        // What the gate leans on is that the last card is always *on* screen
+        // once the stats are: the page ends a nav's clearance under them, so
+        // there is not enough document left below that card to scroll it off
+        // the top. Give the section a tail taller than a screen and that stops
+        // being true — a reader could then be looking at the stats with the
+        // card that releases them out of sight above, and the boxes would wait
+        // for a trigger that never comes.
+        let pileDealt = cards.length === 0;
+        let statsCued = false;
+
+        const playStats = () => statsBeat(gsap.timeline(), 0);
+        const cueStats = () => {
+          if (pileDealt) playStats();
+          else statsCued = true;
+        };
+        const dealt = () => {
+          pileDealt = true;
+          if (statsCued) playStats();
+        };
+
+        // The pile: one trigger per card and one card per trigger, so the deck
+        // is laid out down the column at the reader's own pace rather than
+        // arriving as one block. Nothing is staggered here — the scroll is the
+        // stagger, exactly as it is between the blocks above.
+        //
+        // A fling to the foot of the section fires several at once, which is
+        // the same bargain every trigger in this branch makes: what it costs is
+        // the order between two cards the reader crossed in one frame, and what
+        // it buys is that nothing ever plays out of sight.
+        cards.forEach((card, i) => {
+          whenVisible(card, () => {
+            const tl = gsap.timeline();
+            cardBeat(tl, card, 0);
+            if (i === cards.length - 1) tl.call(dealt);
+          });
+        });
+
         // the one block that ends the page, and so the one that cannot be
         // watched through the fold — see {@link REVEAL_ROOT_MARGIN}
-        if (stats) {
-          whenVisible(
-            stats,
-            () => statsBeat(gsap.timeline(), 0),
-            REVEAL_ROOT_MARGIN.statsSm,
-          );
-        }
+        if (stats) whenVisible(stats, cueStats, REVEAL_ROOT_MARGIN.statsSm);
       }
 
       return () => {
@@ -1927,13 +1811,29 @@ function useCardArrival(
 
     let frame = 0;
 
-    /** Drops the inline opacity, leaving the cards as they are typeset. */
+    /**
+     * Whether this loop has actually written to the cards, and so whether there
+     * is anything of its own to take back.
+     *
+     * It matters because below `lg` the cards are somebody else's: the intro
+     * parks them off to the side and deals them in one at a time — see
+     * {@link CARD_ENTER_X} — and this loop's `sync` runs there too, on every
+     * crossing of the section's own visibility. Clearing unconditionally, it
+     * would wipe that parking the first time the section came into view and
+     * hand the reader the whole deck at once, face up.
+     */
+    let painted = false;
+
+    /** Drops the inline opacity this loop wrote, and only that. */
     const clear = () => {
+      if (!painted) return;
+      painted = false;
       for (const card of cards) card.style.opacity = "";
     };
 
     const paint = () => {
       frame = 0;
+      painted = true;
 
       const screen = window.innerHeight;
 
@@ -1981,7 +1881,7 @@ function useCardArrival(
      * When this runs at all, which is on two conditions rather than one.
      *
      * Below `lg` there is no pile — no sticky, no slots, the cards are ordinary
-     * blocks in a column and the intro fades the column as a whole. So the
+     * blocks in a column and the intro deals them in itself. So the
      * listeners come and go with the breakpoint rather than being filtered
      * inside the handler, and the inline styles go back on the way down: left
      * behind, a card that had faded in on a wide window would still be carrying
@@ -2299,15 +2199,17 @@ function StarIcon({ className }: { className?: string }) {
  * `z-index` is the stacking order itself: later cards paint over earlier ones,
  * which is what turns four overlapping boxes into a pile rather than a mess.
  *
- * Below `lg` the same three declarations, off the mobile figures — see the
- * arithmetic under {@link CARD_STEP_REM}. What is different is what holds the
- * pile up. From `lg` up the section is a fixed height with a pinned still half
- * beside it, so the list can be given the column and the pile simply stays;
- * down here the column is ordinary flow, so the pile's dwell is a box at the
- * foot of the list ({@link CARD_HOLD_VH}) and, once past it, the deck unstacks
- * from the top card down as the list's own bottom edge comes up to meet it.
- * The card keeps its natural height, with {@link CARD_MIN_REM} under it so
- * that exit stays in order.
+ * Below `lg` none of this applies — every `lg:` prefix above says so — and the
+ * card is an ordinary block in the column, open, at its natural height. There
+ * is nothing to stack against down there: the still half is not pinned, the
+ * section has no height of its own, and a deck held against the foot of a
+ * phone's screen is a screen the reader has to scroll past twice. So the cards
+ * simply follow each other down the page, which is also the only reading order
+ * a narrow column has.
+ *
+ * `relative` at that width for the solid below, which is placed against the
+ * card's own box — from `lg` up `sticky` is what makes the card a containing
+ * block, and in flow nothing would.
  */
 function SkillCard({
   index,
@@ -2333,28 +2235,6 @@ function SkillCard({
           "--slot": cardSlot(index),
           "--card-h": CARD_HEIGHT,
           "--header-h": CARD_STEP,
-          // the same three, below `lg`: where this card pins, the floor under
-          // its height, and the beat under it. The header's own height is the
-          // step here too, but it is `h-14` in the markup rather than a
-          // property — see {@link CARD_STEP_REM}.
-          //
-          // measured up from the foot of the screen rather than down from the
-          // top of it — see {@link cardSlotSm}
-          "--slot-sm": cardSlotSm(index, count),
-          "--card-min-sm": CARD_MIN_REM,
-          // Over the card rather than under it, and so none over the first.
-          //
-          // Which way round the beat is written is not a matter of taste here:
-          // a sticky box is held inside its containing block by its *margin*
-          // box, so a gap written underneath a card is part of what has to fit
-          // and the card starts being pushed up a beat early. With every card
-          // but the last carrying one, the pile came apart in the order of
-          // those margins rather than in the order of the deck — the third
-          // card sliding out from under the fourth while the fourth sat
-          // pinned. Written above, a card's margin box ends where the card
-          // does, the bottom edges run in deck order, and the pile unstacks
-          // from the top card down. The spacing is identical either way.
-          "--gap-sm": index === 0 ? "0px" : CARD_BEAT_VH,
           // a beat's worth of runway for every card but the last, whose gap is
           // the run-out that keeps the finished pile pinned — see
           // {@link cardGap}, which carries the card's clamped height back out
@@ -2368,13 +2248,9 @@ function SkillCard({
         } as CSSProperties
       }
       className={
-        "pointer-events-auto sticky top-(--slot-sm) mt-(--gap-sm) " +
-        "min-h-(--card-min-sm) border-y border-white " +
+        "pointer-events-auto relative mb-3 border rounded-sm lg:rounded-none lg:border-0 lg:border-y-2 border-white " +
         PLATE +
-        // `min-h-0` because the floor is in `rem` and the height above it in
-        // `vh`: on a short window the two would otherwise cross and the mobile
-        // minimum would quietly win in a layout that has no use for it.
-        " lg:top-(--slot) lg:mt-0 lg:mb-(--gap) lg:h-(--card-h) lg:min-h-0"
+        " lg:sticky lg:top-(--slot) lg:mb-(--gap) lg:h-(--card-h)"
       }
     >
       {/* The header row. Its height *is* {@link CARD_STEP_VH} from `lg` up --
@@ -2413,7 +2289,7 @@ function SkillCard({
             MUTED +
             " " +
             LEADING +
-            " px-[5%] pr-[32%] pb-5 text-[0.625rem] tracking-normal md:pb-0 lg:absolute lg:bottom-[14%] lg:left-[5%] lg:w-1/2 lg:p-0 lg:text-[0.6875rem] xl:text-xs 2xl:text-sm short:w-(--card-blurb-w)"
+            " px-[5%] pr-[32%] pb-6 text-[0.625rem] tracking-normal lg:absolute lg:bottom-[14%] lg:left-[5%] lg:w-1/2 lg:p-0 lg:text-[0.6875rem] xl:text-xs 2xl:text-sm short:w-(--card-blurb-w)"
           }
         >
           {description}
@@ -2460,14 +2336,6 @@ export default function AboutContent({
   const stackRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLUListElement>(null);
   const statsCueRef = useRef<HTMLDivElement>(null);
-
-  const { up } = useBreakpoints(BREAKPOINTS);
-
-  /**
-   * How long the finished deck is held below `lg`, from the one place that
-   * knows the breakpoint. See {@link CARD_HOLD_VH}.
-   */
-  const hold = up.md ? MD_HOLD_VH : CARD_HOLD_VH;
 
   useCopyReveal(
     {
@@ -2621,15 +2489,8 @@ export default function AboutContent({
           top of an ordinary column and the blocks fall into it in source
           order. */}
       <div
-        ref={(el) => {
-          stillRef.current = el;
-          // ./faceSlot reads the face's flow position off this block's foot,
-          // the face itself being pinned and unable to say where it was laid
-          // out — see {@link publishFaceFlow}
-          publishFaceFlow(el);
-        }}
-        style={{ "--still-h-sm": stillMinHSm } as CSSProperties}
-        className="pointer-events-none relative flex min-h-(--still-h-sm) w-full flex-col justify-center gap-5 px-(--block-inset) pt-[6vh] pb-4 sm:gap-6 lg:sticky lg:top-0 lg:block lg:h-screen lg:min-h-0 lg:gap-0 lg:px-0 lg:pt-0 lg:pb-0"
+        ref={stillRef}
+        className="pointer-events-none relative flex min-h-screen w-full flex-col justify-center gap-5 px-(--block-inset) pt-[6vh] pb-16 sm:gap-6 lg:sticky lg:top-0 lg:block lg:h-screen lg:min-h-0 lg:gap-0 lg:px-0 lg:pt-0 lg:pb-0"
       >
         {/* "ABOUT" itself is <Title /> in the scene, where no reader can get at
             it, so the section's heading lives here */}
@@ -2710,43 +2571,43 @@ export default function AboutContent({
             )}
           </div>
         )}
+
+        {/* — the face ---------------------------------------------------- */}
+        {/* The head is scene geometry — <Head />, over in the R3F tree — and
+            this is the hole it sits in: an empty box that <Scene /> matches the
+            face to every frame, so the two cannot drift apart as the copy above
+            it rewraps. Nothing is drawn here; the canvas shows through.
+
+            The last block in the column and in ordinary flow, so the head
+            leaves the screen the way everything above it does — the cards below
+            follow it up the page rather than out from under it. `order-3`
+            because the two blocks above are ordered too, and an unordered box
+            among them would sort to the front.
+
+            Gone from `lg` up, where the face is back to the world position it is
+            authored at and the blocks are placed around it. `display: none`
+            takes the box away entirely, which is what ./faceSlot reads as "no
+            column to sit in" — so the two halves stay in step through a resize
+            across the breakpoint. */}
+        <div
+          ref={publishFaceSlot}
+          aria-hidden
+          className="order-3 mt-[8vw] aspect-[784/1519] w-[min(66vw,37vh)] shrink-0 self-center lg:hidden"
+        />
       </div>
-
-      {/* — the face ------------------------------------------------------ */}
-      {/* The head is scene geometry — <Head />, over in the R3F tree — and this
-          is the hole it sits in: an empty box that <Scene /> matches the face
-          to every frame, so the two cannot drift apart as the copy above it
-          rewraps. Nothing is drawn here; the canvas shows through.
-
-          A sibling of the still half rather than the last block inside it, and
-          `sticky` rather than in flow. A sticky box is held inside the block it
-          was laid out in, so a face inside the copy's column would come
-          unpinned the moment that column ended — which is where the cards
-          begin. Out here the section is what holds it, and the section runs to
-          the end of the page: the head sits down on the deck as the first card
-          lands and is still there when the last one does.
-
-          Its own width, as it has always been, with the aspect giving back the
-          height; what the pin decides is where its *foot* goes, not how big it
-          is — see {@link faceTopSm}, and ./faceSlot for what pinning costs the
-          measurement.
-
-          Gone from `lg` up, where the face is back to the world position it is
-          authored at and the blocks are placed around it. `display: none`
-          takes the box away entirely, which is what ./faceSlot reads as "no
-          column to sit in" — so the two halves stay in step through a resize
-          across the breakpoint. */}
-      <div
-        ref={publishFaceSlot}
-        aria-hidden
-        style={{ "--face-top": faceTopSm(skills.length) } as CSSProperties}
-        className="pointer-events-none sticky top-(--face-top) mt-[8vw] mb-[23vw] aspect-[784/1519] w-[min(66vw,37vh)] shrink-0 self-center lg:hidden"
-      />
 
       {/* — the pile ------------------------------------------------------ */}
       {/* From `lg` up the intro never touches this: the cards scroll in, which
           is an entrance already. See {@link SkillCard} and {@link STATS_SHIFT}.
-          Below `lg` it fades in with the rest of the column. */}
+          Below `lg` the cards are dealt in from alternating sides instead, one
+          at a time as each clears the fold — see {@link CARD_ENTER_X}.
+
+          Which is what the clip is for: a card starts its tween further out
+          than the column is wide, and an overflowing box below `lg` is a page
+          that scrolls sideways. `clip` rather than `hidden` because hidden
+          makes a scroll container of the box, and a scroll container is the one
+          thing the pinned cards inside it cannot be pinned against — gone from
+          `lg` up regardless, where nothing here moves sideways at all. */}
       {skills.length > 0 && (
         <div
           ref={stackRef}
@@ -2756,7 +2617,7 @@ export default function AboutContent({
           // the constants it is made of — the stylesheet holds no geometry.
           //
           style={{ "--about-lift": CARD_LIFT } as CSSProperties}
-          className={rightColumn}
+          className={rightColumn + " overflow-x-clip lg:overflow-x-visible"}
         >
           {/* The one figure the pile cannot be laid out without.
 
@@ -2790,18 +2651,6 @@ export default function AboutContent({
                 description={description}
               />
             ))}
-
-            {/* The finished pile's dwell below `lg`, and the only reason the
-                last card pins at all — see {@link CARD_HOLD_VH}. Inside the
-                list because the cards are constrained by the list's content
-                box and nothing else: padding under it would sit outside that
-                box, and a margin under the last card would collapse straight
-                out through it.
-
-                `aria-hidden` keeps it out of the list a reader is given, which
-                still has one item per skill. From `lg` up the column's own
-                height is the dwell and this goes entirely. */}
-            <li aria-hidden style={{ height: hold }} className="lg:hidden" />
           </ul>
 
           {/* The stats' cue, for browsers that cannot scroll them in: an empty
@@ -2836,13 +2685,11 @@ export default function AboutContent({
           // between the stats and <SiteNav /> — carried as padding rather than
           // as a floor under the block, because what the design asks for is
           // room *under the boxes* and their own height is theirs to decide,
-          // however many of them the author gives. It is also the run-out the
-          // last card pins in: see {@link cardSlotSm}, which places the pile so
-          // that this figure is what the arithmetic leaves over. From `lg` up
-          // the block is placed rather than in flow and the section's own
-          // height carries the run-out, so the padding goes.
+          // however many of them the author gives. See {@link NAV_CLEAR_SM}.
+          // From `lg` up the block is placed rather than in flow and the
+          // section's own height carries the room, so the padding goes.
           style={{ "--nav-clear-sm": NAV_CLEAR_SM } as CSSProperties}
-          className={rightColumn + " pb-(--nav-clear-sm) lg:pb-0"}
+          className={rightColumn + " pb-(--nav-clear-sm) pt-8 lg:pt-0 lg:pb-0"}
         >
           <ul
             ref={statsRef}
@@ -2898,12 +2745,13 @@ export default function AboutContent({
         </div>
       )}
 
-      {/* With no stats to stand in it the run-out has nothing to hang off, so
-          it becomes a box — the same figure, the same reason. */}
+      {/* With no stats under them the cards are the last block in the column,
+          so the clearance the stats carry as padding becomes a box of its own
+          — the same figure, the same reason. See {@link NAV_CLEAR_SM}. */}
       {numbers.length === 0 && skills.length > 0 && (
         <div
           aria-hidden
-          style={{ height: pileRunOutSm }}
+          style={{ height: NAV_CLEAR_SM }}
           className="lg:hidden"
         />
       )}
