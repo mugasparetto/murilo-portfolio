@@ -2248,14 +2248,14 @@ function SkillCard({
         } as CSSProperties
       }
       className={
-        "pointer-events-auto relative mb-3 border rounded-sm lg:rounded-none lg:border-0 lg:border-y-2 border-white " +
+        "pointer-events-auto relative mb-3 border-2 rounded-sm lg:rounded-none lg:border-0 lg:border-y-2 border-white " +
         PLATE +
         " lg:sticky lg:top-(--slot) lg:mb-(--gap) lg:h-(--card-h)"
       }
     >
       {/* The header row. Its height *is* {@link CARD_STEP_VH} from `lg` up --
           that equality is what a collapsed card in the pile shows. */}
-      <div className="flex h-14 items-center gap-3 px-[5%] lg:h-(--header-h) lg:gap-2">
+      <div className="flex pt-6 pb-14 items-center gap-3 px-[5%] lg:pt-0 lg:pb-0 lg:h-(--header-h) lg:gap-2">
         <span
           className={
             CAPS +
@@ -2274,7 +2274,7 @@ function SkillCard({
             CAPS +
             " " +
             LEADING +
-            " truncate font-extrabold text-white text-sm lg:text-base xl:text-lg 2xl:text-xl"
+            " truncate font-extrabold text-white text-lg 2xl:text-xl"
           }
         >
           {skill}
@@ -2289,7 +2289,7 @@ function SkillCard({
             MUTED +
             " " +
             LEADING +
-            " px-[5%] pr-[32%] pb-6 text-[0.625rem] tracking-normal lg:absolute lg:bottom-[14%] lg:left-[5%] lg:w-1/2 lg:p-0 lg:text-[0.6875rem] xl:text-xs 2xl:text-sm short:w-(--card-blurb-w)"
+            " px-[5%] pb-6 tracking-normal md:pr-[25%] lg:absolute lg:bottom-[14%] lg:left-[5%] lg:w-1/2 lg:p-0 text-sm 2xl:text-sm short:w-(--card-blurb-w)"
           }
         >
           {description}
@@ -2315,7 +2315,7 @@ function SkillCard({
       <SolidIcon
         kind={solidForRow(index)}
         seed={index}
-        className="pointer-events-none absolute right-[4%] bottom-4 size-16 text-white lg:top-1/2 lg:bottom-auto lg:aspect-square lg:h-[min(calc(0.86*var(--card-h)),10.8vw)] lg:w-auto lg:-translate-y-1/2 short:h-[70%]"
+        className="pointer-events-none absolute right-[4%] bottom-4 size-16 text-white hidden md:block md:aspect-square md:w-auto md:h-[calc(0.6*var(--card-h))] lg:top-1/2 lg:bottom-auto lg:aspect-square lg:h-[min(calc(0.86*var(--card-h)),10.8vw)] lg:w-auto lg:-translate-y-1/2 short:h-[70%]"
       />
     </li>
   );
@@ -2458,10 +2458,7 @@ export default function AboutContent({
 
   const iconSize = "size-4 shrink-0 xl:size-5 2xl:size-6";
   const metaText =
-    CAPS +
-    " " +
-    MUTED +
-    " text-[0.6875rem] lg:text-xs xl:text-[0.8125rem] 2xl:text-sm";
+    CAPS + " " + MUTED + " text-xs lg:text-xs xl:text-[0.8125rem] 2xl:text-sm";
 
   /**
    * The right-hand column, 1223-1846 of 1906 in the design, shared by the pile
@@ -2539,18 +2536,18 @@ export default function AboutContent({
                 is sized to wrap the copy the same way. `pre-line` is there for
                 the author who does get a newline in. */}
             {title && (
-              <p
+              <h2
                 ref={titleRef}
                 className={
                   "font-display mt-3 font-extrabold text-white " +
                   CAPS +
                   " " +
                   LEADING +
-                  " text-base tracking-normal whitespace-pre-line sm:text-lg lg:text-xl xl:text-2xl 2xl:text-[1.75rem] short:text-lg shorter:text-[0.85rem]"
+                  " text-lg tracking-normal whitespace-pre-line lg:text-xl xl:text-2xl 2xl:text-[1.75rem] short:text-lg shorter:text-[0.85rem]"
                 }
               >
                 {title}
-              </p>
+              </h2>
             )}
 
             {description && (
@@ -2563,7 +2560,7 @@ export default function AboutContent({
                   MUTED +
                   " " +
                   LEADING +
-                  " text-xs tracking-normal lg:max-w-[93%] lg:text-sm xl:mt-5 xl:text-base 2xl:mt-6 2xl:text-lg short:text-sm shorter:text-[0.75rem]"
+                  " text-sm tracking-normal lg:max-w-[93%] lg:text-sm xl:mt-5 xl:text-base 2xl:mt-6 2xl:text-lg short:text-sm shorter:text-[0.75rem]"
                 }
               >
                 {description}
@@ -2722,7 +2719,7 @@ export default function AboutContent({
                   className={
                     "font-display " +
                     LEADING +
-                    " font-extrabold text-white text-xl lg:text-3xl xl:text-4xl 2xl:text-[2.75rem]"
+                    " font-extrabold text-white text-2xl lg:text-3xl xl:text-4xl 2xl:text-[2.75rem]"
                   }
                 >
                   {number}
@@ -2734,7 +2731,7 @@ export default function AboutContent({
                     MUTED +
                     " " +
                     LEADING +
-                    " text-[0.5rem] lg:text-[0.625rem] xl:text-xs 2xl:text-base"
+                    " text-xs xl:text-xs 2xl:text-base"
                   }
                 >
                   {label}

@@ -129,7 +129,7 @@ export default function HeadlineOverlay({
       <hr className="border-white/60 pb-3 md:hidden" />
 
       {head && (
-        <h2 className="flex items-center font-display m-0 text-base leading-tight font-extrabold text-white uppercase md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl">
+        <h2 className="flex items-center font-display m-0 text-lg leading-tight font-extrabold text-white uppercase lg:text-xl xl:text-2xl 2xl:text-3xl">
           <span>{head.split(" ")[0]}</span>
           <span className="h-0.5 w-1 lg:w-12 xl:w-18 mx-1 md:mx-1 lg:mx-4 xl:mx-6 bg-white opacity-0 lg:opacity-100" />
           <span>{head.split(" ")[1]}</span>
@@ -137,7 +137,7 @@ export default function HeadlineOverlay({
       )}
 
       {body && (
-        <p className="m-0 mt-1 max-w-full text-xs leading-relaxed text-white/80 uppercase md:max-w-76 lg:mt-1 lg:max-w-md lg:text-sm xl:max-w-lg 2xl:max-w-140 2xl:text-base">
+        <p className="m-0 mt-1 max-w-full text-sm leading-relaxed text-white/80 uppercase md:max-w-76 lg:mt-1 lg:max-w-md lg:text-sm xl:max-w-lg 2xl:max-w-140 2xl:text-base">
           {body}
         </p>
       )}

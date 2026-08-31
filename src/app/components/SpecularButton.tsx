@@ -81,7 +81,7 @@ const shortestTurn = (a: number, b: number) => {
 };
 
 const SIZES: Record<ButtonSize, string> = {
-  sm: "text-[0.8rem] px-[16px] py-[8px]",
+  sm: "text-[0.875rem] px-[1rem] py-[0.675rem]",
   md: "text-[1rem] px-[30px] py-[14px]",
   lg: "text-[1.15rem] px-10 py-[18px]",
 };
@@ -334,7 +334,8 @@ const SpecularButton = ({
       (btn.checkVisibility?.({
         visibilityProperty: true,
         contentVisibilityAuto: true,
-      }) ?? true);
+      }) ??
+        true);
 
     // Scrolling moves the button without resizing it, so the observer above
     // never hears about it — and neither does it hear about a transform, which
