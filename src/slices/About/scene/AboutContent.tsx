@@ -177,7 +177,7 @@ const PLATE = "bg-black/40 backdrop-blur-lg";
 
 /** The first card's top and a card's height: 191 and 235 of 947. */
 const CARD_TOP_VH = 19;
-const CARD_HEIGHT_VH = 20;
+const CARD_HEIGHT_VH = 22;
 
 /**
  * The step between two cards, 58 of 947 — and also the height of a card's
@@ -2289,7 +2289,7 @@ function SkillCard({
             MUTED +
             " " +
             LEADING +
-            " px-[5%] pb-6 tracking-normal md:pr-[25%] lg:absolute lg:bottom-[14%] lg:left-[5%] lg:w-1/2 lg:p-0 text-sm 2xl:text-sm short:w-(--card-blurb-w)"
+            " px-[5%] pb-6 tracking-normal md:pr-[25%] lg:absolute lg:bottom-[14%] lg:left-[5%] lg:w-[67%] xl:w-[62%] lg:p-0 text-sm 2xl:text-sm short:w-[72%]"
           }
         >
           {description}
@@ -2315,7 +2315,7 @@ function SkillCard({
       <SolidIcon
         kind={solidForRow(index)}
         seed={index}
-        className="pointer-events-none absolute right-[4%] bottom-4 size-16 text-white hidden md:block md:aspect-square md:w-auto md:h-[calc(0.6*var(--card-h))] lg:top-1/2 lg:bottom-auto lg:aspect-square lg:h-[min(calc(0.86*var(--card-h)),10.8vw)] lg:w-auto lg:-translate-y-1/2 short:h-[70%]"
+        className="pointer-events-none absolute right-[4%] bottom-4 size-16 text-white hidden md:block md:aspect-square md:w-auto md:h-[calc(0.6*var(--card-h))] lg:top-1/2 lg:bottom-auto lg:aspect-square lg:h-[min(calc(0.86*var(--card-h)),8.8vw)] lg:w-auto lg:-translate-y-1/2 short:h-[50%] short:top-[60%]"
       />
     </li>
   );
