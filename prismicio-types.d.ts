@@ -69,7 +69,7 @@ type ContentRelationshipFieldWithData<
   >;
 }[Exclude<TCustomType[number], string>["id"]];
 
-type HomepageDocumentDataSlicesSlice = AboutSlice | HeroSlice;
+type HomepageDocumentDataSlicesSlice = WorksSlice | AboutSlice | HeroSlice;
 
 /**
  * Content for Homepage documents
@@ -134,79 +134,57 @@ export type HomepageDocument<Lang extends string = string> =
     Lang
   >;
 
-type PageDocumentDataSlicesSlice = RichTextSlice;
-
 /**
- * Content for Page documents
+ * Content for Work documents
  */
-interface PageDocumentData {
+interface WorkDocumentData {
   /**
-   * Title field in *Page*
-   *
-   * - **Field Type**: Rich Text
-   * - **Placeholder**: *None*
-   * - **API ID Path**: page.title
-   * - **Tab**: Main
-   * - **Documentation**: https://prismic.io/docs/fields/rich-text
-   */
-  title: prismic.RichTextField;
-
-  /**
-   * Slice Zone field in *Page*
-   *
-   * - **Field Type**: Slice Zone
-   * - **Placeholder**: *None*
-   * - **API ID Path**: page.slices[]
-   * - **Tab**: Main
-   * - **Documentation**: https://prismic.io/docs/slices
-   */
-  slices: prismic.SliceZone<PageDocumentDataSlicesSlice>; /**
-   * Meta Title field in *Page*
-   *
-   * - **Field Type**: Text
-   * - **Placeholder**: A title of the page used for social media and search engines
-   * - **API ID Path**: page.meta_title
-   * - **Tab**: SEO & Metadata
-   * - **Documentation**: https://prismic.io/docs/fields/text
-   */
-  meta_title: prismic.KeyTextField;
-
-  /**
-   * Meta Description field in *Page*
-   *
-   * - **Field Type**: Text
-   * - **Placeholder**: A brief summary of the page
-   * - **API ID Path**: page.meta_description
-   * - **Tab**: SEO & Metadata
-   * - **Documentation**: https://prismic.io/docs/fields/text
-   */
-  meta_description: prismic.KeyTextField;
-
-  /**
-   * Meta Image field in *Page*
+   * Thumbnail field in *Work*
    *
    * - **Field Type**: Image
    * - **Placeholder**: *None*
-   * - **API ID Path**: page.meta_image
-   * - **Tab**: SEO & Metadata
+   * - **API ID Path**: work.thumbnail
+   * - **Tab**: Main
    * - **Documentation**: https://prismic.io/docs/fields/image
    */
-  meta_image: prismic.ImageField<never>;
+  thumbnail: prismic.ImageField<never>;
+
+  /**
+   * Title field in *Work*
+   *
+   * - **Field Type**: Text
+   * - **Placeholder**: *None*
+   * - **API ID Path**: work.title
+   * - **Tab**: Main
+   * - **Documentation**: https://prismic.io/docs/fields/text
+   */
+  title: prismic.KeyTextField;
+
+  /**
+   * Year field in *Work*
+   *
+   * - **Field Type**: Text
+   * - **Placeholder**: *None*
+   * - **API ID Path**: work.year
+   * - **Tab**: Main
+   * - **Documentation**: https://prismic.io/docs/fields/text
+   */
+  year: prismic.KeyTextField;
 }
 
 /**
- * Page document from Prismic
+ * Work document from Prismic
  *
- * - **API ID**: `page`
+ * - **API ID**: `work`
  * - **Repeatable**: `true`
  * - **Documentation**: https://prismic.io/docs/content-modeling
  *
  * @typeParam Lang - Language API ID of the document.
  */
-export type PageDocument<Lang extends string = string> =
-  prismic.PrismicDocumentWithUID<Simplify<PageDocumentData>, "page", Lang>;
+export type WorkDocument<Lang extends string = string> =
+  prismic.PrismicDocumentWithUID<Simplify<WorkDocumentData>, "work", Lang>;
 
-export type AllDocumentTypes = HomepageDocument | PageDocument;
+export type AllDocumentTypes = HomepageDocument | WorkDocument;
 
 /**
  * Item in *About → Default → Primary → Numbers*
@@ -403,49 +381,63 @@ type HeroSliceVariation = HeroSliceDefault;
 export type HeroSlice = prismic.SharedSlice<"hero", HeroSliceVariation>;
 
 /**
- * Primary content in *RichText → Default → Primary*
+ * Item in *Works → Default → Primary → Works*
  */
-export interface RichTextSliceDefaultPrimary {
+export interface WorksSliceDefaultPrimaryWorksItem {
   /**
-   * Content field in *RichText → Default → Primary*
+   * Works field in *Works → Default → Primary → Works*
    *
-   * - **Field Type**: Rich Text
-   * - **Placeholder**: Lorem ipsum...
-   * - **API ID Path**: rich_text.default.primary.content
-   * - **Documentation**: https://prismic.io/docs/fields/rich-text
+   * - **Field Type**: Content Relationship
+   * - **Placeholder**: *None*
+   * - **API ID Path**: works.default.primary.works[].works
+   * - **Documentation**: https://prismic.io/docs/fields/content-relationship
    */
-  content: prismic.RichTextField;
+  works: ContentRelationshipFieldWithData<
+    [{ id: "work"; fields: ["thumbnail", "title", "year"] }]
+  >;
 }
 
 /**
- * Default variation for RichText Slice
+ * Primary content in *Works → Default → Primary*
+ */
+export interface WorksSliceDefaultPrimary {
+  /**
+   * Works field in *Works → Default → Primary*
+   *
+   * - **Field Type**: Group
+   * - **Placeholder**: *None*
+   * - **API ID Path**: works.default.primary.works[]
+   * - **Documentation**: https://prismic.io/docs/fields/repeatable-group
+   */
+  works: prismic.GroupField<Simplify<WorksSliceDefaultPrimaryWorksItem>>;
+}
+
+/**
+ * Default variation for Works Slice
  *
  * - **API ID**: `default`
- * - **Description**: RichText
+ * - **Description**: Default
  * - **Documentation**: https://prismic.io/docs/slices
  */
-export type RichTextSliceDefault = prismic.SharedSliceVariation<
+export type WorksSliceDefault = prismic.SharedSliceVariation<
   "default",
-  Simplify<RichTextSliceDefaultPrimary>,
+  Simplify<WorksSliceDefaultPrimary>,
   never
 >;
 
 /**
- * Slice variation for *RichText*
+ * Slice variation for *Works*
  */
-type RichTextSliceVariation = RichTextSliceDefault;
+type WorksSliceVariation = WorksSliceDefault;
 
 /**
- * RichText Shared Slice
+ * Works Shared Slice
  *
- * - **API ID**: `rich_text`
- * - **Description**: RichText
+ * - **API ID**: `works`
+ * - **Description**: Works
  * - **Documentation**: https://prismic.io/docs/slices
  */
-export type RichTextSlice = prismic.SharedSlice<
-  "rich_text",
-  RichTextSliceVariation
->;
+export type WorksSlice = prismic.SharedSlice<"works", WorksSliceVariation>;
 
 declare module "@prismicio/client" {
   interface CreateClient {
@@ -471,9 +463,8 @@ declare module "@prismicio/client" {
       HomepageDocument,
       HomepageDocumentData,
       HomepageDocumentDataSlicesSlice,
-      PageDocument,
-      PageDocumentData,
-      PageDocumentDataSlicesSlice,
+      WorkDocument,
+      WorkDocumentData,
       AllDocumentTypes,
       AboutSlice,
       AboutSliceDefaultPrimaryNumbersItem,
@@ -485,10 +476,11 @@ declare module "@prismicio/client" {
       HeroSliceDefaultPrimary,
       HeroSliceVariation,
       HeroSliceDefault,
-      RichTextSlice,
-      RichTextSliceDefaultPrimary,
-      RichTextSliceVariation,
-      RichTextSliceDefault,
+      WorksSlice,
+      WorksSliceDefaultPrimaryWorksItem,
+      WorksSliceDefaultPrimary,
+      WorksSliceVariation,
+      WorksSliceDefault,
     };
   }
 }
