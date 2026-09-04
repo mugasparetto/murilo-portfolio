@@ -10,7 +10,13 @@ import { useScrollY } from "@/app/hooks/ScrollY";
 
 import { visibleRange } from "../scene-core/geometry";
 import { frameAt, makeFrame, smoothstep } from "../scene-core/path";
-import { flightDistance, TUNNEL, wallColumnCount } from "../scene-core/presets";
+import {
+  flightDistance,
+  TUNNEL,
+  wallColumnCount,
+  wallHandoverVh,
+  worksSectionVh,
+} from "../scene-core/presets";
 import { tunnelResources } from "../scene-core/resources";
 import { flight } from "./flight";
 import TunnelCards from "./TunnelCards";
@@ -85,6 +91,17 @@ export default function Scene() {
   const gl = useThree((s) => s.gl);
   const size = useThree((s) => s.size);
 
+  /**
+   * The window the wall's grid comes up over, and this section's own scroll in
+   * the units that window is quoted in.
+   *
+   * Both off `wallHandoverVh`, which is also what ../../About/scene/Scene runs
+   * its half of the same fade from — see there, and see the write in the frame
+   * loop for what the two halves are actually crossing.
+   */
+  const flightVh = useMemo(() => Math.max(1, worksSectionVh() - 100), []);
+  const handover = useMemo(() => Math.max(0, wallHandoverVh()), []);
+
   const root = useRef<THREE.Group>(null);
   const wash = useRef<THREE.Mesh>(null);
   const tinted = useRef(false);
@@ -150,6 +167,22 @@ export default function Scene() {
     const t = progress > 1 ? 1 : progress;
     const s = flightDistance(t);
     const fr = frameAt(path, s, scratch.frame);
+
+    // ── The wall's grid, coming up as the About section's goes out ────────
+    //
+    // The two are one lattice on one plane at one level — see {@link WALL_Z} —
+    // so the handover is a cross-fade or it is nothing. Drawn at full strength
+    // from the first frame, this one is simply laid on top of the copy that is
+    // still going out, and the grid is half as bright again for as long as
+    // that takes: a flare in the middle of the move the fade exists to hide.
+    //
+    // Safe to run on the whole material rather than on the opening stretch of
+    // it, and that is the draw range's doing rather than luck: everything the
+    // frame can see for the whole of this window is flat wall, because the
+    // preset is held to a run long enough to keep it so, and everything past
+    // the throat is behind the shell.
+    live.gridMat.uniforms.uOpacity.value =
+      handover <= 0 ? 1 : smoothstep((t * flightVh) / handover);
 
     /* ---- the camera ------------------------------------------------- */
 

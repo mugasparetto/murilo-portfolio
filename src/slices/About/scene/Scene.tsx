@@ -25,6 +25,7 @@ import {
   wallCell,
   wallColumnCount,
   wallColumns,
+  wallHandoverVh,
   wallRows,
   worksSectionVh,
 } from "@/slices/Works/scene-core/presets";
@@ -95,7 +96,7 @@ type LinesProps = {
   exitOpacity: number;
   /**
    * Whether this grid is still the one carrying the wall, 1 to 0 — see
-   * {@link HANDOVER_VH}. A uniform object for `exit`'s reason: it is written
+   * {@link handover}. A uniform object for `exit`'s reason: it is written
    * every frame off a scroll React never sees.
    */
   live: { value: number };
@@ -161,7 +162,7 @@ const LINE_FRAGMENT = /* glsl */ `
     alpha = mix(alpha, uExitOpacity, uExit);
 
     // And then out altogether, once the wall itself is drawing this lattice —
-    // see {@link HANDOVER_VH}. Two copies of one grid is one grid too many, and
+    // see {@link handover}. Two copies of one grid is one grid too many, and
     // the copy that has to go is the one with edges.
     gl_FragColor = vec4(uColor, alpha * uLive);
   }
@@ -341,6 +342,11 @@ function topEdgeDip(x: number, width: number, depth: number) {
  * and the backdrop is what stands behind it. It has to stand *clear* of it,
  * because two opaque coplanar planes z-fight across the whole screen the moment
  * the tunnel is drawn. Ten units is invisible at this distance and settles it.
+ *
+ * For the flat wall, that is. It settles nothing at all for a wall that has
+ * started to turn, which swings back through ten units of clearance almost at
+ * once — so the plane is retired rather than merely offset, on the frame the
+ * flight takes the wall over. See the backdrop's line in the frame loop.
  */
 const BACKDROP_BEHIND = 10;
 
@@ -349,22 +355,6 @@ const BACKDROP_Z = WALL_Z - BACKDROP_BEHIND;
 
 /** how far in front of the wall the grid sits, clear of z-fighting */
 const GRID_OFFSET = 0.1;
-
-/**
- * How much of the flight's opening the grid takes to hand the wall over, in vh.
- *
- * From the frame the flight starts, the tunnel draws this same lattice on this
- * same plane — so this grid is a second copy of it, and a copy that stops at
- * the edges of a 2000 unit plane where the wall carries on. Left drawn, that
- * edge sweeps up the screen as the camera falls, which is a seam in a surface
- * that is supposed to be continuous. So it goes out over the opening instead.
- *
- * Short enough to be gone before the plane's own bottom edge rises into frame:
- * that edge starts about 180 units below the fold, and the launch opens at
- * about 5.7 units of fall per vh — see `flightDistance` in
- * ../../Works/scene-core/presets.
- */
-const HANDOVER_VH = 25;
 
 /** the backdrop plane's span, and how deep its top edge dips at the centre */
 const PLANE_W = 2000;
@@ -518,12 +508,38 @@ export default function Scene() {
 
   /**
    * And whether it is still the grid being looked at, or the wall is — see
-   * {@link HANDOVER_VH}. Written in the same place and for the same reason.
+   * {@link handover}. Written in the same place and for the same reason.
    */
   const gridLive = useMemo(() => ({ value: 1 }), []);
 
   /** the section below's scroll, in vh, so its progress can be read as one */
   const flightVh = useMemo(() => Math.max(1, worksSectionVh() - 100), []);
+
+  /**
+   * How long the handover gets, in vh of the flight below.
+   *
+   * From the frame that flight starts, the tunnel draws this same lattice on
+   * this same plane — so this grid is a second copy of it, and a copy that
+   * stops at the edges of a 2000 unit plane where the wall carries on. Left
+   * drawn, that edge sweeps up the screen as the camera falls, which is a seam
+   * in a surface that is supposed to be continuous. So it goes out over the
+   * opening instead, while the wall's own copy comes up in its place.
+   *
+   * The figure is `wallHandoverVh`'s and not this file's, because the other
+   * half of the fade is run off it too — ../../Works/scene/Scene brings the
+   * tunnel's grid up over exactly this window. Two windows that disagree are a
+   * brightness step in the middle of the handover, which is the thing being
+   * hidden.
+   *
+   * Zero is a real answer and the arithmetic below takes it. A preset whose
+   * wall is shorter than half a frame has no flat surface to hand anything
+   * across, so everything of this section's that is drawn on that plane has to
+   * go on the frame the flight starts rather than over a screen that isn't
+   * there — and `flown <= 0` being checked first is what keeps that a hand over
+   * rather than a divide by zero. The preset warns about it in development;
+   * there is nothing this side can do about it.
+   */
+  const handover = useMemo(() => Math.max(0, wallHandoverVh()), []);
 
   const [grabbing, setGrabbing] = useState<null | "head" | "eyes" | "mouth">(
     null,
@@ -577,6 +593,18 @@ export default function Scene() {
    * rises a screen as it leaves (see {@link exitLift}) and the grid rises
    * with it — that last row is the one that comes up into the empty band the
    * lift would otherwise open at the foot of the screen.
+   *
+   * And at the top, one row *short* of it. A row is a single bar right across
+   * the plane and has no curve of its own to follow, so the U leaves a band
+   * between its corners and its deepest point where a row is on the surface at
+   * the ends and off it everywhere else — and a row that has run off the black
+   * is a hairline drawn straight across the hero. Only the rows that clear the
+   * dip at the centre can be drawn at all, which is what this asks for. The
+   * cost is a top cell about four fifths taller than the rest, on a lattice
+   * whose verticals already end on the curve; the alternative is a line in the
+   * sky. It bites at the full column count and not the coarse one — the rings
+   * are the tunnel's and fall where they fall, so whether one lands in that
+   * band is luck, and 37 columns is unlucky by two and a half units.
    */
   const hLines = useMemo(() => {
     const cell = wallCell(columns);
@@ -584,7 +612,7 @@ export default function Scene() {
     return wallRows(
       columns,
       planePos[1] - PLANE_H / 2 - cell,
-      planePos[1] + PLANE_H / 2,
+      planePos[1] + PLANE_H / 2 - topEdgeDip(0, PLANE_W, PLANE_CURVE),
     ).map((y) => ({ x: 0, y }));
   }, [columns, planePos]);
 
@@ -683,12 +711,31 @@ export default function Scene() {
     // and the grid rides the rounding back off the group — see {@link gridLift}
     if (grid.current) grid.current.position.y = exit * (gridLift - exitLift);
 
-    // Handed over to the wall as the flight opens — see {@link HANDOVER_VH}.
+    // Handed over to the wall as the flight opens — see {@link handover}.
     // The Works section's own progress, read the way that section reads it, so
     // the two cannot disagree about when the flight has started.
     const flown = worksProgress(scrollY.current);
     gridLive.value =
-      flown <= 0 ? 1 : 1 - smoothstep((flown * flightVh) / HANDOVER_VH);
+      flown <= 0 ? 1 : 1 - smoothstep((flown * flightVh) / handover);
+
+    // The backdrop goes on the frame the flight starts, and unlike the grid it
+    // does not get a handover to do it in.
+    //
+    // {@link BACKDROP_BEHIND} buys it ten units of clearance behind the wall,
+    // which is all a *flat* wall ever needs and nothing at all once the wall
+    // starts to turn: the throat tips the surface back through this plane long
+    // before it has finished curling, and an opaque black plane left standing
+    // inside the tunnel wins the depth test in a band right across the frame.
+    // How long that takes to happen is the preset's business and not this
+    // section's — a short opening wall puts the throat on screen from the first
+    // frame — so there is no length of handover that is safe for all of them.
+    //
+    // Nothing is spent going early, either, which is what makes this the exact
+    // answer rather than a cautious one: from that same frame the tunnel draws
+    // its own shell over the whole viewport in the same black, and that one
+    // does not stop at an edge. The grid is the only part of this that has to
+    // be eased across, because the grid is the only part you can see.
+    if (plane.current) plane.current.visible = flown <= 0;
 
     // The grid leaves on the same figure, in both senses of leaving: its
     // vignette flattens out and the lines come up to {@link GRID_EXIT_OPACITY}

@@ -78,6 +78,11 @@ export function makeGridMaterial() {
       // compared with the About grid's directly. The level varies along the
       // flight, so it has to live in the colour rather than here; see
       // ./geometry.
+      //
+      // Which leaves this free for the one thing that is a fact about the
+      // whole wireframe at once: ../scene/Scene runs it up from 0 over the
+      // handover, so this grid arrives exactly as the About section's copy of
+      // it leaves rather than on top of it.
       uOpacity: { value: 1 },
     },
     vertexShader: GRID_VERT,

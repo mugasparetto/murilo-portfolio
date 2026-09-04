@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-import { ABOUT_EXIT_LIFT, ABOUT_POSE } from "@/app/components/poses";
+import { ABOUT_EXIT_LIFT, ABOUT_POSE, FOV } from "@/app/components/poses";
 import {
   compile,
   distanceAtProgress,
@@ -43,6 +43,18 @@ export const WALL_Z = 2200;
  * the spine, and on the lead-in the spine is where the camera is.
  */
 export const WALL_DEPTH = ABOUT_POSE.position[2] - WALL_Z;
+
+/**
+ * Half the frame at the wall's depth — how much further down the wall the foot
+ * of the screen sees than the camera does.
+ *
+ * The one figure that makes the opening wall's length a question at all. On the
+ * frame the flight takes over, the About section's grid is still drawn to the
+ * bottom of the screen, so the surface has to still be that grid's plane this
+ * far past the camera or the rings down there are somewhere it never drew them.
+ * Everything {@link TUNNEL.handoverVh} buys is measured from here.
+ */
+const HALF_FRAME = Math.tan((FOV * Math.PI) / 360) * WALL_DEPTH;
 
 /** the tube radius the preset opens at, in path units */
 const WALL_TUBE = 10;
@@ -117,6 +129,33 @@ export const TUNNEL = {
   level: 0.18,
 
   /**
+   * How much scroll the wall takes to stop being the About section's and start
+   * being the tunnel's, in vh — and so the whole length of the seam between the
+   * two sections. The knob for it, and the only one.
+   *
+   * Everything about the opening follows from it. The flat wall the flight
+   * starts on is exactly long enough to hold the *whole frame* on the About
+   * section's plane for this long and not a unit longer — solved rather than
+   * typed, see {@link tunnelPath} — so the curl arrives at the foot of the
+   * screen on the frame this runs out. Turn it down and the tunnel starts
+   * sooner, with no stretch of flat wall left over behind it either way; the
+   * section's own height follows too, since a shorter wall is less page.
+   *
+   * Zero is allowed and is not a cliff. The wall is still {@link HALF_FRAME}
+   * long at zero, which is what keeps the lattice the About grid drew true
+   * across the whole frame on the one frame it has to be — the swap simply
+   * happens on that frame instead of over a window.
+   *
+   * What a short one spends is the fade, and it is worth knowing which fade.
+   * The two grids are the same lattice on the same plane at this same
+   * {@link TUNNEL.level}, so there is no longer anything to *move*; what is
+   * left to cross is line weight, ../../About/scene/Scene ruling its grid 1.5
+   * world units wide against this wireframe's one device pixel. That is the
+   * one thing a short handover has nowhere to hide.
+   */
+  handoverVh: 0,
+
+  /**
    * The card's plane, in path units across.
    *
    * The prototype used 11 at a 55 degree lens. This camera is 40, which
@@ -155,8 +194,13 @@ export function wallColumnCount(coarse: boolean) {
  * Prismic in the order they appear here; see ../scene/cardSlots.
  */
 export const SWITCHBACK: TunnelSegment[] = [
-  { label: "wall", run: 30, tube: WALL_TUBE, wrap: 0, aim: 0, pace: 5.5 },
-  { label: "throat", pitch: 90, bend: 26, wrap: 1, aim: 1, pace: 1.3 },
+  // No `run` on this one, and it is the only segment without one: how long the
+  // opening wall is is not a fact about the shape, it is what the handover
+  // costs, and {@link tunnelPath} solves it from {@link TUNNEL.handoverVh}.
+  // First in the list for the same reason — the flat wall the About section
+  // shares is where the flight opens, so that is the segment being solved.
+  { label: "wall", tube: WALL_TUBE, wrap: 0, aim: 0, pace: 5.5 },
+  { label: "throat", pitch: 90, bend: 26, wrap: 1, aim: 1, pace: 4.3 },
 
   { label: "run in", run: 76, card: { at: 0.55, u: 0.22, w: 3, h: 2 } },
   { label: "bear right", yaw: 62, bend: 34, roll: 20 },
@@ -257,6 +301,24 @@ export function wallRows(columns: number, from: number, to: number) {
 let compiled: CompiledPath | null = null;
 
 /**
+ * The preset compiled with the opening wall at `run` path units.
+ *
+ * The wall is the first segment by construction — it is the one the About
+ * section shares, so it is where the flight opens — and its length is the only
+ * thing about the shape this file decides rather than reads.
+ */
+function compileWall(run: number) {
+  const [wall, ...rest] = TUNNEL_SEGMENTS;
+
+  return compile([{ ...wall, run }, ...rest], {
+    scale: TUNNEL.scale,
+    origin: TUNNEL_ORIGIN,
+    overhang: TUNNEL.overhang,
+    tail: TUNNEL.tail,
+  });
+}
+
+/**
  * The path every part of the section reads: the geometry builder, the flight,
  * the cards, and the slice that sizes the page off its weight.
  *
@@ -268,16 +330,67 @@ let compiled: CompiledPath | null = null;
 export function tunnelPath(): CompiledPath {
   if (compiled) return compiled;
 
-  compiled = compile(TUNNEL_SEGMENTS, {
-    scale: TUNNEL.scale,
-    origin: TUNNEL_ORIGIN,
-    overhang: TUNNEL.overhang,
-    tail: TUNNEL.tail,
-  });
+  // ── How long the opening wall is ──────────────────────────────────────
+  //
+  // Solved, not authored — {@link TUNNEL.handoverVh} is the number it is in
+  // service of. The wall has to hold the whole frame flat for as long as the
+  // handover lasts, which is {@link HALF_FRAME} for what the foot of the
+  // screen can see past the camera, plus however far the camera itself falls
+  // in that time. And that fall is a question about the launch ease, which is
+  // a question about the path — which is this. So it is asked of a trial path,
+  // and then asked again of the answer.
+  //
+  // It converges at once, and three rounds is already generous. The wall is a
+  // couple of percent of the flight's weight, so its own length barely moves
+  // the section's height or the speed the ease has reached by the end of the
+  // handover; what is being iterated is a fall of a few dozen units taken at
+  // the slowest the flight ever goes.
+  //
+  // Nothing longer than it needs, either, and that is the half worth having:
+  // the curl reaches the foot of the screen on the exact frame the handover
+  // runs out, rather than after a stretch of flat wall nobody asked for.
+  const want = Math.max(0, TUNNEL.handoverVh);
+  let run = HALF_FRAME / TUNNEL.scale;
+
+  for (let i = 0; i < 3; i++) {
+    compiled = compileWall(run);
+    launched = null;
+
+    const fall =
+      flightDistance(want / Math.max(1, worksSectionVh() - 100)) -
+      compiled.travelA;
+
+    run = (HALF_FRAME + fall) / TUNNEL.scale;
+  }
+
+  compiled = compileWall(run);
+  launched = null;
 
   if (process.env.NODE_ENV !== "production") {
     for (const w of compiled.warn.concat(proximityWarnings(compiled))) {
       console.warn(`[works tunnel] ${w}`);
+    }
+
+    // The solve should land the handover on the knob exactly, so a miss means
+    // the preset has done something it does not know about — a first segment
+    // that is not the flat wall, most likely. Worth saying out loud: what is
+    // downstream of it is the About section handing its grid to a surface that
+    // has already moved, and nothing over there can see that from where it
+    // sits.
+    const got = wallHandoverVh();
+
+    if (Math.abs(got - want) > 0.5) {
+      console.warn(
+        `[works tunnel] asked for a ${want}vh handover, the opening wall carries ${got.toFixed(1)}vh of one — is the first segment still the flat wall?`,
+      );
+    }
+
+    // And the other end of it, which the wall cannot see: the About section's
+    // grid runs out before the wall does. See {@link HANDOVER_LIMIT_VH}.
+    if (want > HANDOVER_LIMIT_VH) {
+      console.warn(
+        `[works tunnel] a ${want}vh handover outlives the About section's own grid — past about ${HANDOVER_LIMIT_VH}vh the bottom ends of its verticals rise into frame while it is still being drawn`,
+      );
     }
   }
 
@@ -401,4 +514,89 @@ export function worksSectionVh() {
   const travel = (path.weightB - path.weightA) / path.scale;
 
   return Math.round(100 + (travel * TUNNEL.vhPerUnit) / launch().cost);
+}
+
+/**
+ * The most of a handover the *other* section can actually back up, in vh.
+ *
+ * A warning threshold and deliberately not a cap: {@link TUNNEL.handoverVh} is
+ * a knob and a knob that quietly disobeys is worse than one that lets you see
+ * what you asked for. Past this you can, and the picture tells you why.
+ *
+ * What runs out is not the wall — the wall is solved to fit — but the plane the
+ * About section rules its copy of the grid on. That grid is 2000 units tall and
+ * the wall is not: on the frame the flight starts, the bottom ends of its
+ * verticals are only about 175 units below the fold at the corners of a wide
+ * window, and the camera is falling into them at somewhere between five and
+ * thirteen units a vh. Twenty of those is about 165 units, which still clears.
+ * Cross it and the handover ends as a row of stubs sweeping up the screen,
+ * which is a worse seam than the one it exists to hide.
+ *
+ * Quoted against the *fall* and not against a speed, which is the correction
+ * this figure needed once: the launch is an ease, so the wall is moving half as
+ * fast again at the end of the window as at its start.
+ */
+const HANDOVER_LIMIT_VH = 20;
+
+/**
+ * Where the flat wall stops filling the frame, as a distance along the spine.
+ *
+ * Not where the *camera* reaches the curl: the foot of the screen sees
+ * {@link HALF_FRAME} further down the wall than the camera does, so it gets
+ * there first. That half frame is the whole of the difference between this and
+ * the curl's own start, and it is why the wall's length is solved from a
+ * handover rather than typed — see {@link tunnelPath}.
+ *
+ * Infinity for a preset that never curls, which is flat for all of it.
+ */
+function flatWallEnd(path: CompiledPath) {
+  const curl = path.segs.find((seg) => seg.wrap1 > seg.wrap0);
+  if (!curl) return Infinity;
+
+  return curl.s0 - HALF_FRAME;
+}
+
+/**
+ * How long the About section's copy of the wall stays true, in vh of the
+ * flight — and so how long the two sections have to cross one grid into the
+ * other.
+ *
+ * {@link TUNNEL.handoverVh} is what that wants to be and the wall is solved to
+ * carry exactly it, so this is in practice the knob read back off the geometry
+ * rather than a second opinion about it. Read back rather than simply returned,
+ * because reading it back is the one place the two can disagree:
+ * ../../About/scene/Scene draws its grid — and the black plane behind it — on
+ * the flat plane at {@link WALL_Z}, and both stop being the wall the moment any
+ * part of the frame is showing surface that has begun to turn.
+ *
+ * One figure and not two, because both halves of the fade are run off it:
+ * ../scene/Scene brings the tunnel's own grid up over exactly this window as
+ * the About section takes its copy out. Split them and the middle of the
+ * handover is a brightness step, which is the thing being hidden.
+ *
+ * Zero is a real answer and a reachable one, {@link TUNNEL.handoverVh} being
+ * allowed to be zero. There is no window to spend then, only the one frame on
+ * which the two lattices coincide exactly — so the swap happens on that.
+ */
+export function wallHandoverVh() {
+  const path = tunnelPath();
+  const want = Math.max(0, TUNNEL.handoverVh);
+  const s = flatWallEnd(path);
+
+  if (s === Infinity) return want;
+  if (s <= path.travelA) return 0;
+
+  // The ease is only ever asked forwards — see {@link launchEase}, which is
+  // closed form for exactly that reason — so this reads it the same way and
+  // bisects instead. Forty halvings of a monotone function, asked once.
+  let lo = 0;
+  let hi = 1;
+
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (flightDistance(mid) < s) lo = mid;
+    else hi = mid;
+  }
+
+  return Math.min(want, lo * (worksSectionVh() - 100));
 }
