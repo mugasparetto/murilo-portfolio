@@ -16,7 +16,18 @@ import { readFaceSlot } from "./faceSlot";
 import { aboutExitProgress } from "./aboutExit";
 import { publishBackdrop } from "@/app/helpers/backdrop";
 import { useScrollY } from "@/app/hooks/ScrollY";
-import { ABOUT_POSE, poseFrame } from "@/app/components/poses";
+import { ABOUT_EXIT_LIFT, ABOUT_POSE, poseFrame } from "@/app/components/poses";
+import { smoothstep } from "@/slices/Works/scene-core/path";
+import { worksProgress } from "@/slices/Works/scene/worksScroll";
+import {
+  TUNNEL,
+  WALL_Z,
+  wallCell,
+  wallColumnCount,
+  wallColumns,
+  wallRows,
+  worksSectionVh,
+} from "@/slices/Works/scene-core/presets";
 
 type LinePosition = {
   x: number;
@@ -82,6 +93,12 @@ type LinesProps = {
    * {@link GRID_EXIT_OPACITY}, which is the one this is set from.
    */
   exitOpacity: number;
+  /**
+   * Whether this grid is still the one carrying the wall, 1 to 0 — see
+   * {@link HANDOVER_VH}. A uniform object for `exit`'s reason: it is written
+   * every frame off a scroll React never sees.
+   */
+  live: { value: number };
 } & Omit<ThreeElements["instancedMesh"], "args">;
 
 /**
@@ -116,6 +133,7 @@ const LINE_FRAGMENT = /* glsl */ `
   uniform vec2 uStops;
   uniform float uExit;
   uniform float uExitOpacity;
+  uniform float uLive;
 
   varying vec2 vWorld;
 
@@ -142,7 +160,10 @@ const LINE_FRAGMENT = /* glsl */ `
     // uExitOpacity is set to.
     alpha = mix(alpha, uExitOpacity, uExit);
 
-    gl_FragColor = vec4(uColor, alpha);
+    // And then out altogether, once the wall itself is drawing this lattice —
+    // see {@link HANDOVER_VH}. Two copies of one grid is one grid too many, and
+    // the copy that has to go is the one with edges.
+    gl_FragColor = vec4(uColor, alpha * uLive);
   }
 `;
 
@@ -157,6 +178,7 @@ function Lines({
   opacity = [0, 0.05],
   exit,
   exitOpacity,
+  live,
   ...props
 }: LinesProps) {
   const ref = useRef<THREE.InstancedMesh>(null!);
@@ -172,8 +194,9 @@ function Lines({
       uStops: { value: new THREE.Vector2(...(mask.stops ?? [0, 1])) },
       uExit: exit,
       uExitOpacity: { value: exitOpacity },
+      uLive: live,
     }),
-    [color, opacity, mask, exit, exitOpacity],
+    [color, opacity, mask, exit, exitOpacity, live],
   );
 
   const geoArgs: [number, number] =
@@ -204,6 +227,10 @@ function Lines({
         fragmentShader={LINE_FRAGMENT}
         uniforms={uniforms}
         transparent
+        // The wall these are ruled on carries its own lines a tenth of a unit
+        // behind them — see {@link WALL_Z} — and a transparent line that wrote
+        // depth would reject every one of those along its whole length.
+        depthWrite={false}
       />
     </instancedMesh>
   );
@@ -278,11 +305,71 @@ function useUCurvePlane(
   }, [width, height, curveDepth, segments]);
 }
 
-/** depth the backdrop plane sits at */
-const BACKDROP_Z = 2200;
+/**
+ * How far the plane's top edge has dipped by the time it reaches `x`.
+ *
+ * The same cubic {@link useUCurvePlane} cuts the shape with, asked the other
+ * way round: the curve is written in `t` and the grid wants the depth at a
+ * given x. x(t) runs monotonically from one side to the other, so a bisection
+ * inverts it exactly; the y half collapses to `3 * d * t * (1 - t)`, both
+ * control points being the same depth down.
+ */
+function topEdgeDip(x: number, width: number, depth: number) {
+  let lo = 0;
+  let hi = 1;
 
-/** how far in front of it the grid sits, clear of z-fighting */
+  for (let i = 0; i < 24; i++) {
+    const t = (lo + hi) / 2;
+    const u = 1 - t;
+    const at =
+      width *
+      (0.5 * u * u * u + 0.75 * u * u * t - 0.75 * u * t * t - 0.5 * t * t * t);
+
+    if (at > x) lo = t;
+    else hi = t;
+  }
+
+  const t = (lo + hi) / 2;
+  return 3 * depth * t * (1 - t);
+}
+
+/**
+ * How far behind the wall the black plane hangs.
+ *
+ * The depth is not this section's to pick any more: the grid is ruled on the
+ * Works tunnel's opening wall — see {@link WALL_Z}, where the reasoning is —
+ * and the backdrop is what stands behind it. It has to stand *clear* of it,
+ * because two opaque coplanar planes z-fight across the whole screen the moment
+ * the tunnel is drawn. Ten units is invisible at this distance and settles it.
+ */
+const BACKDROP_BEHIND = 10;
+
+/** depth the backdrop plane sits at */
+const BACKDROP_Z = WALL_Z - BACKDROP_BEHIND;
+
+/** how far in front of the wall the grid sits, clear of z-fighting */
 const GRID_OFFSET = 0.1;
+
+/**
+ * How much of the flight's opening the grid takes to hand the wall over, in vh.
+ *
+ * From the frame the flight starts, the tunnel draws this same lattice on this
+ * same plane — so this grid is a second copy of it, and a copy that stops at
+ * the edges of a 2000 unit plane where the wall carries on. Left drawn, that
+ * edge sweeps up the screen as the camera falls, which is a seam in a surface
+ * that is supposed to be continuous. So it goes out over the opening instead.
+ *
+ * Short enough to be gone before the plane's own bottom edge rises into frame:
+ * that edge starts about 180 units below the fold, and the launch opens at
+ * about 5.7 units of fall per vh — see `flightDistance` in
+ * ../../Works/scene-core/presets.
+ */
+const HANDOVER_VH = 25;
+
+/** the backdrop plane's span, and how deep its top edge dips at the centre */
+const PLANE_W = 2000;
+const PLANE_H = 2000;
+const PLANE_CURVE = 60;
 
 /**
  * The grid's alpha at each end of the falloff, `[centre, edges]`.
@@ -303,18 +390,24 @@ const GRID_OPACITY: [number, number] = [0, 0.07];
 const GRID_FADE: [number, number] = [0.65, 1];
 
 /**
- * ⇢ The knob. The flat alpha the grid lands on once the section has fully
- * left, reached over the same screen the lift takes.
+ * The flat alpha the grid lands on once the section has fully left, reached
+ * over the same screen the lift takes.
+ *
+ * It used to be the knob here. It isn't one any more, and it can't be: the grid
+ * does not end when the section does — the Works tunnel's wall carries the same
+ * lattice on the same plane, see {@link WALL_Z} — so this is that wall's own
+ * level, read off it. Set the two apart and the background changes brightness
+ * on the frame the flight takes it over, which is the one thing the whole
+ * arrangement exists to avoid. The knob moved with it: it is TUNNEL.level.
  *
  * One number and not a pair, because the falloff is the other thing the exit is
  * spending: both ends of {@link GRID_OPACITY} converge here as it runs, so the
  * grid goes out the top of the screen even, with the vignette gone. Which end
- * of GRID_OPACITY you set this against is the whole character of the move —
- * above its edge figure (0.07) the grid comes up out of the vignette as it
- * leaves, at it the mask simply dissolves at the strength it already had, and
- * below it the whole thing goes quiet. Zero fades it out altogether.
+ * of GRID_OPACITY it lands against is still the character of the move — above
+ * the edge figure (0.07) the grid comes up out of the vignette as it leaves, at
+ * it the mask simply dissolves at the strength it already had.
  */
-const GRID_EXIT_OPACITY = 0.18;
+const GRID_EXIT_OPACITY = TUNNEL.level;
 
 /**
  * The plane the face is authored on, as a plane the pointer maths can hit.
@@ -324,9 +417,13 @@ const GRID_EXIT_OPACITY = 0.18;
 const facePlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -FACE_HOME.z);
 
 /**
- * The depth the section's exit is measured at: the face's own, so that the one
- * screen the scene rises as the section leaves is one screen *for the head* —
- * which sends it up the page at exactly the rate the column beside it goes.
+ * How far the whole scene rises as the section leaves.
+ *
+ * One screen at the face's depth, so that what the exit spends is one screen
+ * *for the head* — which sends it up the page at exactly the rate the column
+ * beside it goes. The figure itself is worked out in {@link ABOUT_EXIT_LIFT},
+ * which is shared: the Works section starts its flight at the speed this ends
+ * on, because the two sections are moving the same wall.
  *
  * The whole group moves rather than the camera, and the two are the same
  * picture: the camera holds ABOUT_POSE looking straight down -Z, so translating
@@ -343,7 +440,7 @@ const facePlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -FACE_HOME.z);
  * scrolling away does not — and it is why the head, not the grid, is the piece
  * the figure is taken at. It is the one the column is built around.
  */
-const EXIT_DEPTH = FACE_HOME.z;
+const exitLift = ABOUT_EXIT_LIFT;
 
 /**
  * How much of its authored size the face keeps between `lg` and `xl`, where
@@ -406,6 +503,7 @@ export default function Scene() {
   const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
   const coarsePointer = useCoarsePointer();
   const root = useRef<THREE.Group | null>(null);
+  const grid = useRef<THREE.Group | null>(null);
   const head = useRef<THREE.Group | null>(null);
   // the page position Lenis has eased to this frame — the same one the layer
   // the head is being fitted into is placed by
@@ -418,46 +516,25 @@ export default function Scene() {
    */
   const gridExit = useMemo(() => ({ value: 0 }), []);
 
+  /**
+   * And whether it is still the grid being looked at, or the wall is — see
+   * {@link HANDOVER_VH}. Written in the same place and for the same reason.
+   */
+  const gridLive = useMemo(() => ({ value: 1 }), []);
+
+  /** the section below's scroll, in vh, so its progress can be read as one */
+  const flightVh = useMemo(() => Math.max(1, worksSectionVh() - 100), []);
+
   const [grabbing, setGrabbing] = useState<null | "head" | "eyes" | "mouth">(
     null,
   );
   const timeRef = useRef(0);
   const shouldFloat = useRef(true);
 
-  const lines = [
-    { x: -690, y: -28 },
-    { x: -495, y: -36 },
-    { x: -300, y: -42 },
-    { x: -100, y: -45 },
-    { x: 100, y: -45 },
-    { x: 300, y: -42 },
-    { x: 495, y: -36 },
-    { x: 690, y: -28 },
-  ];
-
-  // Every 180 down the plane, and it carries on past the bottom of the frame
-  // on purpose: the section rises a screen as it leaves (see {@link EXIT_DEPTH})
-  // and the grid rises with it, so the rows below the fold are the ones that
-  // come up into the empty band the lift would otherwise open at the foot of
-  // the screen. The last of them sits on the plane's own bottom edge.
-  const hLines = [
-    { x: 0, y: 800 },
-    { x: 0, y: 620 },
-    { x: 0, y: 440 },
-    { x: 0, y: 260 },
-    { x: 0, y: 80 },
-    { x: 0, y: -100 },
-    { x: 0, y: -280 },
-    { x: 0, y: -460 },
-    { x: 0, y: -640 },
-    { x: 0, y: -820 },
-    { x: 0, y: -1000 },
-  ];
-
   const { geometry: planeGeo, outline: planeOutline } = useUCurvePlane(
-    2000,
-    2000,
-    60, // 👈 increase/decrease this for a deeper/shallower U
+    PLANE_W,
+    PLANE_H,
+    PLANE_CURVE, // 👈 increase/decrease this for a deeper/shallower U
     96, // 👈 smoothness
   );
 
@@ -465,6 +542,51 @@ export default function Scene() {
     () => [0, !up.md ? -1205 : -1005, BACKDROP_Z],
     [up.md],
   );
+
+  /**
+   * How many columns the wall is ruled into: the tunnel's own count, because
+   * this grid is that wall. A coarse pointer gets fewer of them, and that is
+   * the one thing about the lattice that isn't fixed.
+   */
+  const columns = wallColumnCount(coarsePointer);
+
+  /**
+   * The verticals.
+   *
+   * Their x is the wall's rather than a table of this section's, so what the
+   * flight opens on is the grid already on screen instead of a second one laid
+   * over it — see {@link WALL_Z}. Where each line *hangs from* is still this
+   * section's: the tops are set on the U the plane is cut with, so the grid
+   * ends along that curve rather than straight across it.
+   */
+  const lines = useMemo(
+    () =>
+      wallColumns(columns, PLANE_W / 2).map((x) => ({
+        x,
+        y: planePos[1] - topEdgeDip(x, PLANE_W, PLANE_CURVE),
+      })),
+    [columns, planePos],
+  );
+
+  /**
+   * And the rows, which are the wall's rings. In world y, not against the
+   * plane: the plane drops at `md` and the tunnel does not, and a grid that
+   * went with it would be off the rings by that much.
+   *
+   * One row further down than the plane's own bottom edge, because the section
+   * rises a screen as it leaves (see {@link exitLift}) and the grid rises
+   * with it — that last row is the one that comes up into the empty band the
+   * lift would otherwise open at the foot of the screen.
+   */
+  const hLines = useMemo(() => {
+    const cell = wallCell(columns);
+
+    return wallRows(
+      columns,
+      planePos[1] - PLANE_H / 2 - cell,
+      planePos[1] + PLANE_H / 2,
+    ).map((y) => ({ x: 0, y }));
+  }, [columns, planePos]);
 
   const size = useThree((s) => s.size);
   const fov = useThree((s) => (s.camera as THREE.PerspectiveCamera).fov);
@@ -476,16 +598,23 @@ export default function Scene() {
   );
 
   /**
-   * One screen at the face's depth, in world units — see {@link EXIT_DEPTH}.
-   * The frustum of the pose rather than of the live camera, for the reason
-   * {@link poseFrame} exists: the parallax rig sways the real one about, and a
-   * lift measured off a swaying camera would breathe. Resize work only.
+   * How far the *grid* rises over that same screen: the lift, snapped to a
+   * whole number of cells.
+   *
+   * Snapped because the lattice has to still be the wall's on the frame the
+   * flight takes it over. The grid is the only part of the scene the tunnel
+   * also draws, and a rise of any old distance leaves its rows a fraction of a
+   * cell off the rings — and a grid a fraction of a cell out is not one grid
+   * slightly wrong, it is two grids. What the rounding costs is the difference
+   * between the lift and the nearest whole number of cells: 33 world units at
+   * the full column count, 25 at the coarse one, both around a thirtieth of a
+   * screen at this depth. Nobody can read that as the background having risen
+   * the wrong distance. Two grids they can read.
    */
-  const exitLift = useMemo(
-    () =>
-      poseFrame(ABOUT_POSE, fov, size.width / size.height, EXIT_DEPTH).height,
-    [fov, size.width, size.height],
-  );
+  const gridLift = useMemo(() => {
+    const cell = wallCell(columns);
+    return Math.round(exitLift / cell) * cell;
+  }, [columns]);
 
   /**
    * The falloff the grid is drawn through: an ellipse inscribed in the
@@ -505,7 +634,7 @@ export default function Scene() {
       ABOUT_POSE,
       fov,
       size.width / size.height,
-      BACKDROP_Z + GRID_OFFSET,
+      WALL_Z + GRID_OFFSET,
     );
 
     return {
@@ -540,7 +669,7 @@ export default function Scene() {
     //
     // The last screen of the section, where <AboutContent /> comes unpinned all
     // at once and rides the wheel off the top of the page — see ./aboutExit,
-    // which is where the moment is decided, and {@link EXIT_DEPTH} for how far
+    // which is where the moment is decided, and {@link exitLift} for how far
     // this goes in that time. Set before the early return below, so the scene
     // still leaves on a frame where the head has not mounted.
     //
@@ -551,6 +680,15 @@ export default function Scene() {
     const exit = up.lg ? aboutExitProgress(scrollY.current) : 0;
 
     if (root.current) root.current.position.y = exit * exitLift;
+    // and the grid rides the rounding back off the group — see {@link gridLift}
+    if (grid.current) grid.current.position.y = exit * (gridLift - exitLift);
+
+    // Handed over to the wall as the flight opens — see {@link HANDOVER_VH}.
+    // The Works section's own progress, read the way that section reads it, so
+    // the two cannot disagree about when the flight has started.
+    const flown = worksProgress(scrollY.current);
+    gridLive.value =
+      flown <= 0 ? 1 : 1 - smoothstep((flown * flightVh) / HANDOVER_VH);
 
     // The grid leaves on the same figure, in both senses of leaving: its
     // vignette flattens out and the lines come up to {@link GRID_EXIT_OPACITY}
@@ -696,7 +834,7 @@ export default function Scene() {
   }, []);
 
   return (
-    /* The box the section leaves in — see {@link EXIT_DEPTH}. Everything the
+    /* The box the section leaves in — see {@link exitLift}. Everything the
        About scene is made of hangs off it, the backdrop included: the plane is
        what stands behind the grid, so leaving it where it was would be a lift
        that slid its own bottom edge up into frame. */
@@ -706,24 +844,30 @@ export default function Scene() {
         <meshBasicMaterial color="black" side={THREE.DoubleSide} />
       </mesh>
 
-      <group position={planePos}>
+      {/* On the wall, not on the plane — see {@link WALL_Z}. The lines carry
+          their own world y so the rows stay on the tunnel's rings; the only
+          thing the group is for is the depth, and the rounding the exit rides
+          off the rest of the scene. */}
+      <group ref={grid} position-z={WALL_Z}>
         <Lines
           lines={lines}
-          span={2000}
+          span={PLANE_H}
           mask={gridMask}
           opacity={GRID_OPACITY}
           exit={gridExit}
           exitOpacity={GRID_EXIT_OPACITY}
+          live={gridLive}
           thickness={1.5}
           z={GRID_OFFSET}
         />
         <Lines
           lines={hLines}
-          span={2000}
+          span={PLANE_W}
           mask={gridMask}
           opacity={GRID_OPACITY}
           exit={gridExit}
           exitOpacity={GRID_EXIT_OPACITY}
+          live={gridLive}
           orientation="horizontal"
           thickness={1.5}
           z={GRID_OFFSET}

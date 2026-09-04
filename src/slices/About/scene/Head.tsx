@@ -1,7 +1,11 @@
 import { RefObject, useMemo, useCallback, useRef } from "react";
 import * as THREE from "three";
+
 import { useFrame } from "@react-three/fiber";
 import { useTexture, Line } from "@react-three/drei";
+
+import { ABOUT_FACE_Z } from "@/app/components/poses";
+
 import MetaBalls, {
   FieldMask,
   MetaBallsHandle,
@@ -514,7 +518,7 @@ const MOUTH_POLYGON: UV[] = [
  * group to land on the slot's middle, and what a scale of 1 is worth in height.
  */
 export const FACE_HEIGHT = 500;
-export const FACE_HOME = new THREE.Vector3(0, -800, 2600);
+export const FACE_HOME = new THREE.Vector3(0, -800, ABOUT_FACE_Z);
 
 /** Where the assembled face sits. */
 const HOME = FACE_HOME;

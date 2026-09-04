@@ -9,6 +9,7 @@ import FrameCap from "./FrameCap";
 
 import { ScrollYProvider } from "@/app/hooks/ScrollY";
 import { SceneRegistryProvider } from "@/app/hooks/SceneRegistry";
+import { FOV } from "./poses";
 
 export default function ClientProvider({
   children,
@@ -42,7 +43,7 @@ export default function ClientProvider({
           eventSource={eventSourceRef}
           eventPrefix="client"
           camera={{
-            fov: 40,
+            fov: FOV,
             near: 50,
             far: 100000,
             position: [0, 200, 3380],

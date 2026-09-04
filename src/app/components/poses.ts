@@ -49,6 +49,41 @@ export const ABOUT_POSE: Pose = {
 };
 
 /**
+ * The camera's vertical field of view, in degrees.
+ *
+ * <ClientProvider /> sets it on the canvas, and it lives here because it is
+ * half of every measurement of the *screen* a mesh makes — see
+ * {@link poseFrame}, and {@link ABOUT_EXIT_LIFT}, which is one such measurement
+ * taken at a fixed depth and so a plain constant.
+ */
+export const FOV = 40;
+
+/**
+ * The depth the About section's face is authored at — <Head />'s `FACE_HOME`,
+ * which takes it from here.
+ *
+ * It is also the depth that section's exit is measured at: the lift is one
+ * screen *for the head*, which is what sends the head up the page at the rate
+ * the column beside it goes.
+ */
+export const ABOUT_FACE_Z = 2600;
+
+/**
+ * How far the About scene rises as the section leaves, in world units.
+ *
+ * One screen at the face's depth, and a constant rather than a measurement: a
+ * frustum's height is a function of the fov and the distance only, so this is
+ * the same number at every shape of window.
+ *
+ * The Works section wants it as much as the About section does. The wall the
+ * two share is one surface, so the flight has to *start* at the speed this exit
+ * ends on or the background changes pace under the handover — see
+ * `flightDistance` in ../../slices/Works/scene-core/presets.
+ */
+export const ABOUT_EXIT_LIFT =
+  2 * Math.tan((FOV * Math.PI) / 360) * (ABOUT_POSE.position[2] - ABOUT_FACE_Z);
+
+/**
  * Where the viewport edges fall in world coordinates, for something sitting at
  * depth `z` and viewed from `pose`.
  *

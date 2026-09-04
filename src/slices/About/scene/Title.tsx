@@ -45,8 +45,10 @@ import { blockFill } from "@/slices/Hero/scene/Name";
  */
 
 /**
- * Where the block sits: clear of the backdrop plane and its grid at z = 2200,
- * and well behind the face at z = 2600 so every piece passes in front of it.
+ * Where the block sits: clear of the wall and the grid ruled on it at z = 2200
+ * — see WALL_Z in ../../Works/scene-core/presets, which is what these ten units
+ * of clearance are really against — and well behind the face at z = 2600 so
+ * every piece passes in front of it.
  */
 const Z = 2210;
 
