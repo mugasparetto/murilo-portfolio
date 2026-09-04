@@ -18,6 +18,7 @@ import { useGSAP } from "@gsap/react";
 
 import SolidIcon, { solidForRow } from "./SolidIcon";
 import { measureFaceSlot, publishFaceSlot } from "./faceSlot";
+import { measureAboutExit, publishAboutExit } from "./aboutExit";
 import {
   aboutOnScreen,
   aboutOnScreenOnServer,
@@ -89,12 +90,16 @@ type Props = {
  * on a clock: the copy in the left column arrives on a range per block (see
  * {@link revealRangeVh}), the pile stacks, and the stats follow it.
  *
- * Each card is `position: sticky` at its own slot, with a
- * beat's worth of flow under it, so the whole of the *stacking* is three CSS
- * declarations and the browser — see {@link SkillCard}, and {@link cardFlowVh}
- * for the arithmetic. Only the fade on top of it is script, and only because
- * a sticky box is the one subject a `view()` timeline cannot measure honestly
- * — see {@link useCardArrival}.
+ * Each card is `position: sticky` at its own slot, in a box of its own that
+ * holds it a beat further down the column than the card before it, so the whole
+ * of the *stacking* is a handful of CSS declarations and the browser — see
+ * {@link SkillCard}, and {@link cardFlowVh} for the arithmetic. Only the fade on
+ * top of it is script, and only because a sticky box is the one subject a
+ * `view()` timeline cannot measure honestly — see {@link useCardArrival}.
+ *
+ * And the whole of it leaves together: every pinned block in the section is
+ * given the run-out that makes it come unpinned on the same pixel as the rest.
+ * See {@link runOut}.
  *
  * The stats are scrolled in the same way, and off the same scroll: their ranges
  * open a beat after the last card locks, so what brings them in is the pile
@@ -230,9 +235,9 @@ const CARD_STEP_VH = 6.1;
  * and the step cancels straight out of it — the same cancellation
  * {@link cardDwellVh} is built on. Every offset in {@link cardRangeVh} and the
  * whole of {@link sectionVh} are untouched, and stay the plain `vh` numbers
- * they are. What does have to follow is the gap under a card, which is flow
- * spacing *less the card's own height* and so has to be written as that
- * subtraction rather than as its result — see {@link cardGap}.
+ * they are. What does have to follow is the card's flow offset, which is the
+ * other half of that subtraction and so has to be written in the clamped step
+ * too — see {@link cardFlow}.
  *
  * The `vh` functions themselves are left alone. {@link stackFitsVh} and
  * {@link cardSpawnFitsVh} still read them, and both are upper bounds: a clamp
@@ -243,6 +248,54 @@ const CARD_STEP = `min(${CARD_STEP_VH}vh, max(3.8vw, 2.75rem))`;
 
 /** Where the stats pin: 698 of 947, with the design's 135 of height under it. */
 const STATS_TOP_VH = 73.7;
+
+/** And that 135, which the boxes are actually set to — see {@link runOut}. */
+const STATS_HEIGHT_VH = 14.3;
+
+/* --------------------------------------------------------------------------
+   The exit
+
+   Every block in this section is pinned, and a pinned block comes unpinned
+   when its containing block runs out from under it: at
+   `containing block bottom - top - height`, which is a different scroll
+   position for each of them. Left to themselves that is what the foot of the
+   section looked like. The copy column let go first, the stats twelve
+   viewport-heights after it and the cards one at a time after that — so the
+   stats climbed the screen while the pile stood still, and arrived in it.
+
+   None of that is an animation gone wrong. It is three boxes each correctly
+   holding on for exactly as long as it has room to, and the fix is to give
+   them all the same amount of room left over. Solve
+
+       containing block bottom - top - height = section height - 100vh
+
+   for a containing block that ends `run-out` above the section's foot and the
+   top and the height cancel:
+
+       run-out = 100vh - top - height
+
+   One rule, no per-block arithmetic, and nothing to keep in step when a card
+   is made shorter or the stats are moved down. After it every box in the
+   section comes unpinned on the same pixel — the moment the section's foot
+   reaches the fold — and the whole composition leaves the screen together, at
+   the rate of the wheel, which is what the still half (`top: 0`, a screen
+   tall, so a run-out of zero) was already doing on its own.
+   -------------------------------------------------------------------------- */
+
+const runOut = (top: string, height: string) =>
+  `calc(100vh - ${top} - ${height})`;
+
+/** The stats' share of it — 12vh, and derived so it follows the two above. */
+const STATS_RUN_OUT = runOut(STATS_TOP_VH + "vh", STATS_HEIGHT_VH + "vh");
+
+/**
+ * A card's, which is the same rule read off the card's own custom properties
+ * rather than off constants: {@link CARD_HEIGHT} and {@link cardSlot} are both
+ * clamped, so the figures this needs are only known to CSS. Every card carries
+ * the identical declaration and every card still lets go on the same pixel —
+ * that is the whole of what the cancellation above buys.
+ */
+const CARD_RUN_OUT = runOut("var(--slot)", "var(--card-h)");
 
 /**
  * How much scroll the copy gets to itself after the section lands, before the
@@ -622,6 +675,22 @@ const cardSpawnFitsVh = (count: number) => cardSpawnVh(Math.max(1, count) - 1);
 const cardFlowVh = (i: number) =>
   vh(80 + INTRO_HOLD_VH + i * (BEAT_VH + CARD_STEP_VH));
 
+/**
+ * The same, as the CSS length the markup gets — the pair {@link cardSlot} makes
+ * with {@link cardSlotVh}, and made for the reason that one is: the step is
+ * {@link CARD_STEP} and so is only nominally 6.1 of anything.
+ *
+ * It has to be the *clamped* step here, and that is the whole point of writing
+ * it out. A card locks at `flow - slot`, so if the flow spacing were the plain
+ * `vh` figure while the slot was clamped, the step would stop cancelling and
+ * every card below the first would land late by however much the clamp took —
+ * see the note in {@link CARD_STEP} on what a clamped step is allowed to touch.
+ * Written this way the cancellation is exact whatever the viewport is doing,
+ * and {@link cardLockVh} keeps telling the truth.
+ */
+const cardFlow = (i: number) =>
+  `calc(${vh(80 + INTRO_HOLD_VH)}vh + ${i} * (${vh(BEAT_VH)}vh + ${CARD_STEP}))`;
+
 /** The scroll, measured from the section's top edge, at which card `i` pins. */
 const cardLockVh = (i: number) => vh(cardFlowVh(i) - cardSlotVh(i));
 
@@ -647,50 +716,29 @@ export const sectionVh = (count: number, stats: number) =>
   vh(cardLockVh(Math.max(1, count) - 1) + 100 + restVh(stats));
 
 /**
- * What the card list's height has to satisfy, as an assertion rather than a
- * formula — see the `lg:h-full` in the markup.
+ * What the finished pile's height has to satisfy, as an assertion rather than
+ * a formula.
  *
- * A sticky box is clamped to its containing block. Give the list no more room
- * than its cards happen to occupy and the pinned ones have nowhere to be held,
- * so they are dragged up together as the list's bottom edge rises past them:
- * the pile appears to stop stacking and start shoving, one card every
- * {@link CARD_STEP_VH} of scroll, bottom card first.
+ * Every card has a containing block of its own now, each ending
+ * {@link CARD_RUN_OUT} above the section's foot — so the failure this used to
+ * guard against is gone with the shared list edge that caused it: no card can
+ * be dragged off its slot by a box rising past it when no two of them share a
+ * box. What is left is the design question that was underneath it.
  *
- * The list is given the column's whole height instead of a computed run-out.
- * That was worth doing for the slack alone — the computed figure was an exact
- * fit, so the bottom card reached its clamp at the same scroll as the page
- * reached its end, and anything that made the page a shade taller than
- * expected walked the pile off one card at a time. But it is also the better
- * rule: at full height a card's room runs out only if
+ * The run-out is `100vh - slot - height`, so a card whose slot plus height
+ * comes to more than the screen asks for a *negative* one — a containing block
+ * ending below the section's own foot — and that card is then the one still
+ * pinned after everything else has let go, which is the staggered exit this
+ * arrangement exists to be rid of.
  *
  *     cardSlotVh(count - 1) + CARD_HEIGHT_VH > 100
  *
- * which says the finished pile is taller than the screen — a thing the design
- * has to answer for long before the arithmetic does. Four cards sit at 63.3vh
- * with 36.7vh to spare; it breaks at seven, which is also where the last card
- * would be growing through the stats.
+ * says the same thing the plain way: the finished pile is taller than the
+ * screen. Four cards sit at 63.3vh with 36.7vh to spare; it breaks at seven,
+ * which is also where the last card would be growing through the stats.
  */
 const stackFitsVh = (count: number) =>
   vh(cardSlotVh(Math.max(1, count) - 1) + CARD_HEIGHT_VH);
-
-/**
- * The gap under card `i`, which is what sticky reads to space the arrivals.
- *
- * Uniform, and none under the last — holding the finished pile is the list's
- * own height, not trailing space inside it. See {@link stackFitsVh}.
- *
- * `cardFlowVh(i + 1) - cardFlowVh(i) - CARD_HEIGHT_VH`, written as the
- * subtraction rather than as the 11.1 it comes to, and it has to be: flow
- * spacing is what the lock timing is made of and is fixed at `BEAT + STEP`, so
- * a card given less height than the nominal {@link CARD_HEIGHT_VH} has to be
- * given exactly that much more gap, or every card below it flows early and
- * locks late. With the height and the step clamped the same way, the sum is
- * invariant and {@link cardLockVh} keeps telling the truth.
- */
-const cardGap = (i: number, count: number) =>
-  i === count - 1
-    ? "0px"
-    : `calc(${vh(BEAT_VH)}vh + ${CARD_STEP} - ${CARD_HEIGHT})`;
 
 /* --------------------------------------------------------------------------
    Below `lg`
@@ -2177,17 +2225,35 @@ function StarIcon({ className }: { className?: string }) {
  *
  * — Where the stacking lives ───────────────────────────────────────────────
  *
- * In three CSS declarations, and nowhere else. The card is `position: sticky`
- * at `cardSlotVh(i)`, a header's height below the card before it, and it is
- * given `cardGapVh(i)` of clear space underneath so the next one arrives a beat
- * later. The browser does the rest: each card scrolls up the column until it
- * reaches its own `top`, then holds while the one behind it climbs over
- * everything but its header.
+ * In a handful of CSS declarations, and nowhere else. The card is
+ * `position: sticky` at `cardSlotVh(i)`, a header's height below the card
+ * before it, inside a box of its own that starts at the top of the section and
+ * holds it {@link cardFlow} down. The browser does the rest: each card scrolls
+ * up the column until it reaches its own `top`, then holds while the one behind
+ * it climbs over everything but its header.
  *
  * That last part is the whole illusion, and it is an equality rather than a
  * trick — `CARD_STEP_VH` is both the offset between two cards and the height
  * of the header row below. A covered card shows its header and nothing else
  * because the card on top of it starts exactly where its own body does.
+ *
+ * — Why a card is two boxes ────────────────────────────────────────────────
+ *
+ * The `<li>` is not the card. It is the room the card is pinned in, and it is
+ * there because a sticky box is held by its containing block: *when a card lets
+ * go again* is a fact about the box around it rather than about the card. Four
+ * cards sharing one box is what made them let go one at a time at the foot of
+ * the section, bottom card first, while the stats climbed the screen through
+ * them. A box each, every one of them ending {@link CARD_RUN_OUT} above the
+ * section's foot, is what makes the pile leave in one piece and with everything
+ * else — see the exit note by {@link runOut}, which is the rule this is an
+ * instance of.
+ *
+ * It costs nothing else. The `<li>`s are out of flow from `lg` up, so the list
+ * around them is still the empty full-height box the stats' cue is measured
+ * against, and a card's place in the column is now its own `--flow` padding
+ * rather than the sum of every height and gap above it — one fewer thing a
+ * clamped card height could drift.
  *
  * There is no first-card special case. Card 0 starts a screen and a hold below
  * the section's top edge like every other card starts a beat below the one
@@ -2197,7 +2263,8 @@ function StarIcon({ className }: { className?: string }) {
  * used to need to arrive on go away.
  *
  * `z-index` is the stacking order itself: later cards paint over earlier ones,
- * which is what turns four overlapping boxes into a pile rather than a mess.
+ * which is what turns four overlapping boxes into a pile rather than a mess. It
+ * sits on the `<li>`, that being the box that is positioned.
  *
  * Below `lg` none of this applies — every `lg:` prefix above says so — and the
  * card is an ordinary block in the column, open, at its natural height. There
@@ -2213,20 +2280,15 @@ function StarIcon({ className }: { className?: string }) {
  */
 function SkillCard({
   index,
-  count,
   skill,
   description,
 }: {
   index: number;
-  count: number;
   skill: KeyTextField;
   description: KeyTextField;
 }) {
   return (
     <li
-      // the hook {@link useCardArrival} collects the pile by, in document
-      // order, which is pile order
-      data-about-card=""
       style={
         {
           // All three clamped rather than plain `vh` — see {@link CARD_HEIGHT}
@@ -2235,88 +2297,99 @@ function SkillCard({
           "--slot": cardSlot(index),
           "--card-h": CARD_HEIGHT,
           "--header-h": CARD_STEP,
-          // a beat's worth of runway for every card but the last, whose gap is
-          // the run-out that keeps the finished pile pinned — see
-          // {@link cardGap}, which carries the card's clamped height back out
-          // so the flow spacing the lock is measured against stays put
-          "--gap": cardGap(index, count),
-          // the scroll this card's arrival plays over, for the timeline in
-          // globals.css — inert until <AboutContent /> arms it, and ignored
-          // entirely by the rAF fallback
-          ...cardRangeVh(index),
+          // Where the card sits in the column and how much room is left under
+          // it: the first says when it arrives, the second when it leaves. Both
+          // are `lg:` only — see the classes below.
+          "--flow": cardFlow(index),
+          "--run-out": CARD_RUN_OUT,
           zIndex: index,
         } as CSSProperties
       }
-      className={
-        "pointer-events-auto relative mb-3 border-2 rounded-sm lg:rounded-none lg:border-0 lg:border-y-2 border-white " +
-        PLATE +
-        " lg:sticky lg:top-(--slot) lg:mb-(--gap) lg:h-(--card-h)"
-      }
+      className="mb-3 lg:absolute lg:inset-x-0 lg:top-0 lg:bottom-(--run-out) lg:mb-0 lg:pt-(--flow)"
     >
-      {/* The header row. Its height *is* {@link CARD_STEP_VH} from `lg` up --
-          that equality is what a collapsed card in the pile shows. */}
-      <div className="flex pt-6 pb-14 items-center gap-3 px-[5%] lg:pt-0 lg:pb-0 lg:h-(--header-h) lg:gap-2">
-        <span
-          className={
-            CAPS +
-            " " +
-            MUTED +
-            " shrink-0 tabular-nums text-[0.6875rem] lg:text-xs xl:text-[0.8125rem] 2xl:text-sm"
-          }
-        >
-          {/* "01/", "02/" ... the design numbers them, and the number is the one
-              part of a collapsed card that says where in the pile it is */}
-          {String(index + 1).padStart(2, "0")}/
-        </span>
-        <span
-          className={
-            "font-display " +
-            CAPS +
-            " " +
-            LEADING +
-            " truncate font-extrabold text-white text-lg 2xl:text-xl"
-          }
-        >
-          {skill}
-        </span>
+      <div
+        // the hook {@link useCardArrival} collects the pile by, in document
+        // order, which is pile order
+        data-about-card=""
+        style={
+          {
+            // the scroll this card's arrival plays over, for the timeline in
+            // globals.css — inert until <AboutContent /> arms it, and ignored
+            // entirely by the rAF fallback
+            ...cardRangeVh(index),
+          } as CSSProperties
+        }
+        className={
+          "pointer-events-auto relative border-2 rounded-sm lg:rounded-none lg:border-0 lg:border-y-2 border-white " +
+          PLATE +
+          " lg:sticky lg:top-(--slot) lg:h-(--card-h)"
+        }
+      >
+        {/* The header row. Its height *is* {@link CARD_STEP_VH} from `lg` up --
+            that equality is what a collapsed card in the pile shows. */}
+        <div className="flex pt-6 pb-14 items-center gap-3 px-[5%] lg:pt-0 lg:pb-0 lg:h-(--header-h) lg:gap-2">
+          <span
+            className={
+              CAPS +
+              " " +
+              MUTED +
+              " shrink-0 tabular-nums text-[0.6875rem] lg:text-xs xl:text-[0.8125rem] 2xl:text-sm"
+            }
+          >
+            {/* "01/", "02/" ... the design numbers them, and the number is the one
+                part of a collapsed card that says where in the pile it is */}
+            {String(index + 1).padStart(2, "0")}/
+          </span>
+          <span
+            className={
+              "font-display " +
+              CAPS +
+              " " +
+              LEADING +
+              " truncate font-extrabold text-white text-lg 2xl:text-xl"
+            }
+          >
+            {skill}
+          </span>
+        </div>
+
+        {description && (
+          <p
+            className={
+              CAPS +
+              " " +
+              MUTED +
+              " " +
+              LEADING +
+              " px-[5%] pb-6 tracking-normal md:pr-[25%] lg:absolute lg:bottom-[14%] lg:left-[5%] lg:w-[67%] xl:w-[62%] lg:p-0 text-sm 2xl:text-sm short:w-[72%]"
+            }
+          >
+            {description}
+          </p>
+        )}
+
+        {/* The sky's solids, a different one on each card and each turning at its
+            own rate — see <SolidIcon />. It replaces the design's placed bitmap,
+            which is a reference crop and already soft at this size.
+
+            Square, so its height decides its width — and the width is the half
+            that has to be answered for, because the blurb is beside it and not
+            under it. 86% of the card is 33% of the column on the design frame
+            and two thirds of it on a portrait tablet, so the height carries the
+            same figure a second time as a ceiling in `vw`: 0.86 * 20vh at
+            1519:947. The clamp on {@link CARD_HEIGHT} shortens the card; this is
+            what keeps the solid from simply filling the shorter card instead.
+
+            `short:` is left as the plain percentage, and overrides this outright
+            — a card that is already at its `vh` height there (see
+            {@link CARD_HEIGHT}) wants the shorter solid the variant was added
+            for, not a second clamp on top of it. */}
+        <SolidIcon
+          kind={solidForRow(index)}
+          seed={index}
+          className="pointer-events-none absolute right-[4%] bottom-4 size-16 text-white hidden md:block md:aspect-square md:w-auto md:h-[calc(0.6*var(--card-h))] lg:top-1/2 lg:bottom-auto lg:aspect-square lg:h-[min(calc(0.86*var(--card-h)),8.8vw)] lg:w-auto lg:-translate-y-1/2 short:h-[50%] short:top-[60%]"
+        />
       </div>
-
-      {description && (
-        <p
-          className={
-            CAPS +
-            " " +
-            MUTED +
-            " " +
-            LEADING +
-            " px-[5%] pb-6 tracking-normal md:pr-[25%] lg:absolute lg:bottom-[14%] lg:left-[5%] lg:w-[67%] xl:w-[62%] lg:p-0 text-sm 2xl:text-sm short:w-[72%]"
-          }
-        >
-          {description}
-        </p>
-      )}
-
-      {/* The sky's solids, a different one on each card and each turning at its
-          own rate — see <SolidIcon />. It replaces the design's placed bitmap,
-          which is a reference crop and already soft at this size.
-
-          Square, so its height decides its width — and the width is the half
-          that has to be answered for, because the blurb is beside it and not
-          under it. 86% of the card is 33% of the column on the design frame
-          and two thirds of it on a portrait tablet, so the height carries the
-          same figure a second time as a ceiling in `vw`: 0.86 * 20vh at
-          1519:947. The clamp on {@link CARD_HEIGHT} shortens the card; this is
-          what keeps the solid from simply filling the shorter card instead.
-
-          `short:` is left as the plain percentage, and overrides this outright
-          — a card that is already at its `vh` height there (see
-          {@link CARD_HEIGHT}) wants the shorter solid the variant was added
-          for, not a second clamp on top of it. */}
-      <SolidIcon
-        kind={solidForRow(index)}
-        seed={index}
-        className="pointer-events-none absolute right-[4%] bottom-4 size-16 text-white hidden md:block md:aspect-square md:w-auto md:h-[calc(0.6*var(--card-h))] lg:top-1/2 lg:bottom-auto lg:aspect-square lg:h-[min(calc(0.86*var(--card-h)),8.8vw)] lg:w-auto lg:-translate-y-1/2 short:h-[50%] short:top-[60%]"
-      />
     </li>
   );
 }
@@ -2364,13 +2437,21 @@ export default function AboutContent({
   useCardArrival(sectionRef, stackRef, skills.length);
 
   /**
-   * Re-measure the face's box whenever the page could have reflowed.
+   * Re-measure the two page positions <Scene /> is placed from whenever the
+   * page could have reflowed: the face's box in the middle of the mobile
+   * column, and the section's own foot.
    *
-   * The box is ordinary page content now, so its document position only moves
-   * when something actually re-lays-out: a resize, a rewrap, the display face
-   * swapping in after first paint, an edit in Prismic. Watching the section
-   * catches all of them. Nothing here runs on scroll -- see ./faceSlot for why
-   * that is the whole point of the arrangement.
+   * Both are ordinary page content, so their document positions only move when
+   * something actually re-lays-out: a resize, a rewrap, the display face
+   * swapping in after first paint, an edit in Prismic. Nothing here runs on
+   * scroll — see ./faceSlot for why that is the whole point of the
+   * arrangement, and ./aboutExit, which is the same bargain for the foot.
+   *
+   * Two subjects, because they can move without each other. The section catches
+   * anything that changes its own height or the layout inside it; the document
+   * catches a rewrap *above* About, which moves the foot down the page without
+   * resizing anything here — the same pair {@link usePileTimeline} watches, and
+   * for the same reason.
    *
    * Coalesced to one measurement a frame. On iOS the address bar collapses and
    * expands as the page is scrolled, and every step of that animation fires a
@@ -2382,24 +2463,29 @@ export default function AboutContent({
     if (!el) return;
 
     let pending = 0;
-    const schedule = () => {
-      if (pending) return;
-      pending = requestAnimationFrame(() => {
-        pending = 0;
-        measureFaceSlot();
-      });
+    const measure = () => {
+      pending = 0;
+      measureFaceSlot();
+      measureAboutExit();
     };
 
-    measureFaceSlot();
+    const schedule = () => {
+      if (!pending) pending = requestAnimationFrame(measure);
+    };
+
+    publishAboutExit(el);
+    measure();
 
     const observer = new ResizeObserver(schedule);
     observer.observe(el);
+    observer.observe(document.documentElement);
     window.addEventListener("resize", schedule, { passive: true });
 
     return () => {
       cancelAnimationFrame(pending);
       observer.disconnect();
       window.removeEventListener("resize", schedule);
+      publishAboutExit(null);
     };
   }, [sectionRef]);
 
@@ -2407,9 +2493,9 @@ export default function AboutContent({
    * The one thing the pile's geometry cannot check for itself.
    *
    * Everything else scales with the card count on its own — the section grows a
-   * beat, the gaps hold, the cards keep landing on time. This is the exception:
-   * past a certain count the finished pile is taller than the screen, and then
-   * two things go at once, the cards running out of room to be pinned in and the
+   * beat, the flow offsets hold, the cards keep landing on time. This is the
+   * exception: past a certain count the finished pile is taller than the screen,
+   * and then two things go at once, the deepest cards outliving the exit and the
    * last of them growing down through the stats. Neither shows up as an error;
    * the pile just starts behaving oddly at the foot of the section.
    *
@@ -2424,8 +2510,10 @@ export default function AboutContent({
     if (fits > 100) {
       console.warn(
         `<AboutContent />: ${skills.length} skill cards make a pile ${fits}vh ` +
-          `tall, which is more than the screen. The lower cards will lose their ` +
-          `pinning and the last will grow through the stats — see stackFitsVh.`,
+          `tall, which is more than the screen. The lower cards are given a ` +
+          `negative run-out, so they stay pinned after the rest of the section ` +
+          `has let go, and the last will grow through the stats — see ` +
+          `stackFitsVh.`,
       );
     }
 
@@ -2464,11 +2552,15 @@ export default function AboutContent({
    * The right-hand column, 1223-1846 of 1906 in the design, shared by the pile
    * and the stats.
    *
-   * They are two separate full-height boxes rather than one, because they want
-   * different things from the scroll: the cards are sticky siblings that travel
-   * through the section, the stats are a single box pinned near its foot. One
-   * container could not hold both without the stats taking flow space the pile
-   * needs.
+   * They are two separate boxes rather than one, because they want different
+   * things from the scroll: the cards are pinned one per box and travel through
+   * the section, the stats are a single box pinned near its foot. One container
+   * could not hold both without the stats taking flow space the pile needs.
+   *
+   * Its `top` is here and its `bottom` is not, which is the exit rule in the
+   * markup: both boxes start at the section's top edge and each ends its own
+   * run-out above the section's foot, so everything in the column comes
+   * unpinned on the same pixel. See {@link runOut}.
    *
    * Both are `pointer-events-none`, with the cards and the stat boxes opting
    * back in. They cover the whole right of the section and would otherwise
@@ -2476,7 +2568,7 @@ export default function AboutContent({
    * old overlay layer made, for the same reason.
    */
   const rightColumn =
-    "pointer-events-none px-(--block-inset) lg:absolute lg:inset-y-0 lg:left-[64.2%] lg:right-[3.1%] lg:px-0";
+    "pointer-events-none px-(--block-inset) lg:absolute lg:top-0 lg:left-[64.2%] lg:right-[3.1%] lg:px-0";
 
   return (
     <>
@@ -2614,28 +2706,21 @@ export default function AboutContent({
           // the constants it is made of — the stylesheet holds no geometry.
           //
           style={{ "--about-lift": CARD_LIFT } as CSSProperties}
-          className={rightColumn + " overflow-x-clip lg:overflow-x-visible"}
+          // The full height of the section, both edges, and it has to be: the
+          // cards are placed against this box from `lg` up, and each one's own
+          // run-out is measured off its bottom edge. See {@link runOut}.
+          className={
+            rightColumn + " lg:bottom-0 overflow-x-clip lg:overflow-x-visible"
+          }
         >
-          {/* The one figure the pile cannot be laid out without.
+          {/* The list holds no geometry from `lg` up — every card is out of
+              flow in a box of its own, which is where the pinning lives now.
+              See {@link SkillCard}.
 
-              `--lead` is the space above the first card, so it rises into place
-              rather than being there already — see {@link cardFlowVh}. Padding
-              rather than a margin on the first card, which would collapse
-              straight out through the list and move the list itself.
-
-              `h-full` is the room the pinned cards are held in. It has to be a
-              height and not trailing space: a margin on the last card collapses
-              out through the list's bottom edge, and padding sits outside the
-              content box the cards are actually constrained by. See
-              {@link stackFitsVh}. */}
-          <ul
-            style={
-              {
-                "--lead": cardFlowVh(0) + "vh",
-              } as CSSProperties
-            }
-            className="lg:h-full lg:pt-(--lead)"
-          >
+              What `h-full` is still for is the marker under it: the cue has to
+              sit at the foot of the column, and with the cards out of flow this
+              empty box is the only thing left that puts it there. */}
+          <ul className="lg:h-full">
             {skills.map(({ skill, description }, i) => (
               <SkillCard
                 // a group item carries no id of its own, and position is the
@@ -2643,7 +2728,6 @@ export default function AboutContent({
                 // card's place in the pile, so this key is load-bearing
                 key={i}
                 index={i}
-                count={skills.length}
                 skill={skill}
                 description={description}
               />
@@ -2666,16 +2750,22 @@ export default function AboutContent({
       )}
 
       {/* — my stats ------------------------------------------------------ */}
-      {/* Its own full-height box with one sticky child, so it pins near the
-          foot of the screen and holds there for the rest of the section without
-          taking any of the flow the pile beside it needs.
+      {/* Its own box with one sticky child, so it pins near the foot of the
+          screen and holds there for the rest of the section without taking any
+          of the flow the pile beside it needs.
 
           Sticky from flow 0, so it is pinned the moment the section lands and
           never moves again — what says *when* it appears is the scroll, on a
           range per box that opens once the pile has finished (see
           {@link statRangeVh}). Position and timing kept apart like that is what
           lets it arrive without sliding: the box does not travel to get here,
-          it rises the last {@link STATS_SHIFT} into a place it already had. */}
+          it rises the last {@link STATS_SHIFT} into a place it already had.
+
+          It stops {@link STATS_RUN_OUT} short of the section's foot, which is
+          the one thing that decides when it stops being pinned — and the same
+          figure every card is given, so the two blocks let go together instead
+          of the stats climbing the screen through a pile still standing still.
+          See {@link runOut}. */}
       {numbers.length > 0 && (
         <div
           // Below `lg` the page ends here, so this block is what stands
@@ -2685,14 +2775,26 @@ export default function AboutContent({
           // however many of them the author gives. See {@link NAV_CLEAR_SM}.
           // From `lg` up the block is placed rather than in flow and the
           // section's own height carries the room, so the padding goes.
-          style={{ "--nav-clear-sm": NAV_CLEAR_SM } as CSSProperties}
-          className={rightColumn + " pb-(--nav-clear-sm) pt-8 lg:pt-0 lg:pb-0"}
+          style={
+            {
+              "--nav-clear-sm": NAV_CLEAR_SM,
+              "--stats-run-out": STATS_RUN_OUT,
+            } as CSSProperties
+          }
+          className={
+            rightColumn +
+            " lg:bottom-(--stats-run-out) pb-(--nav-clear-sm) pt-8 lg:pt-0 lg:pb-0"
+          }
         >
           <ul
             ref={statsRef}
             style={
               {
                 "--stats-top": STATS_TOP_VH + "vh",
+                // the height the run-out above is measured against — one
+                // figure, two readers, so the boxes take it from here rather
+                // than restating it in a class
+                "--stats-h": STATS_HEIGHT_VH + "vh",
                 // the rise, shared by every box; the ranges are per box and sit
                 // on the boxes. Here rather than in globals.css for the same
                 // reason `--about-lift` is on the pile — the stylesheet holds
@@ -2712,7 +2814,7 @@ export default function AboutContent({
                 className={
                   "pointer-events-auto flex flex-col items-center justify-center gap-2 rounded-sm border-2 border-white " +
                   PLATE +
-                  " px-2 py-3 text-center lg:h-[14.3vh] lg:gap-3 lg:py-4 short:gap-1"
+                  " px-2 py-3 text-center lg:h-(--stats-h) lg:gap-3 lg:py-4 short:gap-1"
                 }
               >
                 <span

@@ -46,7 +46,7 @@ export default function Scene() {
       ref={cube}
       position={[FACE_HOME.x, FACE_HOME.y, FACE_HOME.z + CUBE_OFFSET]}
     >
-      <boxGeometry args={[CUBE_SIZE, CUBE_SIZE, CUBE_SIZE]} />
+      {/* <boxGeometry args={[CUBE_SIZE, CUBE_SIZE, CUBE_SIZE]} /> */}
       {/* the scene carries no lights at all — everything in it is basic or a
           hand-written shader — so a standard material here would render black */}
       <meshBasicMaterial color="red" />

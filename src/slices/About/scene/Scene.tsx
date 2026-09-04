@@ -13,6 +13,7 @@ import { useCoarsePointer } from "@/app/hooks/pointer";
 import Head, { FACE_HEIGHT, FACE_HOME } from "./Head";
 import Title from "./Title";
 import { readFaceSlot } from "./faceSlot";
+import { aboutExitProgress } from "./aboutExit";
 import { publishBackdrop } from "@/app/helpers/backdrop";
 import { useScrollY } from "@/app/hooks/ScrollY";
 import { ABOUT_POSE, poseFrame } from "@/app/components/poses";
@@ -67,6 +68,20 @@ type LinesProps = {
    * leaves a ghost of the grid there instead of a hole.
    */
   opacity?: [number, number];
+  /**
+   * How far through the section's exit the scene is, 0 to 1 — see the exit in
+   * <Scene />, which is what writes it.
+   *
+   * A uniform object rather than a number, shared by both grids: the exit is
+   * read every frame off a scroll React never sees, and handing it over this
+   * way keeps it that way. Setting `.value` is the entire update.
+   */
+  exit: { value: number };
+  /**
+   * The flat alpha the grid arrives at when `exit` reaches 1 — see
+   * {@link GRID_EXIT_OPACITY}, which is the one this is set from.
+   */
+  exitOpacity: number;
 } & Omit<ThreeElements["instancedMesh"], "args">;
 
 /**
@@ -99,6 +114,8 @@ const LINE_FRAGMENT = /* glsl */ `
   uniform vec2 uCenter;
   uniform vec2 uRadius;
   uniform vec2 uStops;
+  uniform float uExit;
+  uniform float uExitOpacity;
 
   varying vec2 vWorld;
 
@@ -112,7 +129,20 @@ const LINE_FRAGMENT = /* glsl */ `
     // eases in and out instead of kinking where the ramp starts
     float t = smoothstep(uStops.x, uStops.y, d);
 
-    gl_FragColor = vec4(uColor, mix(uOpacity.x, uOpacity.y, t));
+    float alpha = mix(uOpacity.x, uOpacity.y, t);
+
+    // The exit, in one mix, because the two halves of it are the same move.
+    // The vignette is anchored to the screen while the lines rise through it,
+    // so once the section is moving that hole in the middle stops reading as
+    // depth and starts reading as a mark on the glass — a still shape over
+    // travelling content. Both ends of the falloff are walked onto a single
+    // value as the lift runs, which is what takes the mask off; that the value
+    // is a level of its own is what carries the grid up to (or down to) it on
+    // the way. So the grid leaves the top of the screen even, at whatever
+    // uExitOpacity is set to.
+    alpha = mix(alpha, uExitOpacity, uExit);
+
+    gl_FragColor = vec4(uColor, alpha);
   }
 `;
 
@@ -125,6 +155,8 @@ function Lines({
   z = 0.001,
   color = "white",
   opacity = [0, 0.05],
+  exit,
+  exitOpacity,
   ...props
 }: LinesProps) {
   const ref = useRef<THREE.InstancedMesh>(null!);
@@ -138,8 +170,10 @@ function Lines({
       uCenter: { value: new THREE.Vector2(...mask.center) },
       uRadius: { value: new THREE.Vector2(...mask.radius) },
       uStops: { value: new THREE.Vector2(...(mask.stops ?? [0, 1])) },
+      uExit: exit,
+      uExitOpacity: { value: exitOpacity },
     }),
-    [color, opacity, mask],
+    [color, opacity, mask, exit, exitOpacity],
   );
 
   const geoArgs: [number, number] =
@@ -269,11 +303,47 @@ const GRID_OPACITY: [number, number] = [0, 0.07];
 const GRID_FADE: [number, number] = [0.65, 1];
 
 /**
+ * ⇢ The knob. The flat alpha the grid lands on once the section has fully
+ * left, reached over the same screen the lift takes.
+ *
+ * One number and not a pair, because the falloff is the other thing the exit is
+ * spending: both ends of {@link GRID_OPACITY} converge here as it runs, so the
+ * grid goes out the top of the screen even, with the vignette gone. Which end
+ * of GRID_OPACITY you set this against is the whole character of the move —
+ * above its edge figure (0.07) the grid comes up out of the vignette as it
+ * leaves, at it the mask simply dissolves at the strength it already had, and
+ * below it the whole thing goes quiet. Zero fades it out altogether.
+ */
+const GRID_EXIT_OPACITY = 0.18;
+
+/**
  * The plane the face is authored on, as a plane the pointer maths can hit.
  * `n dot p + c = 0` with n = +Z solves to `p.z = -c`, so the constant is the
  * depth negated.
  */
 const facePlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -FACE_HOME.z);
+
+/**
+ * The depth the section's exit is measured at: the face's own, so that the one
+ * screen the scene rises as the section leaves is one screen *for the head* —
+ * which sends it up the page at exactly the rate the column beside it goes.
+ *
+ * The whole group moves rather than the camera, and the two are the same
+ * picture: the camera holds ABOUT_POSE looking straight down -Z, so translating
+ * everything up by `d` and dropping the camera by `d` put every pixel in the
+ * same place. What differs is what else is in the frame. The camera is shared
+ * with the section below, which has its own geometry and no reason to be looked
+ * at from lower down; the group is this section's alone.
+ *
+ * A rigid translation, so the depths sort themselves out: a share of the screen
+ * is a *smaller* distance the nearer a thing is to the camera, so the same
+ * world units the face spends crossing one screen carry the grid and the
+ * backdrop 800 units behind it about two thirds of one. The scene comes apart
+ * with depth as it goes, which is the parallax a camera move has and a page
+ * scrolling away does not — and it is why the head, not the grid, is the piece
+ * the figure is taken at. It is the one the column is built around.
+ */
+const EXIT_DEPTH = FACE_HOME.z;
 
 /**
  * How much of its authored size the face keeps between `lg` and `xl`, where
@@ -335,10 +405,18 @@ function screenToFacePlane(
 export default function Scene() {
   const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
   const coarsePointer = useCoarsePointer();
+  const root = useRef<THREE.Group | null>(null);
   const head = useRef<THREE.Group | null>(null);
   // the page position Lenis has eased to this frame — the same one the layer
   // the head is being fitted into is placed by
   const { scrollY } = useScrollY();
+
+  /**
+   * The exit progress the two grids are drawn through — see the `exit` prop.
+   * Written in the frame loop right beside the lift it is taken from, so the
+   * fade and the movement can't end up a frame apart.
+   */
+  const gridExit = useMemo(() => ({ value: 0 }), []);
 
   const [grabbing, setGrabbing] = useState<null | "head" | "eyes" | "mouth">(
     null,
@@ -357,6 +435,11 @@ export default function Scene() {
     { x: 690, y: -28 },
   ];
 
+  // Every 180 down the plane, and it carries on past the bottom of the frame
+  // on purpose: the section rises a screen as it leaves (see {@link EXIT_DEPTH})
+  // and the grid rises with it, so the rows below the fold are the ones that
+  // come up into the empty band the lift would otherwise open at the foot of
+  // the screen. The last of them sits on the plane's own bottom edge.
   const hLines = [
     { x: 0, y: 800 },
     { x: 0, y: 620 },
@@ -365,6 +448,10 @@ export default function Scene() {
     { x: 0, y: 80 },
     { x: 0, y: -100 },
     { x: 0, y: -280 },
+    { x: 0, y: -460 },
+    { x: 0, y: -640 },
+    { x: 0, y: -820 },
+    { x: 0, y: -1000 },
   ];
 
   const { geometry: planeGeo, outline: planeOutline } = useUCurvePlane(
@@ -389,9 +476,29 @@ export default function Scene() {
   );
 
   /**
+   * One screen at the face's depth, in world units — see {@link EXIT_DEPTH}.
+   * The frustum of the pose rather than of the live camera, for the reason
+   * {@link poseFrame} exists: the parallax rig sways the real one about, and a
+   * lift measured off a swaying camera would breathe. Resize work only.
+   */
+  const exitLift = useMemo(
+    () =>
+      poseFrame(ABOUT_POSE, fov, size.width / size.height, EXIT_DEPTH).height,
+    [fov, size.width, size.height],
+  );
+
+  /**
    * The falloff the grid is drawn through: an ellipse inscribed in the
    * viewport, sized at the grid's own depth so it tracks the screen edges
    * rather than the backdrop's arbitrary 2000-unit span. Resize work only.
+   *
+   * The pose's frustum and not the group's own position, so the vignette stays
+   * where the *screen* is while the grid rises through it as the section leaves
+   * — a falloff that travelled with the lift would be no falloff at all.
+   *
+   * Which is the same reason it doesn't survive the lift: being pinned to the
+   * screen is exactly what makes it wrong once the scene is moving, so the
+   * shader retires it over that screen. See LINE_FRAGMENT.
    */
   const gridMask = useMemo(() => {
     const frame = poseFrame(
@@ -408,8 +515,10 @@ export default function Scene() {
     };
   }, [fov, size.width, size.height]);
 
-  // the plane is the only thing in the page that can occlude the hero's DOM
-  // overlays, so publish where it is; it never moves again, so once is enough
+  // The plane is the only thing in the page that can occlude the hero's DOM
+  // overlays, so publish where it is. Once is enough: the only thing that ever
+  // moves it is the exit above, and by then the overlays reading this are three
+  // sections up the page and have nothing left to hide behind.
   const plane = useRef<THREE.Mesh>(null);
 
   useLayoutEffect(() => {
@@ -427,6 +536,27 @@ export default function Scene() {
   }, [planeOutline, planePos]);
 
   useFrame((state, delta) => {
+    // ── The exit ───────────────────────────────────────────────────────────
+    //
+    // The last screen of the section, where <AboutContent /> comes unpinned all
+    // at once and rides the wheel off the top of the page — see ./aboutExit,
+    // which is where the moment is decided, and {@link EXIT_DEPTH} for how far
+    // this goes in that time. Set before the early return below, so the scene
+    // still leaves on a frame where the head has not mounted.
+    //
+    // Only from `lg` up, and that is not a taste. Below it the head is placed
+    // *from the column*, in screen coordinates, against a group this would have
+    // moved out from under it — and there is nothing to solve down there
+    // anyway, where the whole section is ordinary flow and leaves by scrolling.
+    const exit = up.lg ? aboutExitProgress(scrollY.current) : 0;
+
+    if (root.current) root.current.position.y = exit * exitLift;
+
+    // The grid leaves on the same figure, in both senses of leaving: its
+    // vignette flattens out and the lines come up to {@link GRID_EXIT_OPACITY}
+    // across that screen. See LINE_FRAGMENT, where the two are actually spent.
+    gridExit.value = exit;
+
     const group = head.current;
     if (!group) return;
 
@@ -566,7 +696,11 @@ export default function Scene() {
   }, []);
 
   return (
-    <group>
+    /* The box the section leaves in — see {@link EXIT_DEPTH}. Everything the
+       About scene is made of hangs off it, the backdrop included: the plane is
+       what stands behind the grid, so leaving it where it was would be a lift
+       that slid its own bottom edge up into frame. */
+    <group ref={root}>
       <mesh ref={plane} position={planePos}>
         <primitive object={planeGeo} attach="geometry" />
         <meshBasicMaterial color="black" side={THREE.DoubleSide} />
@@ -578,6 +712,8 @@ export default function Scene() {
           span={2000}
           mask={gridMask}
           opacity={GRID_OPACITY}
+          exit={gridExit}
+          exitOpacity={GRID_EXIT_OPACITY}
           thickness={1.5}
           z={GRID_OFFSET}
         />
@@ -586,6 +722,8 @@ export default function Scene() {
           span={2000}
           mask={gridMask}
           opacity={GRID_OPACITY}
+          exit={gridExit}
+          exitOpacity={GRID_EXIT_OPACITY}
           orientation="horizontal"
           thickness={1.5}
           z={GRID_OFFSET}

@@ -1,5 +1,8 @@
 /**
- * One CSS `vh`, in px — the unit the page is actually laid out in.
+ * A CSS `100vh`, in px — a whole screen in the unit the page is actually laid
+ * out in, which is what the probe below measures and what {@link pxToVh}
+ * divides by. Not *one* vh: a caller wanting a screen wants this as it comes,
+ * and one that multiplies it by a hundred gets a window a hundred screens long.
  *
  * Deliberately *not* `window.innerHeight / 100`. On a desktop browser the two
  * are the same number and it never comes up; on iOS they are two different
