@@ -1,6 +1,8 @@
 import * as THREE from "three";
 
 import { ABOUT_EXIT_LIFT, ABOUT_POSE, FOV } from "@/app/components/poses";
+import { TERRAIN_GRID } from "@/slices/Hero/scene-core/gridShader";
+import { defaultParams } from "@/slices/Hero/scene-core/params";
 import {
   compile,
   distanceAtProgress,
@@ -45,6 +47,49 @@ export const WALL_Z = 2200;
 export const WALL_DEPTH = ABOUT_POSE.position[2] - WALL_Z;
 
 /**
+ * The pitch of the hero's ground grid, in world units.
+ *
+ * <Terrain /> rules {@link TERRAIN_GRID} cells across a tile `w` wide, and it
+ * clips the ground at {@link WALL_Z} — this wall's own plane, which is not a
+ * coincidence. So the verticals the ground carries down into that clip are the
+ * verticals the wall has to carry on below it, and this is the spacing they
+ * arrive at.
+ *
+ * The *authored* `w`, not the live one. The GUI can drag it in development and
+ * this will not follow, which is the right answer rather than a gap: the tunnel
+ * is compiled once as a module singleton, so nothing downstream of here could
+ * follow it either. Settle on a width in the GUI, put it in `defaultParams`,
+ * and the wall picks it up on reload.
+ */
+const TERRAIN_CELL = defaultParams.w / TERRAIN_GRID;
+
+/**
+ * And how many cells of that fit around the strip: the count the wall is ruled
+ * into.
+ *
+ * Derived rather than typed, and the derivation is the whole point — around
+ * here the count *is* the pitch. The strip is `2 * PI * WALL_DEPTH` across
+ * whatever the wrap is doing, so picking a number of columns is picking how
+ * wide a cell is, and the only width that lets the hero's ground run into this
+ * wall without a kink is the ground's own. See {@link wallColumnCount}, which
+ * is where that stopped being true once.
+ *
+ * Rounded to an *odd* count, which the crown wants anyway: an even one puts a
+ * column straight down the middle of the frame — and straight down the middle
+ * of the About head — where an odd one straddles it with a pair. The ground
+ * straddles x = 0 the same way, its nearest verticals falling at ±100, so the
+ * two agree about phase as well as pitch.
+ *
+ * It lands on 37, a cell of 200.4 against the ground's 200. That is a fifth of
+ * a unit out at the pair beside the crown — the only two columns a phone can
+ * see at this depth — and 1.7 at the widest column either surface draws.
+ */
+const RADIAL = (() => {
+  const exact = (2 * Math.PI * WALL_DEPTH) / TERRAIN_CELL;
+  return 2 * Math.round((exact - 1) / 2) + 1;
+})();
+
+/**
  * Half the frame at the wall's depth — how much further down the wall the foot
  * of the screen sees than the camera does.
  *
@@ -79,13 +124,10 @@ export const TUNNEL = {
    * Grid columns around the tube, and so the rule of the wall's lattice — see
    * {@link wallCell}.
    *
-   * Odd on purpose. An even count puts a column on the crown, which on the flat
-   * wall is a line straight down the middle of the frame — and straight down
-   * the middle of the About head. An odd one straddles it with a pair.
+   * Not a number to pick. It is the hero's grid pitch, read off the ground in
+   * {@link RADIAL} — which is also where the odd count is argued for.
    */
-  radial: 37,
-  /** a coarse pointer gets fewer, and pays for a third less geometry */
-  radialCoarse: 25,
+  radial: RADIAL,
 
   /** curve samples between drawn rings, so a turn's lines stay curved */
   subdiv: 3,
@@ -177,9 +219,26 @@ export const TUNNEL = {
   vhPerUnit: 1,
 } as const;
 
-/** how many columns the wall is ruled into, for a pointer of either kind */
-export function wallColumnCount(coarse: boolean) {
-  return coarse ? TUNNEL.radialCoarse : TUNNEL.radial;
+/**
+ * How many columns the wall is ruled into.
+ *
+ * One count, for every device, and it is worth saying why there isn't a cheaper
+ * one for phones — there was, and it was wrong. A coarse pointer used to get 25
+ * columns against the full 37, which is about half the tunnel's vertices: the
+ * rings march by a cell too (see {@link wallCell}), so dropping the count thins
+ * the surface in both directions at once. Cheap, and paid for at the other end
+ * of the section. 25 columns rule the wall at 296 world units where the hero's
+ * ground runs into this same plane at 200, so the verticals stopped meeting it
+ * — and on a phone that seam is the *whole* of the grid anyone ever sees, the
+ * frame being barely two columns wide at this depth.
+ *
+ * So the count is fixed, and a saving has to come from somewhere that doesn't
+ * rule the surface. {@link TUNNEL.subdiv} is the one going spare: it only adds
+ * samples *between* the rings, and spending it costs a turn some smoothness
+ * rather than costing the lattice its pitch.
+ */
+export function wallColumnCount() {
+  return TUNNEL.radial;
 }
 
 /* ==========================================================================

@@ -5,7 +5,6 @@ import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 
 import { ABOUT_POSE } from "@/app/components/poses";
-import { useCoarsePointer } from "@/app/hooks/pointer";
 import { useScrollY } from "@/app/hooks/ScrollY";
 
 import { visibleRange } from "../scene-core/geometry";
@@ -79,9 +78,8 @@ const BLACK = new THREE.Color(0x000000);
 const POOL_TINT = new THREE.Color(0x07203c);
 
 export default function Scene() {
-  const coarse = useCoarsePointer();
   // shared with the About section, which rules its grid on the same lattice
-  const radial = wallColumnCount(coarse);
+  const radial = wallColumnCount();
 
   // Not a hook: see ../scene-core/resources, which is where the geometry, the
   // materials and the reason they live outside React all are.

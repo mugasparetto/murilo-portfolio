@@ -561,10 +561,11 @@ export default function Scene() {
 
   /**
    * How many columns the wall is ruled into: the tunnel's own count, because
-   * this grid is that wall. A coarse pointer gets fewer of them, and that is
-   * the one thing about the lattice that isn't fixed.
+   * this grid is that wall. Fixed, and fixed by something neither section
+   * owns — see {@link wallColumnCount}, where the hero's ground turns out to
+   * have the casting vote.
    */
-  const columns = wallColumnCount(coarsePointer);
+  const columns = wallColumnCount();
 
   /**
    * The verticals.
@@ -602,9 +603,9 @@ export default function Scene() {
    * dip at the centre can be drawn at all, which is what this asks for. The
    * cost is a top cell about four fifths taller than the rest, on a lattice
    * whose verticals already end on the curve; the alternative is a line in the
-   * sky. It bites at the full column count and not the coarse one — the rings
-   * are the tunnel's and fall where they fall, so whether one lands in that
-   * band is luck, and 37 columns is unlucky by two and a half units.
+   * sky. Whether it bites at all is luck — the rings are the tunnel's and fall
+   * where they fall, so whether one lands in that band is not anything either
+   * side chose. At 37 columns it does, by two and a half units.
    */
   const hLines = useMemo(() => {
     const cell = wallCell(columns);
@@ -634,10 +635,9 @@ export default function Scene() {
    * also draws, and a rise of any old distance leaves its rows a fraction of a
    * cell off the rings — and a grid a fraction of a cell out is not one grid
    * slightly wrong, it is two grids. What the rounding costs is the difference
-   * between the lift and the nearest whole number of cells: 33 world units at
-   * the full column count, 25 at the coarse one, both around a thirtieth of a
-   * screen at this depth. Nobody can read that as the background having risen
-   * the wrong distance. Two grids they can read.
+   * between the lift and the nearest whole number of cells: 33 world units,
+   * around a thirtieth of a screen at this depth. Nobody can read that as the
+   * background having risen the wrong distance. Two grids they can read.
    */
   const gridLift = useMemo(() => {
     const cell = wallCell(columns);
@@ -701,11 +701,27 @@ export default function Scene() {
     // this goes in that time. Set before the early return below, so the scene
     // still leaves on a frame where the head has not mounted.
     //
-    // Only from `lg` up, and that is not a taste. Below it the head is placed
-    // *from the column*, in screen coordinates, against a group this would have
-    // moved out from under it — and there is nothing to solve down there
-    // anyway, where the whole section is ordinary flow and leaves by scrolling.
-    const exit = up.lg ? aboutExitProgress(scrollY.current) : 0;
+    // Every breakpoint, and the window is the same one at all of them: the last
+    // screen before the section's foot leaves the top. Below `lg` that is not
+    // the arbitrary choice it might look like, because down there the foot is
+    // the stat boxes plus the clearance under them — so the window opens within
+    // a nav's height of the moment the last box is fully on screen, which is
+    // what the composition would ask for if it were asked. It has to be this
+    // window and not that moment, though: the tunnel below launches at exactly
+    // {@link exitLift} per screen so the background does not change pace on the
+    // frame it takes over (see `slow` in ../../Works/scene-core/presets), and
+    // only a lift that ends *on* the handover is going that speed when it gets
+    // there. Cue it earlier and the background is standing still again by then.
+    //
+    // What differs below `lg` is what moves, not when. Up here the whole scene
+    // goes, head included, because the column has just come unpinned and the
+    // head is part of the composition leaving with it. Down there the head is
+    // placed *from the column* every frame and the column has been leaving all
+    // along, so the head stays welded to its box and the lift is the backdrop
+    // and the grid alone — see the placement below, which takes it back off.
+    // Which is the whole of the picture that buys: a background that has been
+    // nailed in place for the length of the section finally letting go of it.
+    const exit = aboutExitProgress(scrollY.current);
 
     if (root.current) root.current.position.y = exit * exitLift;
     // and the grid rides the rounding back off the group — see {@link gridLift}
@@ -832,10 +848,19 @@ export default function Scene() {
     // face is laid out around — on the middle of the slot. The float rides on
     // top of it, scaled too, so a smaller face bobs by proportionally less
     // rather than swimming in its hole.
+    //
+    // And the exit comes back off, because this is the one placement in the
+    // scene that is made in *world* coordinates: `slotMid` is a ray through the
+    // live camera onto the face's plane, and this position is local to the
+    // group the exit above translates. Left alone the two would fight, and the
+    // lift would win by the whole of {@link exitLift} — a face climbing out of
+    // a hole in the copy that is not going anywhere. The subtraction is the
+    // rule stated plainly: the head belongs to the column down here, so it
+    // leaves with the page and not with the scene behind it.
     group.scale.setScalar(scale);
     group.position.set(
       slotMid.x - scale * FACE_HOME.x,
-      slotMid.y - scale * (FACE_HOME.y - float),
+      slotMid.y - scale * (FACE_HOME.y - float) - exit * exitLift,
       slotMid.z - scale * FACE_HOME.z,
     );
     group.visible = true;
