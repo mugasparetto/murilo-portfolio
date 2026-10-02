@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { useThree, useFrame } from "@react-three/fiber";
+import { useThree, useFrame, type ThreeEvent } from "@react-three/fiber";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { Stars } from "@react-three/drei";
@@ -13,6 +13,7 @@ import ShootingStars from "./ShootingStars";
 import { createSolidGeometries, SolidKind } from "@/app/components/solids";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import { defaultParams } from "../scene-core/params";
+import { setPageCursor } from "@/app/helpers/cursor";
 
 const STARS_COUNT = 200;
 const DOME_RADIUS = 6000;
@@ -184,8 +185,29 @@ const fract = (x: number) => x - Math.floor(x);
 const rnd = (i: number, salt: number) =>
   fract(Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453123);
 
+/* -------------------------------------------------------------------------
+   Grabbing a solid
+
+   A drag turns the solid about the camera's own axes — sideways travel spins
+   it around the screen's vertical, vertical travel tips it over the screen's
+   horizontal — so the face under the pointer follows the hand whichever way
+   the solid happens to be facing. Letting go mid-swipe hands the last drag
+   speed back as angular velocity, which then bleeds off into the idle spin.
+   ------------------------------------------------------------------------- */
+
+/** Radians of turn per pixel of pointer travel. */
+const DRAG_RAD_PER_PX = 0.008;
+/** Exponential decay rate of a release spin, per second. */
+const SPIN_DAMPING = 2.2;
+/** Release spin ceiling, rad/s — a flick shouldn't blur the solid. */
+const MAX_SPIN = 10;
+/** A pointer held still this long before release throws nothing. */
+const RELEASE_STALE_MS = 80;
+
+type Drag = { index: number; x: number; y: number; t: number };
+
 export default function Sky() {
-  const { size, gl } = useThree();
+  const { size, gl, camera } = useThree();
   const dpr = gl.getPixelRatio();
   const { up } = useBreakpoints(BREAKPOINTS, { clientOnly: true });
 
@@ -312,8 +334,120 @@ export default function Sky() {
     return pts;
   }, []);
 
+  // --- drag-to-rotate
+  const dragRef = useRef<Drag | null>(null);
+  const hoveredRef = useRef<number | null>(null);
+  // world-space angular velocity per solid (axis × rad/s), left over from a
+  // release and decayed in the frame loop
+  const spinVel = useMemo(() => SOLIDS.map(() => new THREE.Vector3()), []);
+  const tmp = useMemo(
+    () => ({
+      right: new THREE.Vector3(),
+      up: new THREE.Vector3(),
+      axis: new THREE.Vector3(),
+      q: new THREE.Quaternion(),
+    }),
+    [],
+  );
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const group = groupRefs.current[drag.index];
+      if (!group) return;
+
+      const dx = e.clientX - drag.x;
+      const dy = e.clientY - drag.y;
+      const now = performance.now();
+      const dt = Math.max((now - drag.t) / 1000, 1 / 240);
+      drag.x = e.clientX;
+      drag.y = e.clientY;
+      drag.t = now;
+
+      const angle = Math.hypot(dx, dy) * DRAG_RAD_PER_PX;
+      if (angle === 0) return;
+
+      // the camera's live axes, so the parallax sway can't skew the turn
+      const { right, up, axis, q } = tmp;
+      right.setFromMatrixColumn(camera.matrixWorld, 0);
+      up.setFromMatrixColumn(camera.matrixWorld, 1);
+      axis
+        .copy(up)
+        .multiplyScalar(dx)
+        .addScaledVector(right, dy)
+        .normalize();
+
+      // the group's parent is an unrotated <group>, so world axes apply as-is
+      group.quaternion.premultiply(q.setFromAxisAngle(axis, angle));
+
+      // smoothed, so one jittery event doesn't decide the throw
+      spinVel[drag.index].lerp(axis.multiplyScalar(angle / dt), 0.5);
+    };
+
+    const onUp = () => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      dragRef.current = null;
+
+      const vel = spinVel[drag.index];
+      if (performance.now() - drag.t > RELEASE_STALE_MS) vel.set(0, 0, 0);
+      else vel.clampLength(0, MAX_SPIN);
+
+      setPageCursor(hoveredRef.current === null ? "default" : "grab");
+    };
+
+    window.addEventListener("pointermove", onMove);
+    // `pointercancel` arrives instead of `pointerup` when the browser takes the
+    // gesture over (a touch pan, say) — without it the solid stays held
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [camera, spinVel, tmp]);
+
+  // an unmounted mesh never gets its onPointerOut, so don't strand the cursor
+  useEffect(
+    () => () => {
+      if (hoveredRef.current !== null || dragRef.current)
+        setPageCursor("default");
+    },
+    [],
+  );
+
+  const onSolidOver = (i: number) => (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    hoveredRef.current = i;
+    if (!dragRef.current) setPageCursor("grab");
+  };
+
+  const onSolidOut = (i: number) => () => {
+    if (hoveredRef.current === i) hoveredRef.current = null;
+    if (!dragRef.current) setPageCursor("default");
+  };
+
+  const onSolidDown = (i: number) => (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    // Claims the press: keeps the browser from starting a native drag or text
+    // selection, and tells <ShootingStars /> this click wasn't aimed at the sky.
+    e.nativeEvent.preventDefault();
+
+    spinVel[i].set(0, 0, 0);
+    dragRef.current = {
+      index: i,
+      x: e.nativeEvent.clientX,
+      y: e.nativeEvent.clientY,
+      t: performance.now(),
+    };
+    setPageCursor("grabbing");
+  };
+
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
+    const decay = Math.exp(-SPIN_DAMPING * delta);
 
     for (let i = 0; i < SOLIDS.length; i++) {
       const group = groupRefs.current[i];
@@ -331,6 +465,17 @@ export default function Sky() {
       group.rotation.x += delta * m.spin[0];
       group.rotation.y += delta * m.spin[1];
       group.rotation.z += delta * m.spin[2];
+
+      // the throw left over from a drag, if any
+      const vel = spinVel[i];
+      if (dragRef.current?.index !== i && vel.lengthSq() > 1e-6) {
+        const speed = vel.length();
+        tmp.axis.copy(vel).divideScalar(speed);
+        group.quaternion.premultiply(
+          tmp.q.setFromAxisAngle(tmp.axis, speed * delta),
+        );
+        vel.multiplyScalar(decay);
+      }
     }
   });
 
@@ -342,6 +487,9 @@ export default function Sky() {
           ref={(el) => {
             groupRefs.current[i] = el;
           }}
+          onPointerOver={onSolidOver(i)}
+          onPointerOut={onSolidOut(i)}
+          onPointerDown={onSolidDown(i)}
         >
           <OutlinedSolid
             geometry={geometries[s.kind]}
