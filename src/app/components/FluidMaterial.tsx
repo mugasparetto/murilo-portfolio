@@ -5,7 +5,12 @@ import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useFBO } from "@react-three/drei";
 
-import { vertexShader, fluidShader, displayShader } from "./fluidShader";
+import {
+  vertexShader,
+  displayVertexShader,
+  fluidShader,
+  displayShader,
+} from "./fluidShader";
 
 export type FluidConfig = {
   brushSize: number;
@@ -163,8 +168,10 @@ export function useFluidMaterials({
         uColor4: { value: hexToLinearVec3(config.color4) },
         uColorIntensity: { value: config.colorIntensity },
         uSoftness: { value: config.softness },
+        /** 0..1 — how much of the door's height is showing; see <Door /> */
+        uOpen: { value: 1 },
       },
-      vertexShader,
+      vertexShader: displayVertexShader,
       fragmentShader: displayShader,
       transparent: false,
       depthWrite: true,

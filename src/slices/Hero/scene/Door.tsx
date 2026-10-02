@@ -141,11 +141,14 @@ export default function Door({
     const mesh = doorRef.current;
     if (!mesh) return;
 
-    // scroll squeezes the door shut
+    // scroll closes the door from top and bottom toward the middle. The quad
+    // and its outline shrink, while the shader crops the UVs by the same
+    // amount, so the picture stays still and the edges mask it off.
     const t = progressInVhWindow(scrollVh.current, scrollWindow); // 0..1 in this vh window
     const openness = 1 - t;
     const visible = t < 0.999;
 
+    displayMat.uniforms.uOpen.value = openness;
     mesh.scale.set(scale.x, scale.y * openness, 1);
     mesh.visible = visible;
     wire.scale.set(scale.x, scale.y * openness, 1);
@@ -203,7 +206,9 @@ export default function Door({
           const v = hit.dot(proj.up) / (proj.halfSize.y * 2) + 0.5;
 
           inside = u >= 0 && u <= 1 && v >= 0 && v <= 1;
-          if (inside) uv.set(u, v);
+          // u/v are across the visible window; the sim wants the whole door,
+          // so undo the mask's crop to land the splat under the cursor
+          if (inside) uv.set(u, 0.5 + (v - 0.5) * openness);
         }
       }
     }

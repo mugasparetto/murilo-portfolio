@@ -6,6 +6,18 @@ void main() {
 }
 `;
 
+// The door's own vertex shader. The mesh gets squeezed to uOpen of its height
+// as the page scrolls; pulling the UVs in by the same amount keeps the picture
+// where it was, so the edges crop it like a mask instead of squashing it.
+export const displayVertexShader = `
+uniform float uOpen;
+varying vec2 vUv;
+void main() {
+  vUv = vec2(uv.x, 0.5 + (uv.y - 0.5) * uOpen);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
 export const fluidShader = `
 uniform float iTime;
 uniform vec2 iResolution;
