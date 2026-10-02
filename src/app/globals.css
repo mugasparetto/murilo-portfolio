@@ -119,6 +119,38 @@ body {
 }
 
 /*
+ * Hero scroll cue — see <ScrollCue /> in src/slices/Hero/ScrollCue.tsx.
+ *
+ * A segment as tall as its track falls from fully above it to fully below,
+ * then waits out the rest of the cycle off-track, so it reads as a slow drip
+ * rather than a loop. The fade-in gradient on the segment gives it a tail, and
+ * the ease keeps the fall unhurried at both ends.
+ *
+ * Reduced motion parks it as a still hint of the same shape: the lower half of
+ * the track lit.
+ */
+@keyframes scroll-cue-drop {
+  0% {
+    translate: 0 -100%;
+  }
+  65%,
+  100% {
+    translate: 0 100%;
+  }
+}
+
+.scroll-cue-drop {
+  animation: scroll-cue-drop 2.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-cue-drop {
+    animation: none;
+    translate: 0 50%;
+  }
+}
+
+/*
  * The About pile's arrival — see `useCardArrival` in
  * src/slices/About/scene/AboutContent.tsx, which is the fallback for this and
  * carries the whole argument.

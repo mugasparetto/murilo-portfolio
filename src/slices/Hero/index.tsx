@@ -7,6 +7,7 @@ import { SliceComponentProps } from "@prismicio/react";
 import Scene from "./scene/Scene";
 import NameOverlay from "./scene/Name";
 import HeadlineOverlay from "./scene/Headline";
+import ScrollCue from "./ScrollCue";
 import { useSceneRegistry } from "@/app/hooks/SceneRegistry";
 
 /**
@@ -75,6 +76,7 @@ const Hero: FC<HeroProps> = ({ slice }) => {
         tagline={slice.primary.tag_line}
         description={slice.primary.description}
       />
+      <ScrollCue />
     </section>
   );
 };
