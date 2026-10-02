@@ -98,6 +98,35 @@ type TextRenderInfo = {
   visibleBounds: ArrayLike<number>;
 };
 
+/**
+ * The base troika derives each block's material from: its own default, with
+ * depth writes off.
+ *
+ * Troika's default writes depth, and it only discards outside the glyph — so
+ * every letter stamps its whole ink into the depth buffer at {@link Z}, the
+ * echoes included, though their fill is drawn at zero opacity. That is ten
+ * units in front of the wall, and both grids ruled on it are transparent and
+ * drawn after whatever sorts ahead of them. The tunnel's always is (it carries
+ * renderOrder 1), and the About grid is too the moment the flight pitches the
+ * camera: its origin sits far above this block's, so the slightest tilt puts it
+ * nearer in the sort. Either way the lines come out cut away inside the
+ * letters, which reads as z-fighting as the scroll moves.
+ *
+ * Nothing needs the depth this was writing. The head's pieces are stacked by
+ * renderOrder, not by depth — see ./Head — and the opaque wall behind is drawn
+ * first and tested against as before.
+ */
+function TitleMaterial() {
+  return (
+    <meshBasicMaterial
+      color="#fff"
+      side={THREE.DoubleSide}
+      transparent
+      depthWrite={false}
+    />
+  );
+}
+
 export default function Title({ text = "ABOUT" }: { text?: string }) {
   const size = useThree((s) => s.size);
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
@@ -166,6 +195,7 @@ export default function Title({ text = "ABOUT" }: { text?: string }) {
         onSync={onSync}
       >
         {text}
+        <TitleMaterial />
       </Text>
 
       {/* Each echo is clipped in its own local space, where its baseline is
@@ -198,6 +228,7 @@ export default function Title({ text = "ABOUT" }: { text?: string }) {
           }
         >
           {text}
+          <TitleMaterial />
         </Text>
       ))}
     </group>

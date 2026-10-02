@@ -69,7 +69,12 @@ type LinesProps = {
   span: number; // height if vertical, width if horizontal
   mask: RadialMask;
   orientation?: "vertical" | "horizontal";
-  thickness?: number;
+  /**
+   * Line width, or `[start, end]` to have it walked from one to the other
+   * across the exit — on the same `exit` the opacity is, so the grid arrives
+   * at the wall's width on the frame the wall takes it over.
+   */
+  thickness?: number | [number, number];
   z?: number;
   color?: THREE.ColorRepresentation;
   /**
@@ -109,10 +114,18 @@ type LinesProps = {
  * hand-written vertex shader still has to apply it.
  */
 const LINE_VERTEX = /* glsl */ `
+  // x at the start of the exit, y at its end
+  uniform vec2 uThickness;
+  // 1 on the axis the line is thin along, 0 on the one it runs along
+  uniform vec2 uAcross;
+  uniform float uExit;
+
   varying vec2 vWorld;
 
   void main() {
-    vec4 local = vec4(position, 1.0);
+    // the geometry is a unit wide, so this is the width outright
+    float width = mix(uThickness.x, uThickness.y, uExit);
+    vec4 local = vec4(position.xy * mix(vec2(1.0), vec2(width), uAcross), position.z, 1.0);
 
     #ifdef USE_INSTANCING
       local = instanceMatrix * local;
@@ -196,12 +209,26 @@ function Lines({
       uExit: exit,
       uExitOpacity: { value: exitOpacity },
       uLive: live,
+      uThickness: {
+        value: new THREE.Vector2(
+          ...(typeof thickness === "number"
+            ? [thickness, thickness]
+            : thickness),
+        ),
+      },
+      uAcross: {
+        value:
+          orientation === "vertical"
+            ? new THREE.Vector2(1, 0)
+            : new THREE.Vector2(0, 1),
+      },
     }),
-    [color, opacity, mask, exit, exitOpacity, live],
+    [color, opacity, mask, exit, exitOpacity, live, thickness, orientation],
   );
 
+  // a unit across — the shader sets the width, see uThickness
   const geoArgs: [number, number] =
-    orientation === "vertical" ? [thickness, span] : [span, thickness];
+    orientation === "vertical" ? [1, span] : [span, 1];
 
   useLayoutEffect(() => {
     if (!ref.current) return;
@@ -398,6 +425,13 @@ const GRID_FADE: [number, number] = [0.65, 1];
  * it the mask simply dissolves at the strength it already had.
  */
 const GRID_EXIT_OPACITY = TUNNEL.level;
+
+/**
+ * The grid's line width, `[start, end]` of the exit: a touch heavier while it
+ * is the section's backdrop, and down to the wall's own by the time the wall
+ * takes it over — see {@link handover}.
+ */
+const GRID_THICKNESS: [number, number] = [1.5, 1];
 
 /**
  * The plane the face is authored on, as a plane the pointer maths can hit.
@@ -929,7 +963,7 @@ export default function Scene() {
           exit={gridExit}
           exitOpacity={GRID_EXIT_OPACITY}
           live={gridLive}
-          thickness={1.5}
+          thickness={GRID_THICKNESS}
           z={GRID_OFFSET}
         />
         <Lines
@@ -941,7 +975,7 @@ export default function Scene() {
           exitOpacity={GRID_EXIT_OPACITY}
           live={gridLive}
           orientation="horizontal"
-          thickness={1.5}
+          thickness={GRID_THICKNESS}
           z={GRID_OFFSET}
         />
       </group>
