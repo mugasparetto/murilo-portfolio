@@ -12,7 +12,6 @@ import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import { useCoarsePointer } from "@/app/hooks/pointer";
 import Head, { FACE_HEIGHT, FACE_HOME } from "./Head";
 import Title from "./Title";
-import { readFaceSlot } from "./faceSlot";
 import { aboutExitProgress } from "./aboutExit";
 import { publishBackdrop } from "@/app/helpers/backdrop";
 import { useScrollY } from "@/app/hooks/ScrollY";
@@ -827,53 +826,6 @@ export default function Scene() {
       return;
     }
 
-    // ── Below `lg`: a block in the column, wherever the column has got to ───
-    //
-    // The head is the one part of this section that is geometry rather than
-    // type, and below `lg` it is set *in* the type — see <AboutContent />,
-    // which reserves a box for it between the stat cards and the skills list.
-    // So the group is put where that box is, at the size that box is, every
-    // frame: the column scrolls, and the face goes with it because it is being
-    // read off the column rather than merely started in the same place.
-    //
-    // Both ends of the box are traced onto the face's own plane, which gives
-    // the middle to sit on and the height to scale by in one pair of rays.
-    const slot = readFaceSlot();
-    if (!slot) {
-      // measured before the column has been laid out, or across a resize past
-      // the breakpoint: better nowhere than a full-size face over the copy
-      group.visible = false;
-      return;
-    }
-
-    // The column is ordinary page content now, so the box's document position
-    // is fixed and the only thing that moves is the page under it — see
-    // ./faceSlot. One subtraction, against a scroll the frame loop has already
-    // read, in place of the projection the old fixed layer needed.
-    const top = slot.pageTop - scrollY.current;
-    const x = slot.left + slot.width / 2;
-
-    if (
-      !screenToFacePlane(
-        x,
-        top,
-        state.camera,
-        size.width,
-        size.height,
-        slotTop,
-      ) ||
-      !screenToFacePlane(
-        x,
-        top + slot.height,
-        state.camera,
-        size.width,
-        size.height,
-        slotBottom,
-      )
-    ) {
-      return; // the plane is behind the camera; keep the last good placement
-    }
-
     const scale = slotTop.distanceTo(slotBottom) / FACE_HEIGHT;
     slotMid.addVectors(slotTop, slotBottom).multiplyScalar(0.5);
 
@@ -992,13 +944,13 @@ export default function Scene() {
 
       <Suspense fallback={null}>
         {/* no hands on it under a finger — see the prop */}
-        <Head
+        {/* <Head
           ref={head}
           onGrabbing={handleGrabbing}
           onDisturbed={handleDisturbed}
           onReset={handleReset}
           still={coarsePointer || !up.lg}
-        />
+        /> */}
       </Suspense>
     </group>
   );

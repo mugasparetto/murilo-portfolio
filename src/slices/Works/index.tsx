@@ -41,17 +41,17 @@ const Works: FC<WorksProps> = ({ slice }) => {
   // Register scene once, after About's 20 — the entries are sorted by priority
   // and mounted in that order, so this section's geometry keeps the same
   // relation to the one above it that the page does.
-  useEffect(() => {
-    register({
-      id,
-      name: "scene-works",
-      priority: 30,
-      node: <Scene />,
-      active: true,
-    });
+  // useEffect(() => {
+  //   register({
+  //     id,
+  //     name: "scene-works",
+  //     priority: 30,
+  //     node: <Scene />,
+  //     active: true,
+  //   });
 
-    return () => remove(id);
-  }, [id, register, remove]);
+  //   return () => remove(id);
+  // }, [id, register, remove]);
 
   // Drawn while the section is anywhere near the viewport, hidden once it is a
   // long way off — the same margin the other two sections use, so a section
@@ -61,18 +61,18 @@ const Works: FC<WorksProps> = ({ slice }) => {
   // again unless the section's own scroll has actually started, because the
   // wall stands 400 units in front of the About head and a viewport of margin
   // would otherwise put it there while the head is still on screen.
-  useEffect(() => {
-    const el = worksRef.current;
-    if (!el) return;
+  // useEffect(() => {
+  //   const el = worksRef.current;
+  //   if (!el) return;
 
-    const io = new IntersectionObserver(
-      ([entry]) => setActive(id, entry.isIntersecting),
-      { root: null, threshold: 0, rootMargin: "100% 0px 100% 0px" },
-    );
+  //   const io = new IntersectionObserver(
+  //     ([entry]) => setActive(id, entry.isIntersecting),
+  //     { root: null, threshold: 0, rootMargin: "100% 0px 100% 0px" },
+  //   );
 
-    io.observe(el);
-    return () => io.disconnect();
-  }, [id, setActive]);
+  //   io.observe(el);
+  //   return () => io.disconnect();
+  // }, [id, setActive]);
 
   /**
    * Re-measure the section's box whenever the page could have reflowed.
@@ -87,35 +87,35 @@ const Works: FC<WorksProps> = ({ slice }) => {
    * bar's animation fires a `resize`, and each of those would otherwise be a
    * forced layout in a frame that is also drawing the tunnel.
    */
-  useEffect(() => {
-    const el = worksRef.current;
-    if (!el) return;
+  // useEffect(() => {
+  //   const el = worksRef.current;
+  //   if (!el) return;
 
-    let pending = 0;
+  //   let pending = 0;
 
-    const measure = () => {
-      pending = 0;
-      measureWorks();
-    };
+  //   const measure = () => {
+  //     pending = 0;
+  //     measureWorks();
+  //   };
 
-    const schedule = () => {
-      if (!pending) pending = requestAnimationFrame(measure);
-    };
+  //   const schedule = () => {
+  //     if (!pending) pending = requestAnimationFrame(measure);
+  //   };
 
-    publishWorks(el);
+  //   publishWorks(el);
 
-    const observer = new ResizeObserver(schedule);
-    observer.observe(el);
-    observer.observe(document.documentElement);
-    window.addEventListener("resize", schedule, { passive: true });
+  //   const observer = new ResizeObserver(schedule);
+  //   observer.observe(el);
+  //   observer.observe(document.documentElement);
+  //   window.addEventListener("resize", schedule, { passive: true });
 
-    return () => {
-      cancelAnimationFrame(pending);
-      observer.disconnect();
-      window.removeEventListener("resize", schedule);
-      publishWorks(null);
-    };
-  }, []);
+  //   return () => {
+  //     cancelAnimationFrame(pending);
+  //     observer.disconnect();
+  //     window.removeEventListener("resize", schedule);
+  //     publishWorks(null);
+  //   };
+  // }, []);
 
   return (
     <section

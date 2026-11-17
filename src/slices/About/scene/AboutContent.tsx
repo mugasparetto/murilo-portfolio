@@ -17,7 +17,6 @@ import SplitText from "gsap/SplitText";
 import { useGSAP } from "@gsap/react";
 
 import SolidIcon, { solidForRow } from "./SolidIcon";
-import { measureFaceSlot, publishFaceSlot } from "./faceSlot";
 import { measureAboutExit, publishAboutExit } from "./aboutExit";
 import {
   aboutOnScreen,
@@ -2465,7 +2464,6 @@ export default function AboutContent({
     let pending = 0;
     const measure = () => {
       pending = 0;
-      measureFaceSlot();
       measureAboutExit();
     };
 
@@ -2570,48 +2568,48 @@ export default function AboutContent({
   const rightColumn =
     "pointer-events-none px-(--block-inset) lg:absolute lg:top-0 lg:left-[64.2%] lg:right-[3.1%] lg:px-0";
 
-  return (
-    <>
-      {/* — the still half ------------------------------------------------ */}
-      {/* Pinned for the whole section from `lg` up, which is what gives the
+  return null;
+  <>
+    {/* — the still half ------------------------------------------------ */}
+    {/* Pinned for the whole section from `lg` up, which is what gives the
           cards beside it something to stack against. Below `lg` it is just the
           top of an ordinary column and the blocks fall into it in source
           order. */}
-      <div
-        ref={stillRef}
-        className="pointer-events-none relative flex min-h-screen w-full flex-col justify-center gap-5 px-(--block-inset) pt-[6vh] pb-16 sm:gap-6 lg:sticky lg:top-0 lg:block lg:h-screen lg:min-h-0 lg:gap-0 lg:px-0 lg:pt-0 lg:pb-0"
-      >
-        {/* "ABOUT" itself is <Title /> in the scene, where no reader can get at
+    <div
+      ref={stillRef}
+      className="pointer-events-none relative flex min-h-screen w-full flex-col justify-center gap-5 px-(--block-inset) pt-[6vh] pb-16 sm:gap-6 lg:sticky lg:top-0 lg:block lg:h-screen lg:min-h-0 lg:gap-0 lg:px-0 lg:pt-0 lg:pb-0"
+    >
+      {/* "ABOUT" itself is <Title /> in the scene, where no reader can get at
             it, so the section's heading lives here */}
-        <h2 className="sr-only">About</h2>
+      <h2 className="sr-only">About</h2>
 
-        {/* — where and when --------------------------------------------- */}
-        {/* Top of the left column in the design (80, 116 of 1906 x 947), on its
+      {/* — where and when --------------------------------------------- */}
+      {/* Top of the left column in the design (80, 116 of 1906 x 947), on its
             own rather than hung off the foot of anything: it and the copy block
             below are pinned to opposite ends of the same column, so neither can
             push the other about as the headline rewraps. */}
-        <ul
-          ref={metaRef}
-          className="space-y-2 order-2 lg:absolute lg:top-[10%] lg:left-[4.2%] lg:space-y-3"
-        >
-          <li className="flex items-center gap-3.5">
-            <GlobeIcon className={iconSize + " text-white"} />
-            <span className={metaText}>born in brazil / based in london</span>
-          </li>
-          <li className="flex items-center gap-3.5">
-            <PrismIcon className={iconSize + " text-white"} />
-            <span className={metaText}>
-              local time <LocalTime />
-            </span>
-          </li>
-          <li className="flex items-center gap-3.5">
-            <StarIcon className={iconSize + " text-white"} />
-            <span className={metaText}>since 1993</span>
-          </li>
-        </ul>
+      <ul
+        ref={metaRef}
+        className="space-y-2 order-2 lg:absolute lg:top-[10%] lg:left-[4.2%] lg:space-y-3"
+      >
+        <li className="flex items-center gap-3.5">
+          <GlobeIcon className={iconSize + " text-white"} />
+          <span className={metaText}>born in brazil / based in london</span>
+        </li>
+        <li className="flex items-center gap-3.5">
+          <PrismIcon className={iconSize + " text-white"} />
+          <span className={metaText}>
+            local time <LocalTime />
+          </span>
+        </li>
+        <li className="flex items-center gap-3.5">
+          <StarIcon className={iconSize + " text-white"} />
+          <span className={metaText}>since 1993</span>
+        </li>
+      </ul>
 
-        {/* — who i am ---------------------------------------------------- */}
-        {/* the eyebrow is a marker for the copy under it, so with neither field
+      {/* — who i am ---------------------------------------------------- */}
+      {/* the eyebrow is a marker for the copy under it, so with neither field
             filled the block goes rather than leaving a rule floating on its own.
 
             Set against the *foot* of the column (the design's 841 of 947, so
@@ -2619,50 +2617,50 @@ export default function AboutContent({
             list: the headline is the block whose height the copy decides, and it
             grows upwards into the empty middle of the column instead of pushing
             the paragraph down towards <SiteNav />. */}
-        {(title || description) && (
-          <div className="mb-6 order-1 lg:absolute lg:bottom-[11.2%] lg:left-[3.7%] lg:mb-0 lg:w-[31.9%]">
-            <Eyebrow ref={eyebrowRef}>who i am</Eyebrow>
+      {(title || description) && (
+        <div className="mb-6 order-1 lg:absolute lg:bottom-[11.2%] lg:left-[3.7%] lg:mb-0 lg:w-[31.9%]">
+          <Eyebrow ref={eyebrowRef}>who i am</Eyebrow>
 
-            {/* the design breaks this over four lines, but a Text field is one
+          {/* the design breaks this over four lines, but a Text field is one
                 line in the editor, so the breaks are the column's to make — it
                 is sized to wrap the copy the same way. `pre-line` is there for
                 the author who does get a newline in. */}
-            {title && (
-              <h2
-                ref={titleRef}
-                className={
-                  "font-display mt-3 font-extrabold text-white " +
-                  CAPS +
-                  " " +
-                  LEADING +
-                  " text-lg tracking-normal whitespace-pre-line lg:text-xl xl:text-2xl 2xl:text-[1.75rem] short:text-lg shorter:text-[0.85rem]"
-                }
-              >
-                {title}
-              </h2>
-            )}
+          {title && (
+            <h2
+              ref={titleRef}
+              className={
+                "font-display mt-3 font-extrabold text-white " +
+                CAPS +
+                " " +
+                LEADING +
+                " text-lg tracking-normal whitespace-pre-line lg:text-xl xl:text-2xl 2xl:text-[1.75rem] short:text-lg shorter:text-[0.85rem]"
+              }
+            >
+              {title}
+            </h2>
+          )}
 
-            {description && (
-              <p
-                ref={descriptionRef}
-                className={
-                  "mt-3 " +
-                  CAPS +
-                  " " +
-                  MUTED +
-                  " " +
-                  LEADING +
-                  " text-sm tracking-normal lg:max-w-[93%] lg:text-sm xl:mt-5 xl:text-base 2xl:mt-6 2xl:text-lg short:text-sm shorter:text-[0.75rem]"
-                }
-              >
-                {description}
-              </p>
-            )}
-          </div>
-        )}
+          {description && (
+            <p
+              ref={descriptionRef}
+              className={
+                "mt-3 " +
+                CAPS +
+                " " +
+                MUTED +
+                " " +
+                LEADING +
+                " text-sm tracking-normal lg:max-w-[93%] lg:text-sm xl:mt-5 xl:text-base 2xl:mt-6 2xl:text-lg short:text-sm shorter:text-[0.75rem]"
+              }
+            >
+              {description}
+            </p>
+          )}
+        </div>
+      )}
 
-        {/* — the face ---------------------------------------------------- */}
-        {/* The head is scene geometry — <Head />, over in the R3F tree — and
+      {/* — the face ---------------------------------------------------- */}
+      {/* The head is scene geometry — <Head />, over in the R3F tree — and
             this is the hole it sits in: an empty box that <Scene /> matches the
             face to every frame, so the two cannot drift apart as the copy above
             it rewraps. Nothing is drawn here; the canvas shows through.
@@ -2678,15 +2676,15 @@ export default function AboutContent({
             takes the box away entirely, which is what ./faceSlot reads as "no
             column to sit in" — so the two halves stay in step through a resize
             across the breakpoint. */}
-        <div
+      {/* <div
           ref={publishFaceSlot}
           aria-hidden
           className="order-3 mt-[8vw] aspect-[784/1519] w-[min(66vw,37vh)] shrink-0 self-center lg:hidden"
-        />
-      </div>
+        /> */}
+    </div>
 
-      {/* — the pile ------------------------------------------------------ */}
-      {/* From `lg` up the intro never touches this: the cards scroll in, which
+    {/* — the pile ------------------------------------------------------ */}
+    {/* From `lg` up the intro never touches this: the cards scroll in, which
           is an entrance already. See {@link SkillCard} and {@link STATS_SHIFT}.
           Below `lg` the cards are dealt in from alternating sides instead, one
           at a time as each clears the fold — see {@link CARD_ENTER_X}.
@@ -2697,60 +2695,60 @@ export default function AboutContent({
           makes a scroll container of the box, and a scroll container is the one
           thing the pinned cards inside it cannot be pinned against — gone from
           `lg` up regardless, where nothing here moves sideways at all. */}
-      {skills.length > 0 && (
-        <div
-          ref={stackRef}
-          // The distance every card is held above its slot as its range opens;
-          // the ranges themselves are per-card and sit on the cards. Set here
-          // rather than in globals.css so the arithmetic stays in one file with
-          // the constants it is made of — the stylesheet holds no geometry.
-          //
-          style={{ "--about-lift": CARD_LIFT } as CSSProperties}
-          // The full height of the section, both edges, and it has to be: the
-          // cards are placed against this box from `lg` up, and each one's own
-          // run-out is measured off its bottom edge. See {@link runOut}.
-          className={
-            rightColumn + " lg:bottom-0 overflow-x-clip lg:overflow-x-visible"
-          }
-        >
-          {/* The list holds no geometry from `lg` up — every card is out of
+    {skills.length > 0 && (
+      <div
+        ref={stackRef}
+        // The distance every card is held above its slot as its range opens;
+        // the ranges themselves are per-card and sit on the cards. Set here
+        // rather than in globals.css so the arithmetic stays in one file with
+        // the constants it is made of — the stylesheet holds no geometry.
+        //
+        style={{ "--about-lift": CARD_LIFT } as CSSProperties}
+        // The full height of the section, both edges, and it has to be: the
+        // cards are placed against this box from `lg` up, and each one's own
+        // run-out is measured off its bottom edge. See {@link runOut}.
+        className={
+          rightColumn + " lg:bottom-0 overflow-x-clip lg:overflow-x-visible"
+        }
+      >
+        {/* The list holds no geometry from `lg` up — every card is out of
               flow in a box of its own, which is where the pinning lives now.
               See {@link SkillCard}.
 
               What `h-full` is still for is the marker under it: the cue has to
               sit at the foot of the column, and with the cards out of flow this
               empty box is the only thing left that puts it there. */}
-          <ul className="lg:h-full">
-            {skills.map(({ skill, description }, i) => (
-              <SkillCard
-                // a group item carries no id of its own, and position is the
-                // only thing that identifies a card here — it is also the
-                // card's place in the pile, so this key is load-bearing
-                key={i}
-                index={i}
-                skill={skill}
-                description={description}
-              />
-            ))}
-          </ul>
+        <ul className="lg:h-full">
+          {skills.map(({ skill, description }, i) => (
+            <SkillCard
+              // a group item carries no id of its own, and position is the
+              // only thing that identifies a card here — it is also the
+              // card's place in the pile, so this key is load-bearing
+              key={i}
+              index={i}
+              skill={skill}
+              description={description}
+            />
+          ))}
+        </ul>
 
-          {/* The stats' cue, for browsers that cannot scroll them in: an empty
+        {/* The stats' cue, for browsers that cannot scroll them in: an empty
               marker sitting at the foot of the column, which the list above
               fills exactly. Everything else down here is pinned and therefore
               still, so this is the only thing left that keeps moving with the
               page — which is what lets that fallback answer a change of
               direction rather than waiting out the pile. See
               {@link statsCueVh}. */}
-          <div
-            ref={statsCueRef}
-            aria-hidden
-            className="hidden lg:block lg:h-px"
-          />
-        </div>
-      )}
+        <div
+          ref={statsCueRef}
+          aria-hidden
+          className="hidden lg:block lg:h-px"
+        />
+      </div>
+    )}
 
-      {/* — my stats ------------------------------------------------------ */}
-      {/* Its own box with one sticky child, so it pins near the foot of the
+    {/* — my stats ------------------------------------------------------ */}
+    {/* Its own box with one sticky child, so it pins near the foot of the
           screen and holds there for the rest of the section without taking any
           of the flow the pile beside it needs.
 
@@ -2766,94 +2764,89 @@ export default function AboutContent({
           figure every card is given, so the two blocks let go together instead
           of the stats climbing the screen through a pile still standing still.
           See {@link runOut}. */}
-      {numbers.length > 0 && (
-        <div
-          // Below `lg` the page ends here, so this block is what stands
-          // between the stats and <SiteNav /> — carried as padding rather than
-          // as a floor under the block, because what the design asks for is
-          // room *under the boxes* and their own height is theirs to decide,
-          // however many of them the author gives. See {@link NAV_CLEAR_SM}.
-          // From `lg` up the block is placed rather than in flow and the
-          // section's own height carries the room, so the padding goes.
+    {numbers.length > 0 && (
+      <div
+        // Below `lg` the page ends here, so this block is what stands
+        // between the stats and <SiteNav /> — carried as padding rather than
+        // as a floor under the block, because what the design asks for is
+        // room *under the boxes* and their own height is theirs to decide,
+        // however many of them the author gives. See {@link NAV_CLEAR_SM}.
+        // From `lg` up the block is placed rather than in flow and the
+        // section's own height carries the room, so the padding goes.
+        style={
+          {
+            "--nav-clear-sm": NAV_CLEAR_SM,
+            "--stats-run-out": STATS_RUN_OUT,
+          } as CSSProperties
+        }
+        className={
+          rightColumn +
+          " lg:bottom-(--stats-run-out) pb-(--nav-clear-sm) pt-8 lg:pt-0 lg:pb-0"
+        }
+      >
+        <ul
+          ref={statsRef}
           style={
             {
-              "--nav-clear-sm": NAV_CLEAR_SM,
-              "--stats-run-out": STATS_RUN_OUT,
+              "--stats-top": STATS_TOP_VH + "vh",
+              // the height the run-out above is measured against — one
+              // figure, two readers, so the boxes take it from here rather
+              // than restating it in a class
+              "--stats-h": STATS_HEIGHT_VH + "vh",
+              // the rise, shared by every box; the ranges are per box and sit
+              // on the boxes. Here rather than in globals.css for the same
+              // reason `--about-lift` is on the pile — the stylesheet holds
+              // no geometry.
+              "--stats-shift": STATS_SHIFT + "px",
             } as CSSProperties
           }
-          className={
-            rightColumn +
-            " lg:bottom-(--stats-run-out) pb-(--nav-clear-sm) pt-8 lg:pt-0 lg:pb-0"
-          }
+          className="grid grid-cols-3 gap-2 lg:sticky lg:top-(--stats-top) lg:gap-[0.75vw]"
         >
-          <ul
-            ref={statsRef}
-            style={
-              {
-                "--stats-top": STATS_TOP_VH + "vh",
-                // the height the run-out above is measured against — one
-                // figure, two readers, so the boxes take it from here rather
-                // than restating it in a class
-                "--stats-h": STATS_HEIGHT_VH + "vh",
-                // the rise, shared by every box; the ranges are per box and sit
-                // on the boxes. Here rather than in globals.css for the same
-                // reason `--about-lift` is on the pile — the stylesheet holds
-                // no geometry.
-                "--stats-shift": STATS_SHIFT + "px",
-              } as CSSProperties
-            }
-            className="grid grid-cols-3 gap-2 lg:sticky lg:top-(--stats-top) lg:gap-[0.75vw]"
-          >
-            {numbers.map(({ number, label }, i) => (
-              <li
-                key={i}
-                // the hook and the stylesheet both find the boxes by this, the
-                // same way they find the cards
-                data-about-stat=""
-                style={statRangeVh(i, skills.length) as CSSProperties}
+          {numbers.map(({ number, label }, i) => (
+            <li
+              key={i}
+              // the hook and the stylesheet both find the boxes by this, the
+              // same way they find the cards
+              data-about-stat=""
+              style={statRangeVh(i, skills.length) as CSSProperties}
+              className={
+                "pointer-events-auto flex flex-col items-center justify-center gap-2 rounded-sm border-2 border-white " +
+                PLATE +
+                " px-2 py-3 text-center lg:h-(--stats-h) lg:gap-3 lg:py-4 short:gap-1"
+              }
+            >
+              <span
                 className={
-                  "pointer-events-auto flex flex-col items-center justify-center gap-2 rounded-sm border-2 border-white " +
-                  PLATE +
-                  " px-2 py-3 text-center lg:h-(--stats-h) lg:gap-3 lg:py-4 short:gap-1"
+                  "font-display " +
+                  LEADING +
+                  " font-extrabold text-white text-2xl lg:text-3xl xl:text-4xl 2xl:text-[2.75rem]"
                 }
               >
-                <span
-                  className={
-                    "font-display " +
-                    LEADING +
-                    " font-extrabold text-white text-2xl lg:text-3xl xl:text-4xl 2xl:text-[2.75rem]"
-                  }
-                >
-                  {number}
-                </span>
-                <span
-                  className={
-                    CAPS +
-                    " " +
-                    MUTED +
-                    " " +
-                    LEADING +
-                    " text-xs xl:text-xs 2xl:text-base"
-                  }
-                >
-                  {label}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+                {number}
+              </span>
+              <span
+                className={
+                  CAPS +
+                  " " +
+                  MUTED +
+                  " " +
+                  LEADING +
+                  " text-xs xl:text-xs 2xl:text-base"
+                }
+              >
+                {label}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
 
-      {/* With no stats under them the cards are the last block in the column,
+    {/* With no stats under them the cards are the last block in the column,
           so the clearance the stats carry as padding becomes a box of its own
           — the same figure, the same reason. See {@link NAV_CLEAR_SM}. */}
-      {numbers.length === 0 && skills.length > 0 && (
-        <div
-          aria-hidden
-          style={{ height: NAV_CLEAR_SM }}
-          className="lg:hidden"
-        />
-      )}
-    </>
-  );
+    {numbers.length === 0 && skills.length > 0 && (
+      <div aria-hidden style={{ height: NAV_CLEAR_SM }} className="lg:hidden" />
+    )}
+  </>;
 }
