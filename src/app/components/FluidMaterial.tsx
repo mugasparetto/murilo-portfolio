@@ -63,6 +63,18 @@ type Props = {
    * thousands of fragments a frame, for a door two sections up the page.
    */
   enabledRef?: React.RefObject<boolean>;
+
+  /**
+   * Whether the pointer can stir the fluid. Omit and it can.
+   *
+   * Off, nothing is ever written into the sim, so there is nothing to run: the
+   * field would only settle from its seed to stillness, and stillness is what
+   * the door already shows with no field bound. An empty sampler reads zero,
+   * and zero is no distortion. So off skips the sim outright and keeps only the
+   * door's clock going. That clock lives here too and drives the pattern's own
+   * motion.
+   */
+  interactive?: boolean;
 };
 
 export function useFluidMaterials({
@@ -73,6 +85,7 @@ export function useFluidMaterials({
   pointerActiveRef,
   seed = 0,
   enabledRef,
+  interactive = true,
 }: Props) {
   const { gl } = useThree();
 
@@ -202,6 +215,13 @@ export function useFluidMaterials({
     fluidMat.uniforms.iTime.value = timeRef.current;
     displayMat.uniforms.iTime.value = timeRef.current;
 
+    // the door's look, which the GUI can move whether or not there's a sim
+    displayMat.uniforms.uDistortionAmount.value = config.distortionAmount;
+    displayMat.uniforms.uColorIntensity.value = config.colorIntensity;
+    displayMat.uniforms.uSoftness.value = config.softness;
+
+    if (!interactive) return;
+
     // Keep iFrame only for the shader's initialization branch.
     // (Not used for animation timing)
     fluidMat.uniforms.iFrame.value = frameRef.current;
@@ -241,10 +261,6 @@ export function useFluidMaterials({
     fluidMat.uniforms.uTrailLength.value = trail;
     fluidMat.uniforms.uStopDecay.value = stop;
 
-    displayMat.uniforms.uDistortionAmount.value = config.distortionAmount;
-    displayMat.uniforms.uColorIntensity.value = config.colorIntensity;
-    displayMat.uniforms.uSoftness.value = config.softness;
-
     // --- ping-pong render
     fluidMat.uniforms.iPreviousFrame.value = previousRT.current.texture;
 
@@ -266,6 +282,13 @@ export function useFluidMaterials({
 
     frameRef.current++;
   });
+
+  // Turned off mid-session (a tablet undocked from its mouse), the last field
+  // would stay bound and the door would hold whatever swirl it was left with.
+  // Unbinding it puts the door back to still.
+  useEffect(() => {
+    if (!interactive) displayMat.uniforms.iFluid.value = null;
+  }, [interactive, displayMat]);
 
   // The palette only moves when the GUI does, so converting it here instead of
   // per frame drops eight Color/Vector3 allocations out of the render loop.

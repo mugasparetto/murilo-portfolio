@@ -7,11 +7,12 @@ import type { SceneParams } from "../scene-core/params";
 import { terrainFragment, terrainVertex } from "../scene-core/terrainShader";
 import { TERRAIN_GRID } from "../scene-core/gridShader";
 import type { DoorProjection } from "../scene-core/doorProjection";
+import type { DoorImage } from "../scene-core/doorImage";
 
 type Props = {
   params: SceneParams;
-  /** the door's display material — the ground pool reflects it */
-  doorMat: THREE.ShaderMaterial;
+  /** the door's baked picture — the ground pool reflects it */
+  doorImage: DoorImage;
   /** live door quad, written by <Door /> every frame */
   doorProjectionRef: RefObject<DoorProjection>;
   tiles?: number;
@@ -22,7 +23,7 @@ const GRID = TERRAIN_GRID;
 
 export default function Terrain({
   params,
-  doorMat,
+  doorImage,
   doorProjectionRef,
   tiles = 3,
 }: Props) {
@@ -105,18 +106,9 @@ export default function Terrain({
         },
         uPoolStrength: { value: params.reflectFloorStrength },
 
-        // shared *objects* with the door material — see <Steps />
-        iTime: doorMat.uniforms.iTime,
-        iResolution: doorMat.uniforms.iResolution,
-        uDoorFluid: doorMat.uniforms.iFluid,
-        uSeed: doorMat.uniforms.uSeed,
-        uDistortionAmount: doorMat.uniforms.uDistortionAmount,
-        uColor1: doorMat.uniforms.uColor1,
-        uColor2: doorMat.uniforms.uColor2,
-        uColor3: doorMat.uniforms.uColor3,
-        uColor4: doorMat.uniforms.uColor4,
-        uColorIntensity: doorMat.uniforms.uColorIntensity,
-        uSoftness: doorMat.uniforms.uSoftness,
+        // shared *objects* with the door's bake — see <Steps />
+        uDoorImage: doorImage.uDoorImage,
+        uDoorImageRect: doorImage.uDoorImageRect,
 
         // door quad in world space, published by <Door /> each frame
         uDoorPos: { value: new THREE.Vector3() },

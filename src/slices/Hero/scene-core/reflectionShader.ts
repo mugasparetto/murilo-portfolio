@@ -3,9 +3,17 @@ import { gridColumnCoord, gridFunctions } from "./gridShader";
 /**
  * Reflection of the door onto other surfaces.
  *
- * The pattern is the *same* code as the door's displayShader, fed by the *same*
- * uniform objects (time / fluid texture / colors are shared with the door
- * material), so whatever the door shows is what gets reflected.
+ * The picture is the door's own. {@link useDoorImage} runs the door's
+ * displayShader, on the door material's own uniform objects, into a small
+ * texture once a frame, and every surface here reads that texture. So
+ * whatever the door shows is what gets reflected.
+ *
+ * It used to be evaluated in place: the same shader pasted in as `doorColor`
+ * and run three times per pixel for the glossy blur. That came to about sixty
+ * sin/cos calls on every pixel of the staircase and the light pool, many times
+ * over the cost of drawing the door itself. The reflection is a blurred, mirrored
+ * copy, so a texture a few hundred texels across loses nothing it needs, and
+ * the three taps are now three texture reads.
  *
  * Placement is a mirrored planar projection rather than a ray-traced mirror:
  * the camera sits almost level with the treads, so a true `reflect()` bounces
@@ -17,21 +25,27 @@ import { gridColumnCoord, gridFunctions } from "./gridShader";
  * `doorReflectUniforms` + `doorReflectFunctions` are meant to be pasted into
  * any fragment shader that wants to catch the door (see the steps below and
  * the light pool in terrainShader.ts). Materials that include them must share
- * the door material's uniform objects -- see <Steps />.
+ * the {@link DoorImage} uniform objects -- see <Steps />.
  */
+
+/**
+ * The stretch of door uv the reflection can reach, as `[x, y, width, height]`:
+ * what the baked image has to cover. A read outside it gets the image's
+ * nearest edge.
+ *
+ * Read off `doorReflectionRaw` below. The footprint lets through x in [0, 1]
+ * and y in (-0.12, 1.15). The glossy blur's taps then reach up to
+ * `uRoughness * 0.54` further on y, and about a third of that across. Sized for
+ * a roughness of 2, the top of its GUI range, so no setting reaches the edge.
+ * Change the footprint or the taps and this has to follow.
+ */
+export const DOOR_IMAGE_RECT = [-0.4, -0.25, 1.8, 2.5] as const;
+
 export const doorReflectUniforms = /* glsl */ `
-// --- shared with the door material ---
-uniform float iTime;
-uniform vec2 iResolution;
-uniform sampler2D uDoorFluid;   // fluid sim output, used to distort the pattern
-uniform float uSeed;
-uniform float uDistortionAmount;
-uniform vec3 uColor1;
-uniform vec3 uColor2;
-uniform vec3 uColor3;
-uniform vec3 uColor4;
-uniform float uColorIntensity;
-uniform float uSoftness;
+// --- the door's picture, baked once a frame (see useDoorImage) ---
+uniform sampler2D uDoorImage;
+// door uv at the image's bottom-left corner (xy), and how much it spans (zw)
+uniform vec4 uDoorImageRect;
 
 // --- door quad in world space (published by <Door />) ---
 uniform vec3 uDoorPos;
@@ -58,38 +72,9 @@ uniform float uTopEnd;
 export const doorReflectFunctions = /* glsl */ `
 float sat(float x){ return clamp(x, 0.0, 1.0); }
 
-// Exactly the door's displayShader, evaluated at an arbitrary door uv.
+// The door's picture at an arbitrary door uv, read back from the bake.
 vec3 doorColor(vec2 uv01) {
-  vec2 fluidVel = texture2D(uDoorFluid, clamp(uv01, 0.0, 1.0)).xy;
-
-  vec2 fragCoord = uv01 * iResolution;
-  float mr = min(iResolution.x, iResolution.y);
-  vec2 uv = (fragCoord * 2.0 - iResolution.xy) / mr;
-
-  uv += fluidVel * (0.5 * uDistortionAmount);
-
-  float d = -iTime * 0.5 + uSeed * 3.7;
-  float a = uSeed * 1.3;
-  for (float i = 0.0; i < 8.0; ++i) {
-    a += cos(i - d - a * uv.x);
-    d += sin(uv.y * i + a);
-  }
-  d += iTime * 0.5;
-
-  float mixer1 = cos(uv.x * d) * 0.5 + 0.5;
-  float mixer2 = cos(uv.y * a) * 0.5 + 0.5;
-  float mixer3 = sin(d + a) * 0.5 + 0.5;
-
-  float smoothAmount = clamp(uSoftness * 0.1, 0.0, 0.9);
-  mixer1 = mix(mixer1, 0.5, smoothAmount);
-  mixer2 = mix(mixer2, 0.5, smoothAmount);
-  mixer3 = mix(mixer3, 0.5, smoothAmount);
-
-  vec3 col = mix(uColor1, uColor2, mixer1);
-  col = mix(col, uColor3, mixer2);
-  col = mix(col, uColor4, mixer3 * 0.4);
-
-  return col * uColorIntensity;
+  return texture2D(uDoorImage, (uv01 - uDoorImageRect.xy) / uDoorImageRect.zw).rgb;
 }
 
 /**

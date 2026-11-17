@@ -28,6 +28,8 @@ import Sky from "./Sky";
 import HumanDestruction from "./HumanModelDestruction";
 import { useFluidMaterials } from "@/app/components/FluidMaterial";
 import { useSectionOnScreenRef } from "@/app/helpers/sectionVisibility";
+import { useCoarsePointer } from "@/app/hooks/pointer";
+import { useDoorImage } from "../scene-core/doorImage";
 
 import { NameDriver } from "./Name";
 import { HeadlineDriver } from "./Headline";
@@ -140,6 +142,11 @@ export default function Scene({ scrollRef }: Props) {
   // <Door /> fills this in every frame, <Steps /> reflects it
   const doorProjectionRef = useRef<DoorProjection>(createDoorProjection());
 
+  // No stirring the door on touch. A finger on it is nearly always the start of
+  // a scroll, so the fluid would only be painted by people trying to leave.
+  // And with nothing to stir it, the sim has nothing to do: see `interactive`.
+  const coarsePointer = useCoarsePointer();
+
   const { displayMat } = useFluidMaterials({
     config: {
       brushSize: p.brushSize,
@@ -160,6 +167,15 @@ export default function Scene({ scrollRef }: Props) {
     pointerUvRef,
     pointerActiveRef,
     enabledRef: heroOnScreen,
+    interactive: !coarsePointer,
+  });
+
+  // the door's picture for the surfaces that reflect it. After the sim, so it
+  // bakes this frame's clock and field rather than last frame's
+  const doorImage = useDoorImage({
+    doorMat: displayMat,
+    doorProjectionRef,
+    enabledRef: heroOnScreen,
   });
 
   const groupPosition = useMemo<[number, number, number]>(
@@ -178,14 +194,14 @@ export default function Scene({ scrollRef }: Props) {
         <group position={groupPosition}>
           <Terrain
             params={p}
-            doorMat={displayMat}
+            doorImage={doorImage}
             doorProjectionRef={doorProjectionRef}
             tiles={8}
           />
           <Mountains params={p} />
           <Steps
             params={p}
-            doorMat={displayMat}
+            doorImage={doorImage}
             doorProjectionRef={doorProjectionRef}
             scrollWindow={{ startVh: 0, endVh: 75 }}
           >

@@ -23,6 +23,7 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 
 import type { DoorProjection } from "../scene-core/doorProjection";
+import type { DoorImage } from "../scene-core/doorImage";
 
 /**
  * Scroll progress past which the figure, and then the staircase itself, leave
@@ -50,8 +51,8 @@ const STEPS_EXIT = 0.999;
 
 type Props = {
   params: SceneParams;
-  /** the door's display material — the steps reflect it */
-  doorMat: THREE.ShaderMaterial;
+  /** the door's baked picture — the steps reflect it */
+  doorImage: DoorImage;
   /** live door quad, written by <Door /> every frame */
   doorProjectionRef: RefObject<DoorProjection>;
   children?: React.ReactNode;
@@ -63,7 +64,7 @@ type Props = {
 
 export default function Steps({
   params,
-  doorMat,
+  doorImage,
   doorProjectionRef,
   children,
   scrollWindow,
@@ -129,24 +130,13 @@ export default function Steps({
   }, []);
 
   const fillMat = useMemo(() => {
-    const d = doorMat.uniforms;
-
     return new THREE.ShaderMaterial({
       uniforms: {
-        // ⬇️ shared *objects* with the door material: same clock, same fluid
-        // texture, same colors. Whatever the door shows is what we reflect,
-        // and useFluidMaterials keeps updating both at once.
-        iTime: d.iTime,
-        iResolution: d.iResolution, // “pattern space”, not screen
-        uDoorFluid: d.iFluid,
-        uSeed: d.uSeed,
-        uDistortionAmount: d.uDistortionAmount,
-        uColor1: d.uColor1,
-        uColor2: d.uColor2,
-        uColor3: d.uColor3,
-        uColor4: d.uColor4,
-        uColorIntensity: d.uColorIntensity,
-        uSoftness: d.uSoftness,
+        // ⬇️ shared *objects* with the door's bake: useDoorImage redraws the
+        // door into this texture every frame, so whatever the door shows is
+        // what we reflect
+        uDoorImage: doorImage.uDoorImage,
+        uDoorImageRect: doorImage.uDoorImageRect,
 
         // door quad in world space, published by <Door /> each frame
         uDoorPos: { value: new THREE.Vector3() },
@@ -184,7 +174,7 @@ export default function Steps({
       fragmentShader: stepReflectFragment,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doorMat]);
+  }, [doorImage]);
 
   // keep resolution current (LineMaterial)
   useEffect(() => {
