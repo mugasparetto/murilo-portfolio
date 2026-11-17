@@ -25,6 +25,7 @@ export default function ClientProvider({
         lerp: 0.07,
         smoothWheel: true,
         autoRaf: false,
+        syncTouch: true,
       }}
     >
       <SceneRegistryProvider>

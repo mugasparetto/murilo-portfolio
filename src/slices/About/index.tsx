@@ -120,8 +120,16 @@ const About: FC<AboutProps> = ({ slice }) => {
     const el = aboutRef.current;
     if (!el) return;
 
+    // Off only while the section is still *below* the screen. Once it has gone
+    // past the top the backdrop and grid carry on rising through the rest of
+    // the page (see `aboutScrolledPast`), so being above the viewport is no
+    // longer a reason to stop drawing them.
     const io = new IntersectionObserver(
-      ([entry]) => setActive(id, entry.isIntersecting),
+      ([entry]) =>
+        setActive(
+          id,
+          entry.isIntersecting || entry.boundingClientRect.bottom <= 0,
+        ),
       { root: null, threshold: 0, rootMargin: "100% 0px 100% 0px" },
     );
 

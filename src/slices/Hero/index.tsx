@@ -52,7 +52,7 @@ const Hero: FC<HeroProps> = ({ slice }) => {
 
     const io = new IntersectionObserver(
       ([entry]) => setActive(id, entry.isIntersecting),
-      { root: null, threshold: 0, rootMargin: "100% 0px 100% 0px" },
+      { root: null, threshold: 0, rootMargin: "0% 0px 0% 0px" },
     );
 
     io.observe(el);

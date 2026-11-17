@@ -73,12 +73,26 @@ export function measureAboutExit() {
  * scene where it is authored.
  */
 export function aboutExitProgress(scrollY: number) {
+  const t = aboutScrolledPast(scrollY);
+  return t > 1 ? 1 : t;
+}
+
+/**
+ * The same measurement with the top left open: screens of scroll since the
+ * exit began, carrying on past 1 for as long as the page does.
+ *
+ * What the backdrop and its grid ride. The exit is a one-screen event, but the
+ * surface behind it isn't — it keeps travelling up at the pace the exit left it
+ * at, so the page can be scrolled through the grid rather than off the end of
+ * it.
+ */
+export function aboutScrolledPast(scrollY: number) {
   const bottom = state.pageBottom;
   if (bottom === null) return 0;
 
   const screen = cssVh();
   const t = (scrollY - (bottom - screen)) / screen;
-  return t < 0 ? 0 : t > 1 ? 1 : t;
+  return t < 0 ? 0 : t;
 }
 
 /** Hands the section over: `publishAboutExit` is called with it on mount. */
