@@ -1,4 +1,10 @@
-import React, { useMemo, useRef, useImperativeHandle, forwardRef } from "react";
+import React, {
+  useMemo,
+  useRef,
+  useImperativeHandle,
+  useLayoutEffect,
+  forwardRef,
+} from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
@@ -98,6 +104,15 @@ export type FieldMask = {
    */
   floor?: number;
 };
+
+/**
+ * A mesh drawn *after* the field and over it — returned fresh on every frame,
+ * since the thing it names can mount late and move about.
+ *
+ * Wherever its texture is opaque it paints over the goo completely, so the
+ * field never has to be worked out there: see `occluders`.
+ */
+export type Occluder = () => THREE.Mesh | null | undefined;
 
 /**
  * Makes the free-floating balls answer to the cursor.
@@ -206,6 +221,26 @@ type HolographicMetaBallsProps = {
   enableTransparency?: boolean;
   /** Silhouette the field is clipped to. Omit and nothing is clipped. */
   mask?: FieldMask;
+  /**
+   * Textured quads drawn over the field, at most {@link MAX_OCCLUDERS}. Where
+   * one of them is opaque, the fragment is thrown away before the field is
+   * evaluated: the quad would replace it outright, so it changes no pixel.
+   *
+   * A cut, not an approximation, because the test is the quad's own: each
+   * fragment is carried along the camera ray it lies on to the quad's plane,
+   * which is the same point the quad's own fragment at that pixel samples, at
+   * the same mip level. It's measured at draw time from both live transforms,
+   * so it holds while the quad moves, too. Against the field drawn in full, a
+   * frame-by-frame comparison of the face at rest and through the tap-to-
+   * assemble trip differed at one pixel, by one step of 8-bit colour.
+   *
+   * What it assumes of each mesh, and checks before trusting it every frame: a
+   * unit plane (a sprite's quad, see `getMesh`) with its texture on
+   * `material.map` and nothing else cutting its alpha, normal blending at full
+   * opacity, a higher `renderOrder` than this field, and nothing opaque standing
+   * between the two in depth.
+   */
+  occluders?: Occluder[];
   anchors?: AnchorBall[];
   position?: [number, number, number];
   scale?: [number, number, number];
@@ -324,10 +359,31 @@ function pointerInAnimationSpace(
 //  Shaders
 // ─────────────────────────────────────────────
 
+// Each occluder's frame is affine in this plane's, so the point is written per
+// vertex and arrives at every fragment exactly — only the step along the camera
+// ray, which is not affine, is left to the fragment shader.
 const vertexShader = /* glsl */ `
   varying vec2 vUv;
+
+  #if OCCLUDERS > 0
+    uniform mat4 uOccluder0FromLocal;
+    varying vec3 vOccluder0;
+  #endif
+  #if OCCLUDERS > 1
+    uniform mat4 uOccluder1FromLocal;
+    varying vec3 vOccluder1;
+  #endif
+
   void main() {
     vUv = uv;
+
+    #if OCCLUDERS > 0
+      vOccluder0 = (uOccluder0FromLocal * vec4(position, 1.0)).xyz;
+    #endif
+    #if OCCLUDERS > 1
+      vOccluder1 = (uOccluder1FromLocal * vec4(position, 1.0)).xyz;
+    #endif
+
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -380,6 +436,49 @@ const fragmentShader = /* glsl */ `
   uniform vec2  uMaskScale;
   uniform vec2  uMaskOffset;
   uniform float uMaskFloor;
+
+  #if OCCLUDERS > 0
+    uniform sampler2D uOccluder0Map;
+    uniform vec3  uOccluder0Camera;
+    uniform float uOccluder0On;
+    varying vec3  vOccluder0;
+  #endif
+  #if OCCLUDERS > 1
+    uniform sampler2D uOccluder1Map;
+    uniform vec3  uOccluder1Camera;
+    uniform float uOccluder1On;
+    varying vec3  vOccluder1;
+  #endif
+
+  // Whether the quad whose frame camera and point are written in paints over
+  // this fragment completely. That frame is the quad's own local one — the unit
+  // plane at z = 0 — so the ray from the camera through this fragment meets it
+  // where z reaches 0, and that point plus a half is the UV the quad samples at
+  // this same pixel. Same UV, same derivatives, same mip: the alpha read here
+  // is the alpha the quad blends with.
+  //
+  // "Completely" is the threshold: anywhere short of opaque, some of the goo
+  // still shows through the quad's edge, and it has to be drawn.
+  //
+  // Same UV is true to float precision, which is not quite the same thing as
+  // the same sample: the hardware snaps texture coordinates to a fraction of a
+  // texel, and right where an opaque texel meets a clear one the two reads can
+  // land either side of a step — this one reads 1.0, the quad's own reads one
+  // step short of it, and a few percent of a pixel's worth of goo goes missing.
+  // So it is asked twice, and both have to say opaque: once as the quad asks
+  // it, and once two mip levels up, whose wider footprint takes in any clear
+  // texel nearby. Together they leave a band a couple of texels wide along
+  // every edge drawn as before, and cull the solid interior — which is nearly
+  // all of it. The coarse read alone isn't enough: averaging can round a lone
+  // translucent texel back up to opaque, and the fine read is what catches it.
+  float paintedOver(sampler2D map, vec3 camera, vec3 point) {
+    vec3 ray = point - camera;
+    vec2 uv = camera.xy - ray.xy * (camera.z / ray.z) + 0.5;
+    float onQuad =
+      step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
+    float alpha = min(texture2D(map, uv).a, texture2D(map, uv, 2.0).a);
+    return onQuad * step(0.9999, alpha);
+  }
 
   float hash21(vec2 p) {
     p = fract(p * vec2(234.34, 435.345));
@@ -455,6 +554,31 @@ const fragmentShader = /* glsl */ `
     // exists, so it goes first and the empties leave. Four of these planes
     // overlap across the middle of the About section, which is four viewports'
     // worth of fill in a frame budget that was already spoken for.
+    //
+    // And ahead of the field, two tests cheaper still, because "cheap" is
+    // relative: the field is eleven pow()s a fragment, and most of the plane
+    // never needed them. The outline, when it is zero — the alpha below is
+    // multiplied by it, so the fragment was going anyway. And the occluders:
+    // the goo is drawn *behind* the face, so everywhere a slice is solid it is
+    // painted over in full, and the only goo anyone sees is in the seams. See
+    // paintedOver and the occluders prop.
+    //
+    // Both are sampled here, before any branch, so the samplers keep the
+    // derivatives they need from the neighbouring fragments in the quad.
+    float mask = fieldMask(vUv);
+
+    float hidden = 0.0;
+    #if OCCLUDERS > 0
+      hidden = max(hidden, uOccluder0On *
+        paintedOver(uOccluder0Map, uOccluder0Camera, vOccluder0));
+    #endif
+    #if OCCLUDERS > 1
+      hidden = max(hidden, uOccluder1On *
+        paintedOver(uOccluder1Map, uOccluder1Camera, vOccluder1));
+    #endif
+
+    if (mask * uOpacity < 0.002 || hidden > 0.5) discard;
+
     vec2 coord = (vUv - 0.5) * iAnimationSize;
 
     float mbField        = 0.0;
@@ -481,10 +605,6 @@ const fragmentShader = /* glsl */ `
     float edgeHi = uFieldThreshold * (1.0 + uFieldEdge);
     float fAll     = smoothstep(uFieldThreshold, edgeHi, mbField);
     float fVisible = smoothstep(uFieldThreshold, edgeHi, mbVisibleField);
-
-    // Sampled here, outside any branch, so the sampler still gets the
-    // derivatives it needs from the neighbouring fragments in the quad.
-    float mask = fieldMask(vUv);
 
     float alpha =
       (enableTransparency > 0.5 ? fVisible : 1.0)
@@ -569,6 +689,72 @@ const MAX_ANCHORS = 16;
 const EMPTY_MASK = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);
 EMPTY_MASK.needsUpdate = true;
 
+/** How many occluders one field takes — the shader has a slot for each. */
+const MAX_OCCLUDERS = 2;
+
+type OccluderSlot = {
+  map: { value: THREE.Texture };
+  fromLocal: { value: THREE.Matrix4 };
+  camera: { value: THREE.Vector3 };
+  on: { value: number };
+};
+
+const occluderInverse = new THREE.Matrix4();
+
+/**
+ * Point one occluder slot at `target` for the draw that is about to happen, or
+ * answer false if this frame it can't be trusted to paint over anything.
+ *
+ * Called from the field's `onBeforeRender`, which is the one moment both
+ * world matrices are certain to be the ones this frame is drawn with: the
+ * renderer has just updated the scene, and no `useFrame` — whose order against
+ * the float, the trips and the drag is whatever subscription order made it — can
+ * run in between.
+ *
+ * Every check is something the shader's test silently assumes. Fail one and the
+ * slot is simply off for the frame, which costs speed and never a pixel.
+ */
+function aimOccluder(
+  target: THREE.Mesh | null | undefined,
+  field: THREE.Object3D,
+  camera: THREE.Camera,
+  slot: OccluderSlot,
+) {
+  if (!target || !target.visible) return false;
+
+  const material = target.material;
+  if (Array.isArray(material) || !material.visible) return false;
+
+  // Its alpha has to be exactly the map's: no second map cutting it, no fade
+  // on top, no UV transform moving where the map is read.
+  const basic = material as THREE.MeshBasicMaterial;
+  const map = basic.map;
+  if (!map || basic.alphaMap || basic.vertexColors) return false;
+  if (basic.opacity < 1 || basic.blending !== THREE.NormalBlending) return false;
+  if (
+    map.offset.x !== 0 ||
+    map.offset.y !== 0 ||
+    map.repeat.x !== 1 ||
+    map.repeat.y !== 1 ||
+    map.rotation !== 0
+  ) {
+    return false;
+  }
+
+  // And it has to be drawn after the field, or there is nothing to paint over.
+  if (target.renderOrder <= field.renderOrder) return false;
+
+  if (target.matrixWorld.determinant() === 0) return false;
+  occluderInverse.copy(target.matrixWorld).invert();
+
+  slot.fromLocal.value.multiplyMatrices(occluderInverse, field.matrixWorld);
+  slot.camera.value
+    .setFromMatrixPosition(camera.matrixWorld)
+    .applyMatrix4(occluderInverse);
+  slot.map.value = map;
+  return true;
+}
+
 type MaskUniforms = {
   enabled: number;
   texture: THREE.Texture;
@@ -648,13 +834,17 @@ function resolveMask(
 }
 
 type SceneProps = Required<
-  Omit<HolographicMetaBallsProps, "position" | "scale" | "ref" | "mask">
+  Omit<
+    HolographicMetaBallsProps,
+    "position" | "scale" | "ref" | "mask" | "occluders"
+  >
 > & {
   position: [number, number, number];
   scale: [number, number, number];
   renderOrder?: number;
   seed: number;
   mask?: FieldMask;
+  occluders?: Occluder[];
 };
 
 const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
@@ -844,6 +1034,15 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
         uMaskScale: { value: maskUniforms.scale.clone() },
         uMaskOffset: { value: maskUniforms.offset.clone() },
         uMaskFloor: { value: maskUniforms.floor },
+        // written per draw, see the occluders' `onBeforeRender` below
+        uOccluder0Map: { value: EMPTY_MASK as THREE.Texture },
+        uOccluder0FromLocal: { value: new THREE.Matrix4() },
+        uOccluder0Camera: { value: new THREE.Vector3() },
+        uOccluder0On: { value: 0 },
+        uOccluder1Map: { value: EMPTY_MASK as THREE.Texture },
+        uOccluder1FromLocal: { value: new THREE.Matrix4() },
+        uOccluder1Camera: { value: new THREE.Vector3() },
+        uOccluder1On: { value: 0 },
       }),
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [],
@@ -859,6 +1058,55 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
 
     // Ref to the mesh so we can read its world position for coordinate mapping
     const meshRef = useRef<THREE.Mesh>(null);
+
+    // ── Occluders ────────────────────────────
+    //
+    // A compile-time count rather than a uniform one, so a field that has none
+    // carries no trace of them — not even the texture reads.
+    const occluderCount = Math.min(props.occluders?.length ?? 0, MAX_OCCLUDERS);
+    const defines = useMemo(
+      () => ({ OCCLUDERS: occluderCount }),
+      [occluderCount],
+    );
+
+    useLayoutEffect(() => {
+      const mesh = meshRef.current;
+      const list = props.occluders;
+      if (!mesh || !list || occluderCount === 0) return;
+
+      const slots: OccluderSlot[] = [
+        {
+          map: uniforms.uOccluder0Map,
+          fromLocal: uniforms.uOccluder0FromLocal,
+          camera: uniforms.uOccluder0Camera,
+          on: uniforms.uOccluder0On,
+        },
+        {
+          map: uniforms.uOccluder1Map,
+          fromLocal: uniforms.uOccluder1FromLocal,
+          camera: uniforms.uOccluder1Camera,
+          on: uniforms.uOccluder1On,
+        },
+      ];
+
+      // At draw time, not in the frame loop — see aimOccluder.
+      mesh.onBeforeRender = (_renderer, _scene, camera, _geometry, material) => {
+        for (let i = 0; i < occluderCount; i++) {
+          slots[i].on.value = aimOccluder(list[i](), mesh, camera, slots[i])
+            ? 1
+            : 0;
+        }
+
+        // Three re-uploads a material's uniforms whenever it switches to it,
+        // which every draw of this one does today. Said outright anyway, so
+        // that staying true is not what correctness hangs on.
+        (material as THREE.ShaderMaterial).uniformsNeedUpdate = true;
+      };
+
+      return () => {
+        mesh.onBeforeRender = () => {};
+      };
+    }, [props.occluders, occluderCount, uniforms]);
 
     // ── Cursor state ─────────────────────────────
     /** Raw cursor position on this plane, in animation space, this frame. */
@@ -1097,6 +1345,7 @@ const HolographicMetaBallsMesh = forwardRef<MetaBallsHandle, SceneProps>(
           fragmentShader={fragmentShader}
           vertexShader={vertexShader}
           uniforms={uniforms}
+          defines={defines}
           transparent={props.enableTransparency}
           depthWrite={false}
         />
@@ -1135,6 +1384,7 @@ const HolographicMetaBalls = forwardRef<
     thicknessRange = 1.5,
     enableTransparency = false,
     mask,
+    occluders,
     anchors = [
       {
         x: 0,
@@ -1204,6 +1454,7 @@ const HolographicMetaBalls = forwardRef<
       thicknessRange={thicknessRange}
       enableTransparency={enableTransparency}
       mask={mask}
+      occluders={occluders}
       anchors={anchors}
       position={position}
       scale={scale}

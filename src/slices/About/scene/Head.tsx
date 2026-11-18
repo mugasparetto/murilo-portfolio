@@ -9,6 +9,7 @@ import { ABOUT_FACE_Z } from "@/app/components/poses";
 import MetaBalls, {
   FieldMask,
   MetaBallsHandle,
+  Occluder,
   PointerReaction,
 } from "./MetaBalls";
 import PolygonSprite, { UV, SpriteHandle, SpriteBounds } from "./PolygonSprite";
@@ -1032,6 +1033,28 @@ export default function Head({
   const metaBallsMouthFront = useRef<MetaBallsHandle>(null);
   const metaBallsMouthBack = useRef<MetaBallsHandle>(null);
 
+  /**
+   * The two slices each seam's goo hangs between. Both are drawn over it (see
+   * the render orders), and wherever either is solid not a pixel of the goo
+   * survives — the seam is all anyone sees of it. Handing them over lets the
+   * field skip everything else rather than work it out to be painted over: see
+   * `occluders` on <MetaBalls />.
+   *
+   * Read off the handles at every draw, so they follow the slices through the
+   * trips and the drag, and wait for them to mount with their textures.
+   */
+  const headSeamOccluders = useMemo<Occluder[]>(
+    () => [() => headRef.current?.getMesh(), () => eyesRef.current?.getMesh()],
+    [],
+  );
+  const mouthSeamOccluders = useMemo<Occluder[]>(
+    () => [
+      () => eyesRef.current?.getMesh(),
+      () => mouthRef.current?.getMesh(),
+    ],
+    [],
+  );
+
   const phase = useRef<Phase>("loose");
   /** Where the head left from, how long that trip takes, and how far in it is. */
   const travel = useRef({
@@ -1784,6 +1807,7 @@ export default function Head({
 
       <MetaBalls
         ref={metaBallsHeadBack}
+        occluders={headSeamOccluders}
         position={[12, -630, 2605]}
         wallMinX={-11}
         wallMaxX={11}
@@ -1824,6 +1848,7 @@ export default function Head({
 
       <MetaBalls
         ref={metaBallsHeadFront}
+        occluders={headSeamOccluders}
         pointerReaction={GOO_POINTER}
         position={[8, -630, 2605]}
         wallMinX={-10}
@@ -1872,6 +1897,7 @@ export default function Head({
 
       <MetaBalls
         ref={metaBallsMouthFront}
+        occluders={mouthSeamOccluders}
         pointerReaction={GOO_POINTER}
         position={[5, -830, 2605]}
         scale={[300, 280, 1]}
@@ -1897,6 +1923,7 @@ export default function Head({
 
       <MetaBalls
         ref={metaBallsMouthBack}
+        occluders={mouthSeamOccluders}
         position={[10, -830, 2605]}
         scale={[300, 280, 1]}
         wallMinX={-12}

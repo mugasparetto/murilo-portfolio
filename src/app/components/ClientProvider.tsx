@@ -19,6 +19,7 @@ export default function ClientProvider({
   const eventSourceRef = useRef<HTMLDivElement>(null);
 
   return (
+    // TODO: Decide about syncTouch and lerp values.
     <ReactLenis
       root
       options={{

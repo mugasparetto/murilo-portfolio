@@ -502,6 +502,15 @@ const exitLift = ABOUT_EXIT_LIFT;
 const LG_FACE_SCALE = 0.8;
 
 /**
+ * TEMPORARY — the face below `lg`, while it is placed in the scene rather than
+ * in the column's slot. Scale is of the authored face, about FACE_HOME (at 1 it
+ * covers ~88% of the viewport height). Raise is world units up from FACE_HOME,
+ * to move it within the frame without touching its depth.
+ */
+const MOBILE_FACE_SCALE = 0.6;
+const MOBILE_FACE_RAISE = 0;
+
+/**
  * The viewport aspect the `lg`-and-up placement is authored at, and the widest
  * the face is ever allowed to be relative to the screen.
  *
@@ -873,28 +882,23 @@ export default function Scene() {
       return;
     }
 
-    const scale = slotTop.distanceTo(slotBottom) / FACE_HEIGHT;
-    slotMid.addVectors(slotTop, slotBottom).multiplyScalar(0.5);
-
-    // The group is scaled about its own origin, so the anchor has to be scaled
-    // with it: this is the transform that puts FACE_HOME — the point the whole
-    // face is laid out around — on the middle of the slot. The float rides on
-    // top of it, scaled too, so a smaller face bobs by proportionally less
-    // rather than swimming in its hole.
+    // ── Below `lg` (TEMPORARY): scene geometry, not a block in the column ────
     //
-    // And the exit comes back off, because this is the one placement in the
-    // scene that is made in *world* coordinates: `slotMid` is a ray through the
-    // live camera onto the face's plane, and this position is local to the
-    // group the exit above translates. Left alone the two would fight, and the
-    // lift would win by the whole of {@link exitLift} — a face climbing out of
-    // a hole in the copy that is not going anywhere. The subtraction is the
-    // rule stated plainly: the head belongs to the column down here, so it
-    // leaves with the page and not with the scene behind it.
+    // Stand-in while the face slot is out of <AboutContent />. The face is
+    // placed the way it is from `lg` up — scaled about FACE_HOME, so it shrinks
+    // where it stands at its authored depth instead of being dragged towards
+    // the group's origin (which is at z = 0, behind the backdrop) — and with no
+    // exit correction, so it rides `root`'s lift like the grid does: in with the
+    // camera, held for the section, out with the backdrop.
+    //
+    // The slot placement this replaces is in c698f9e^, along with ./faceSlot.
+    const scale = MOBILE_FACE_SCALE;
+
     group.scale.setScalar(scale);
     group.position.set(
-      slotMid.x - scale * FACE_HOME.x,
-      slotMid.y - scale * (FACE_HOME.y - float) - past * exitLift,
-      slotMid.z - scale * FACE_HOME.z,
+      (1 - scale) * FACE_HOME.x,
+      (1 - scale) * FACE_HOME.y + scale * float + MOBILE_FACE_RAISE,
+      (1 - scale) * FACE_HOME.z,
     );
     group.visible = true;
   });

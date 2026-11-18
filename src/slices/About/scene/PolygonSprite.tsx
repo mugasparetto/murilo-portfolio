@@ -50,6 +50,12 @@ export type SpriteHandle = {
   setExtraBounds: (box: THREE.Box3 | null) => void;
   setEnabled: (enabled: boolean) => void;
   getGroup: () => THREE.Object3D;
+  /**
+   * The textured quad itself — a unit plane scaled to the sprite, its texture
+   * on `material.map`. For anything that needs to know which pixels this piece
+   * paints, such as <MetaBalls />'s occluders.
+   */
+  getMesh: () => THREE.Mesh | null;
   setInteractable: (value: boolean) => void;
   /**
    * Put the piece back exactly as it mounted: on its authored spot, at rest,
@@ -1401,6 +1407,7 @@ const PolygonSprite = forwardRef<SpriteHandle, PolygonSpriteProps>(
           }
         },
         getGroup: () => groupRef.current,
+        getMesh: () => meshRef.current,
         setInteractable: (value: boolean) => {
           interactable.current = value; // a new ref inside PolygonSprite
         },
