@@ -12,6 +12,7 @@ import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import { useCoarsePointer } from "@/app/hooks/pointer";
 import Head, { FACE_HEIGHT, FACE_HOME } from "./Head";
 import Title from "./Title";
+import { readFaceSlot } from "./faceSlot";
 import { aboutScrolledPast } from "./aboutExit";
 import { publishBackdrop } from "@/app/helpers/backdrop";
 import { useScrollY } from "@/app/hooks/ScrollY";
@@ -502,13 +503,12 @@ const exitLift = ABOUT_EXIT_LIFT;
 const LG_FACE_SCALE = 0.8;
 
 /**
- * TEMPORARY — the face below `lg`, while it is placed in the scene rather than
- * in the column's slot. Scale is of the authored face, about FACE_HOME (at 1 it
- * covers ~88% of the viewport height). Raise is world units up from FACE_HOME,
- * to move it within the frame without touching its depth.
+ * How big the face is below `lg`, as a share of the authored face, scaled
+ * about FACE_HOME (at 1 it covers ~88% of the viewport height). Only its size:
+ * where it sits on the page comes from the #head-target box in
+ * <AboutContent />. See the placement in `useFrame`.
  */
 const MOBILE_FACE_SCALE = 0.6;
-const MOBILE_FACE_RAISE = 0;
 
 /**
  * The viewport aspect the `lg`-and-up placement is authored at, and the widest
@@ -882,22 +882,55 @@ export default function Scene() {
       return;
     }
 
-    // ── Below `lg` (TEMPORARY): scene geometry, not a block in the column ────
+    // ── Below `lg`: on the #head-target box, wherever the page has got to ───
     //
-    // Stand-in while the face slot is out of <AboutContent />. The face is
-    // placed the way it is from `lg` up — scaled about FACE_HOME, so it shrinks
-    // where it stands at its authored depth instead of being dragged towards
-    // the group's origin (which is at z = 0, behind the backdrop) — and with no
-    // exit correction, so it rides `root`'s lift like the grid does: in with the
-    // camera, held for the section, out with the backdrop.
+    // <AboutContent /> reserves a box for the face in the column, and the face
+    // is put on that box's vertical middle every frame, so it scrolls with the
+    // copy rather than hanging in the scene behind it. Only the height is read
+    // off the box. The size is still {@link MOBILE_FACE_SCALE}, and x and z
+    // are the authored ones (FACE_HOME.x is 0, so the face stays centred).
     //
-    // The slot placement this replaces is in c698f9e^, along with ./faceSlot.
+    // The box is ordinary page content, so its document position is fixed and
+    // only the page moves under it — see ./faceSlot. One subtraction against
+    // the scroll already read this frame, then a ray through the live camera
+    // onto the face's plane, which stays right while the camera is still
+    // pitching on its way in.
+    const slot = readFaceSlot();
+    if (!slot) {
+      // measured before the column has been laid out, or across a resize past
+      // the breakpoint: better nowhere than a full-size face over the copy
+      group.visible = false;
+      return;
+    }
+
+    if (
+      !screenToFacePlane(
+        slot.left + slot.width / 2,
+        slot.pageTop - scrollY.current + slot.height / 2,
+        state.camera,
+        size.width,
+        size.height,
+        slotMid,
+      )
+    ) {
+      return; // the plane is behind the camera; keep the last good placement
+    }
+
+    // Scaled about FACE_HOME as it is from `lg` up, with y swapped for the
+    // box's. The float rides on top, scaled too.
+    //
+    // And the exit comes back off. `slotMid` is in world space, but this
+    // position is local to `root`, which the exit is lifting by
+    // `past * exitLift`. The box is already leaving with the page, so leaving
+    // the lift on would carry the face out of its hole at twice the page's
+    // speed. Down here the head belongs to the column, so it leaves with the
+    // page and not with the scene behind it.
     const scale = MOBILE_FACE_SCALE;
 
     group.scale.setScalar(scale);
     group.position.set(
       (1 - scale) * FACE_HOME.x,
-      (1 - scale) * FACE_HOME.y + scale * float + MOBILE_FACE_RAISE,
+      slotMid.y - scale * (FACE_HOME.y - float) - past * exitLift,
       (1 - scale) * FACE_HOME.z,
     );
     group.visible = true;

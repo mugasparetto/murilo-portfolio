@@ -18,6 +18,7 @@ import { useGSAP } from "@gsap/react";
 
 import SolidIcon, { solidForRow } from "./SolidIcon";
 import { measureAboutExit, publishAboutExit } from "./aboutExit";
+import { measureFaceSlot, publishFaceSlot } from "./faceSlot";
 import {
   aboutOnScreen,
   aboutOnScreenOnServer,
@@ -2148,33 +2149,6 @@ function usePileTimeline(
   }, [sectionRef, count, stats]);
 }
 
-/** A rule and a label — the design's section markers. */
-function Eyebrow({
-  ref,
-  children,
-}: {
-  ref?: Ref<HTMLElement>;
-  children: ReactNode;
-}) {
-  return (
-    <h3
-      ref={ref as Ref<HTMLParagraphElement & HTMLHeadingElement>}
-      // the 0.72 is {@link EYEBROW_OPACITY} — keep the two in step
-      className="flex items-center gap-2.5 opacity-[0.72]"
-    >
-      <span
-        aria-hidden
-        className="h-px w-6 shrink-0 bg-white xl:w-8 2xl:w-10"
-      />
-      <span
-        className={`${CAPS} text-[0.6875rem] lg:text-xs xl:text-[0.8125rem] 2xl:text-sm`}
-      >
-        {children}
-      </span>
-    </h3>
-  );
-}
-
 /**
  * The globe, traced from the design's vector (node 1390-552).
  *
@@ -2464,6 +2438,7 @@ export default function AboutContent({
     let pending = 0;
     const measure = () => {
       pending = 0;
+      measureFaceSlot();
       measureAboutExit();
     };
 
@@ -2577,7 +2552,7 @@ export default function AboutContent({
           order. */}
       <div
         ref={stillRef}
-        className="pointer-events-none relative flex min-h-screen w-full flex-col justify-center gap-5 px-(--block-inset) pt-[6vh] pb-16 sm:gap-6 lg:sticky lg:top-0 lg:block lg:h-screen lg:min-h-0 lg:gap-0 lg:px-0 lg:pt-0 lg:pb-0"
+        className="pointer-events-none relative flex w-full flex-col justify-center gap-5 px-(--block-inset) pt-10 sm:gap-6 lg:sticky lg:top-0 lg:block lg:h-screen lg:min-h-0 lg:gap-0 lg:px-0 lg:pt-0 lg:pb-0"
       >
         {/* "ABOUT" itself is <Title /> in the scene, where no reader can get at
             it, so the section's heading lives here */}
@@ -2619,8 +2594,6 @@ export default function AboutContent({
             the paragraph down towards <SiteNav />. */}
         {(title || description) && (
           <div className="mb-6 order-1 lg:absolute lg:bottom-[11.2%] lg:left-[3.7%] lg:mb-0 lg:w-[31.9%]">
-            <Eyebrow ref={eyebrowRef}>who i am</Eyebrow>
-
             {/* the design breaks this over four lines, but a Text field is one
                 line in the editor, so the breaks are the column's to make — it
                 is sized to wrap the copy the same way. `pre-line` is there for
@@ -2629,7 +2602,7 @@ export default function AboutContent({
               <h2
                 ref={titleRef}
                 className={
-                  "font-display mt-3 font-extrabold text-white " +
+                  "font-display font-extrabold text-white " +
                   CAPS +
                   " " +
                   LEADING +
@@ -2658,30 +2631,18 @@ export default function AboutContent({
             )}
           </div>
         )}
-
-        {/* — the face ---------------------------------------------------- */}
-        {/* The head is scene geometry — <Head />, over in the R3F tree — and
-            this is the hole it sits in: an empty box that <Scene /> matches the
-            face to every frame, so the two cannot drift apart as the copy above
-            it rewraps. Nothing is drawn here; the canvas shows through.
-
-            The last block in the column and in ordinary flow, so the head
-            leaves the screen the way everything above it does — the cards below
-            follow it up the page rather than out from under it. `order-3`
-            because the two blocks above are ordered too, and an unordered box
-            among them would sort to the front.
-
-            Gone from `lg` up, where the face is back to the world position it is
-            authored at and the blocks are placed around it. `display: none`
-            takes the box away entirely, which is what ./faceSlot reads as "no
-            column to sit in" — so the two halves stay in step through a resize
-            across the breakpoint. */}
-        {/* <div
-          ref={publishFaceSlot}
-          aria-hidden
-          className="order-3 mt-[8vw] aspect-[784/1519] w-[min(66vw,37vh)] shrink-0 self-center lg:hidden"
-        /> */}
       </div>
+
+      {/* The hole the head sits in below `lg`: <Scene /> puts the face on
+          this box's vertical middle every frame — see ./faceSlot. In ordinary
+          flow, never sticky or transformed, or its measured page position
+          stops being true. `lg:hidden` is how the scene hears "no slot". */}
+      <div
+        ref={publishFaceSlot}
+        id="head-target"
+        aria-hidden
+        className="h-[75vh] w-full lg:hidden"
+      />
 
       {/* — the pile ------------------------------------------------------ */}
       {/* From `lg` up the intro never touches this: the cards scroll in, which

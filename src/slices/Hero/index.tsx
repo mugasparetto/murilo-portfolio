@@ -24,17 +24,17 @@ const Hero: FC<HeroProps> = ({ slice }) => {
   const { register, remove, setActive } = useSceneRegistry();
 
   // Register scene once
-  useEffect(() => {
-    register({
-      id,
-      name: "scene-hero",
-      priority: 10,
-      node: <Scene scrollRef={heroRef} />,
-      active: true,
-    });
+  // useEffect(() => {
+  //   register({
+  //     id,
+  //     name: "scene-hero",
+  //     priority: 10,
+  //     node: <Scene scrollRef={heroRef} />,
+  //     active: true,
+  //   });
 
-    return () => remove(id);
-  }, [id, slice.primary, register, remove]);
+  //   return () => remove(id);
+  // }, [id, slice.primary, register, remove]);
 
   // Drawn while the section is anywhere near the viewport, hidden once it is a
   // long way off — see {@link setSectionOnScreen}. `active` drives `visible` on
@@ -46,18 +46,18 @@ const Hero: FC<HeroProps> = ({ slice }) => {
   // one being flown away from has to stay drawn until it is certainly out of
   // frame. Tighten it by measuring — the section that pops is the one whose
   // margin is too small.
-  useEffect(() => {
-    const el = heroRef.current;
-    if (!el) return;
+  // useEffect(() => {
+  //   const el = heroRef.current;
+  //   if (!el) return;
 
-    const io = new IntersectionObserver(
-      ([entry]) => setActive(id, entry.isIntersecting),
-      { root: null, threshold: 0, rootMargin: "0% 0px 0% 0px" },
-    );
+  //   const io = new IntersectionObserver(
+  //     ([entry]) => setActive(id, entry.isIntersecting),
+  //     { root: null, threshold: 0, rootMargin: "0% 0px 0% 0px" },
+  //   );
 
-    io.observe(el);
-    return () => io.disconnect();
-  }, [id, setActive]);
+  //   io.observe(el);
+  //   return () => io.disconnect();
+  // }, [id, setActive]);
 
   return (
     <section
