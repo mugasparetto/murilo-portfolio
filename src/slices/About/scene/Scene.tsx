@@ -920,7 +920,7 @@ export default function Scene() {
     group.scale.setScalar(scale);
     group.position.set(
       (1 - scale) * FACE_HOME.x,
-      slotMid.y - scale * (FACE_HOME.y - float) - exit * exitLift,
+      slotMid.y - scale * FACE_HOME.y - exit * exitLift,
       (1 - scale) * FACE_HOME.z,
     );
     group.visible = true;
