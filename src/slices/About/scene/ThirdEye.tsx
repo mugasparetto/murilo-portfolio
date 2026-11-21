@@ -10,6 +10,7 @@ import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 
 import { setPageCursor } from "@/app/helpers/cursor";
+import { useCoarsePointer } from "@/app/hooks/pointer";
 import { displayShader } from "@/app/components/fluidShader";
 import { defaultParams } from "@/slices/Hero/scene-core/params";
 
@@ -141,6 +142,12 @@ const GAZE_LERP = 0.16;
  * gaze back and forth between the two. Everything else about the eye — the
  * reveal, the blinks, the spin — is the same either way; only where `gazeTarget`
  * comes from changes.
+ *
+ * Touch devices never follow, whatever this says. R3F's `pointer` there is just
+ * wherever the last finger went down, and a finger on the page is nearly always
+ * a scroll: the eye would snap to the start of every pan that began near it and
+ * then stare at that spot, since nothing moves the pointer again until the next
+ * touch. See `followPointer` in the component.
  */
 const FOLLOW_POINTER = true;
 
@@ -513,6 +520,11 @@ export default function ThirdEye({ ref, skin, spriteScale, onReset }: Props) {
 
   const state = useRef(initialState());
 
+  // Live rather than read once on mount, so a tablet docked to a mouse
+  // mid-session gets the follow back — see the note on `FOLLOW_POINTER`.
+  const coarsePointer = useCoarsePointer();
+  const followPointer = FOLLOW_POINTER && !coarsePointer;
+
   /** Whether the pointer is over the eye, so the cursor can be handed back. */
   const hovering = useRef(false);
 
@@ -665,7 +677,7 @@ export default function ThirdEye({ ref, skin, spriteScale, onReset }: Props) {
     // attention, past that it goes back to looking around on its own.
     let following = false;
 
-    if (FOLLOW_POINTER && group.current) {
+    if (followPointer && group.current) {
       // Where the eye itself lands on screen, which is neither the middle of it
       // nor a fixed spot: the head is draggable and the camera sways.
       group.current.getWorldPosition(eyeNdc).project(camera);

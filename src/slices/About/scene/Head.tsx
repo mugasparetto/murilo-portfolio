@@ -1,5 +1,12 @@
-import { RefObject, useMemo, useCallback, useRef } from "react";
+import {
+  RefObject,
+  useMemo,
+  useCallback,
+  useImperativeHandle,
+  useRef,
+} from "react";
 import * as THREE from "three";
+import type { Line2, LineSegments2 } from "three-stdlib";
 
 import { useFrame } from "@react-three/fiber";
 import { useTexture, Line } from "@react-three/drei";
@@ -426,7 +433,22 @@ type Phase = "loose" | "homing" | "assembling" | "done" | "resetting";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/**
+ * How long a seam disk takes to fade, either way, in seconds.
+ *
+ * Out once the face is whole, in once the trip back starts opening the seams —
+ * the disks are the inside of the face, and only belong on screen while
+ * there is a gap to see them through.
+ */
+const DISK_FADE = 0.4;
+
+type DiskHandle = {
+  /** Fade to fully shown (1) or fully gone (0) over {@link DISK_FADE}. */
+  fadeTo: (target: 0 | 1) => void;
+};
+
 type DiskProps = {
+  ref?: RefObject<DiskHandle | null>;
   radius: number;
   position: [number, number, number];
   scale: [number, number, number];
@@ -435,6 +457,7 @@ type DiskProps = {
 };
 
 function HalfCircleWithDisk({
+  ref,
   radius,
   position,
   scale,
@@ -448,20 +471,68 @@ function HalfCircleWithDisk({
     return curve.getPoints(segments);
   }, [radius]);
 
+  const group = useRef<THREE.Group>(null);
+  const disk = useRef<THREE.MeshBasicMaterial>(null);
+  const arc = useRef<Line2 | LineSegments2>(null);
+
+  /** Linear clock from 0 (gone) to 1 (shown), and where it is heading. */
+  const fade = useRef({ value: 1, target: 1 });
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      fadeTo(target) {
+        fade.current.target = target;
+      },
+    }),
+    [],
+  );
+
+  useFrame((_, delta) => {
+    const f = fade.current;
+    if (f.value === f.target) return;
+
+    const step = delta / DISK_FADE;
+    f.value =
+      f.target > f.value
+        ? Math.min(f.value + step, f.target)
+        : Math.max(f.value - step, f.target);
+
+    const opacity = f.value * f.value * (3 - 2 * f.value);
+    if (disk.current) disk.current.opacity = opacity;
+    if (arc.current) arc.current.material.opacity = opacity;
+
+    // Out of the draw entirely once it's gone, rather than drawn at zero: both
+    // materials still write depth, so an invisible disk would go on cutting
+    // the wall's grid lines out from behind it.
+    if (group.current) group.current.visible = f.value > 0;
+  });
+
+  // Both materials are transparent from the start, though they spend most of
+  // their time fully opaque: toggling `transparent` swaps the shader program,
+  // which is a hitch at exactly the moment the fade begins. Depth writes are
+  // left on, so at full opacity these draw exactly as the opaque pair did.
   return (
-    <group position={position} scale={scale} renderOrder={renderOrder}>
+    <group
+      ref={group}
+      position={position}
+      scale={scale}
+      renderOrder={renderOrder}
+    >
       {/* Black disk */}
       <mesh position={[0, 0, -1.8]}>
         <circleGeometry args={[radius, 64]} />
-        <meshBasicMaterial color="black" />
+        <meshBasicMaterial ref={disk} color="black" transparent />
       </mesh>
 
       {/* Thick white arc */}
       <Line
+        ref={arc}
         points={points}
         color="white"
         lineWidth={thickness}
         rotation={[0, 0, Math.PI]}
+        transparent
       />
     </group>
   );
@@ -1062,6 +1133,16 @@ export default function Head({
 
   const thirdEye = useRef<ThirdEyeHandle>(null);
 
+  /** The two seam disks, riding the eye band and the mouth. */
+  const eyesDisk = useRef<DiskHandle>(null);
+  const mouthDisk = useRef<DiskHandle>(null);
+
+  /** Both disks out (0) or back in (1) together. */
+  const fadeDisks = useCallback((target: 0 | 1) => {
+    eyesDisk.current?.fadeTo(target);
+    mouthDisk.current?.fadeTo(target);
+  }, []);
+
   /** The piece in hand, and where it was when it was picked up. */
   const heldPiece = useRef<SpriteHandle | null>(null);
   const heldFrom = useRef(new THREE.Vector3());
@@ -1459,6 +1540,9 @@ export default function Head({
         metaBallsHeadBack.current?.reset();
         metaBallsMouthFront.current?.reset();
         metaBallsMouthBack.current?.reset();
+
+        // And the disks behind it, on the same beat: the face is splitting.
+        fadeDisks(1);
       }
 
       const eased = easeInOut(progress);
@@ -1549,6 +1633,7 @@ export default function Head({
 
         phase.current = "done";
         thirdEye.current?.open();
+        fadeDisks(0);
       }
       return;
     }
@@ -1694,6 +1779,10 @@ export default function Head({
         // Nothing rebuilds these once the loose phase is over, and the flight
         // home answers to no walls anyway.
         for (let i = 0; i < PIECE_COUNT; i++) chain[i].setExtraBounds(null);
+
+        // The face is whole: the seams the disks show through are shut, so
+        // they go now rather than once it lands — on the way home too.
+        fadeDisks(0);
 
         const trip = travel.current;
         head.getPosition(trip.from);
@@ -1884,6 +1973,7 @@ export default function Head({
         hoverCursor={still ? "pointer" : "grab"}
       >
         <HalfCircleWithDisk
+          ref={eyesDisk}
           radius={122.5}
           position={[5.5, 82, -1]}
           scale={[1, 0.1, 1]}
@@ -1974,6 +2064,7 @@ export default function Head({
         hoverCursor={still ? "pointer" : "grab"}
       >
         <HalfCircleWithDisk
+          ref={mouthDisk}
           radius={123}
           position={[1, -58, -5]}
           scale={[1, 0.1, 1]}
