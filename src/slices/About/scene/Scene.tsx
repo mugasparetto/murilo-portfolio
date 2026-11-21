@@ -10,13 +10,18 @@ import {
 import { ThreeElements, useFrame, useThree } from "@react-three/fiber";
 import { BREAKPOINTS, useBreakpoints } from "@/app/hooks/breakpoints";
 import { useCoarsePointer } from "@/app/hooks/pointer";
-import Head, { FACE_HEIGHT, FACE_HOME } from "./Head";
+import Head, { FACE_HOME } from "./Head";
 import Title from "./Title";
 import { readFaceSlot } from "./faceSlot";
 import { aboutScrolledPast } from "./aboutExit";
 import { publishBackdrop } from "@/app/helpers/backdrop";
 import { useScrollY } from "@/app/hooks/ScrollY";
-import { ABOUT_EXIT_LIFT, ABOUT_POSE, poseFrame } from "@/app/components/poses";
+import {
+  ABOUT_EXIT_LIFT,
+  ABOUT_POSE,
+  FOV,
+  poseFrame,
+} from "@/app/components/poses";
 import { smoothstep } from "@/slices/Works/scene-core/path";
 import { worksProgress } from "@/slices/Works/scene/worksScroll";
 import {
@@ -405,6 +410,30 @@ const PLANE_H = 50000;
 const PLANE_TOP = { base: -205, md: -5 };
 
 /**
+ * How far the About column starts above the hero's foot between `md` and
+ * `lg`, in vh. It is {@link PLANE_TOP}'s `md` step measured on screen at the
+ * plane's depth, so it is about 23.
+ *
+ * The step is the hero's and has to stay at `md`. The hero group drops 250
+ * units below `md` (see ../../Hero/scene/Scene), and the edge drops with it to
+ * keep covering the ground. Below `md` the edge leaves the hero's ground
+ * hidden. From `md` up it would show the ground's underside as a band above the
+ * black. The column only splits at `lg`, though. From `lg` up the giant
+ * <Title /> fills the band the higher edge opens above the copy. Between the
+ * two, on an iPad in portrait, nothing does: the edge cleared the screen two
+ * fifths ahead of the headline, against about a sixth on a phone. So that range
+ * moves the column instead of the edge, and by exactly the edge's step, which
+ * leaves the headline the same distance behind the edge as on a phone.
+ *
+ * Vertical-only, because the fov is: the step is the same share of the screen
+ * at any aspect, so a vh figure is the whole of it.
+ */
+export const PLANE_LEAD_MD_VH =
+  ((PLANE_TOP.md - PLANE_TOP.base) /
+    poseFrame(ABOUT_POSE, FOV, 1, BACKDROP_Z).height) *
+  100;
+
+/**
  * How much of the plane the hero's overlays are clipped against, measured down
  * from the top.
  *
@@ -508,7 +537,7 @@ const LG_FACE_SCALE = 0.8;
  * where it sits on the page comes from the #head-target box in
  * <AboutContent />. See the placement in `useFrame`.
  */
-const MOBILE_FACE_SCALE = 0.6;
+const MOBILE_FACE_SCALE = 0.635;
 
 /**
  * The viewport aspect the `lg`-and-up placement is authored at, and the widest

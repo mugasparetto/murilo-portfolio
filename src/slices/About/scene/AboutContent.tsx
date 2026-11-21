@@ -2641,7 +2641,7 @@ export default function AboutContent({
         ref={publishFaceSlot}
         id="head-target"
         aria-hidden
-        className="h-[75vh] w-full lg:hidden"
+        className="h-[68vh] w-full lg:hidden"
       />
 
       {/* — the pile ------------------------------------------------------ */}

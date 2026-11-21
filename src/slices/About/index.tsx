@@ -11,11 +11,18 @@ import { useGSAP } from "@gsap/react";
 import { useSceneRegistry } from "@/app/hooks/SceneRegistry";
 import { blockInset } from "@/slices/Hero/scene/Name";
 
-import Scene from "./scene/Scene";
+import Scene, { PLANE_LEAD_MD_VH } from "./scene/Scene";
 import { setAboutOnScreen } from "./scene/aboutVisibility";
 import AboutContent, { sectionVh } from "./scene/AboutContent";
 
 gsap.registerPlugin(useGSAP, SplitText);
+
+/**
+ * How far the section starts above the hero's foot between `md` and `lg`. See
+ * {@link PLANE_LEAD_MD_VH}. This is the backdrop's edge stepping up at `md`
+ * while the column only changes layout at `lg`.
+ */
+const LEAD = { "--about-lead": `${PLANE_LEAD_MD_VH}vh` } as CSSProperties;
 
 /**
  * Props for `About`.
@@ -142,7 +149,7 @@ const About: FC<AboutProps> = ({ slice }) => {
       ref={aboutRef}
       data-slice-type={slice.slice_type}
       data-slice-variation={slice.variation}
-      style={{ ...blockInset, ...height }}
+      style={{ ...blockInset, ...height, ...LEAD }}
       // Below `lg` a plain column, and the three blocks fall into it in source
       // order. From `lg` up a fixed-height block the still half pins inside —
       // see <AboutContent />, which is the whole composition and returns the
@@ -151,7 +158,12 @@ const About: FC<AboutProps> = ({ slice }) => {
       // `blockInset` rides on the section rather than on any one of them, so
       // all three inherit the same `px-(--block-inset)` the hero's overlays
       // line up against.
-      className="relative flex flex-col lg:block lg:h-(--about-h)"
+      //
+      // From `md` to `lg` the section is pulled up over the hero's foot. See
+      // {@link LEAD}. The hero has nothing in that last stretch of its own
+      // to cover, and the canvas takes its events from <main>, so the overlap
+      // does not block clicks or drags.
+      className="relative flex flex-col md:-mt-(--about-lead) lg:mt-0 lg:block lg:h-(--about-h)"
     >
       <AboutContent
         sectionRef={aboutRef}

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { blockInset } from "@/slices/Hero/scene/Name";
-import HeroSceneStatus from "./HeroSceneStatus";
 
 /**
  * Targets are placeholders: no slice renders an `id` yet, so these scroll
@@ -125,11 +124,6 @@ export default function SiteNav() {
           </div>
         </div>
       </nav>
-
-      {/* dev instrumentation, like <Stats /> — kept out of production builds */}
-      {process.env.NODE_ENV !== "production" && (
-        <HeroSceneStatus navRef={navRef} />
-      )}
     </>
   );
 }

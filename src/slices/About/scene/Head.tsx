@@ -589,7 +589,7 @@ const MOUTH_POLYGON: UV[] = [
  * rewriting anything in here — so the scene has to know which point of the
  * group to land on the slot's middle, and what a scale of 1 is worth in height.
  */
-export const FACE_HEIGHT = 500;
+const FACE_HEIGHT = 500;
 export const FACE_HOME = new THREE.Vector3(0, -800, ABOUT_FACE_Z);
 
 /** Where the assembled face sits. */
