@@ -1777,214 +1777,210 @@ export default function Head({
   });
 
   return (
-    <mesh position={[0, -900, 2600]}>
-      <boxGeometry args={[100, 200, 100]} />
-      <meshBasicMaterial color="white" />
-    </mesh>
-    // <group ref={ref}>
-    //   <PolygonSprite
-    //     texture={top}
-    //     polygon={HEAD_POLYGON}
-    //     position={[0, -800, 2600]}
-    //     scale={scale}
-    //     ref={headRef}
-    //     draggable={!still}
-    //     throwable={!still}
-    //     bounds={still ? STILL_BOUNDS : PIECE_BOUNDS}
-    //     onPointerDown={still ? undefined : () => handleGrab("head")}
-    //     onPointerUp={still ? undefined : () => handleGrab(null)}
-    //     onTap={still ? handleTap : undefined}
-    //     hoverCursor={still ? "pointer" : "grab"}
-    //   >
-    //     {/* Rides the skull cap, so it stays put through the float, the drag and
-    //         the throw — and only shows itself once the face is whole. */}
-    //     <ThirdEye
-    //       ref={thirdEye}
-    //       skin={top}
-    //       spriteScale={scale}
-    //       onReset={handleReset}
-    //     />
-    //   </PolygonSprite>
+    <group ref={ref}>
+      <PolygonSprite
+        texture={top}
+        polygon={HEAD_POLYGON}
+        position={[0, -800, 2600]}
+        scale={scale}
+        ref={headRef}
+        draggable={!still}
+        throwable={!still}
+        bounds={still ? STILL_BOUNDS : PIECE_BOUNDS}
+        onPointerDown={still ? undefined : () => handleGrab("head")}
+        onPointerUp={still ? undefined : () => handleGrab(null)}
+        onTap={still ? handleTap : undefined}
+        hoverCursor={still ? "pointer" : "grab"}
+      >
+        {/* Rides the skull cap, so it stays put through the float, the drag and
+            the throw — and only shows itself once the face is whole. */}
+        <ThirdEye
+          ref={thirdEye}
+          skin={top}
+          spriteScale={scale}
+          onReset={handleReset}
+        />
+      </PolygonSprite>
 
-    //   <MetaBalls
-    //     ref={metaBallsHeadBack}
-    //     occluders={headSeamOccluders}
-    //     position={[12, -630, 2605]}
-    //     wallMinX={-11}
-    //     wallMaxX={11}
-    //     scale={[280, 280, 1]}
-    //     enableTransparency
-    //     animationSize={40}
-    //     renderOrder={BACK_ORDER}
-    //     mask={headMask}
-    //     {...GOO}
-    //     {...GOO_BACK}
-    //     ballSpreadY={4}
-    //     ballCount={8}
-    //     clumpFactor={0.6}
-    //     seed={12}
-    //     pauseYOffset={25}
-    //     // Invisible: the bars still shape the field so the rear balls hang off
-    //     // them, but only the front layer actually draws them. Two identical
-    //     // bars in perfect registration read as one flat slab.
-    //     anchors={[
-    //       {
-    //         x: -1.5,
-    //         y: -7.25,
-    //         radius: 16,
-    //         roundness: 0.6,
-    //         yScale: 0.1,
-    //         visible: false,
-    //       },
-    //       {
-    //         x: -1,
-    //         y: -17,
-    //         radius: 16,
-    //         roundness: 0.6,
-    //         yScale: 0.1,
-    //         visible: false,
-    //       },
-    //     ]}
-    //   />
+      <MetaBalls
+        ref={metaBallsHeadBack}
+        occluders={headSeamOccluders}
+        position={[12, -630, 2605]}
+        wallMinX={-11}
+        wallMaxX={11}
+        scale={[280, 280, 1]}
+        enableTransparency
+        animationSize={40}
+        renderOrder={BACK_ORDER}
+        mask={headMask}
+        {...GOO}
+        {...GOO_BACK}
+        ballSpreadY={4}
+        ballCount={8}
+        clumpFactor={0.6}
+        seed={12}
+        pauseYOffset={25}
+        // Invisible: the bars still shape the field so the rear balls hang off
+        // them, but only the front layer actually draws them. Two identical
+        // bars in perfect registration read as one flat slab.
+        anchors={[
+          {
+            x: -1.5,
+            y: -7.25,
+            radius: 16,
+            roundness: 0.6,
+            yScale: 0.1,
+            visible: false,
+          },
+          {
+            x: -1,
+            y: -17,
+            radius: 16,
+            roundness: 0.6,
+            yScale: 0.1,
+            visible: false,
+          },
+        ]}
+      />
 
-    //   <MetaBalls
-    //     ref={metaBallsHeadFront}
-    //     occluders={headSeamOccluders}
-    //     pointerReaction={GOO_POINTER}
-    //     position={[8, -630, 2605]}
-    //     wallMinX={-10}
-    //     wallMaxX={10}
-    //     scale={[340, 280, 1]}
-    //     enableTransparency
-    //     animationSize={40}
-    //     renderOrder={FRONT_ORDER}
-    //     seed={10}
-    //     mask={headMask}
-    //     {...GOO}
-    //     ballSpreadY={4}
-    //     ballCount={9}
-    //     pauseYOffset={25}
-    //     // 0.4 * animationSize * clumpFactor must stay inside wallMaxX, or the
-    //     // outermost balls pile up against the wall and fuse into a solid edge.
-    //     clumpFactor={0.7}
-    //     anchors={[
-    //       { x: -1.5, y: -7.05, radius: 15, roundness: 0.6, yScale: 0.1 },
-    //       { x: -1, y: -17, radius: 15, roundness: 0.6, yScale: 0.1 },
-    //     ]}
-    //   />
+      <MetaBalls
+        ref={metaBallsHeadFront}
+        occluders={headSeamOccluders}
+        pointerReaction={GOO_POINTER}
+        position={[8, -630, 2605]}
+        wallMinX={-10}
+        wallMaxX={10}
+        scale={[340, 280, 1]}
+        enableTransparency
+        animationSize={40}
+        renderOrder={FRONT_ORDER}
+        seed={10}
+        mask={headMask}
+        {...GOO}
+        ballSpreadY={4}
+        ballCount={9}
+        pauseYOffset={25}
+        // 0.4 * animationSize * clumpFactor must stay inside wallMaxX, or the
+        // outermost balls pile up against the wall and fuse into a solid edge.
+        clumpFactor={0.7}
+        anchors={[
+          { x: -1.5, y: -7.05, radius: 15, roundness: 0.6, yScale: 0.1 },
+          { x: -1, y: -17, radius: 15, roundness: 0.6, yScale: 0.1 },
+        ]}
+      />
 
-    //   <PolygonSprite
-    //     texture={middle}
-    //     polygon={EYES_POLYGON}
-    //     position={[0, -800, 2600]}
-    //     scale={scale}
-    //     draggable={!still}
-    //     ref={eyesRef}
-    //     throwable={!still}
-    //     bounds={still ? STILL_BOUNDS : PIECE_BOUNDS}
-    //     onPointerDown={still ? undefined : () => handleGrab("eyes")}
-    //     onPointerUp={still ? undefined : () => handleGrab(null)}
-    //     onTap={still ? handleTap : undefined}
-    //     hoverCursor={still ? "pointer" : "grab"}
-    //   >
-    //     <HalfCircleWithDisk
-    //       radius={122.5}
-    //       position={[5.5, 82, -1]}
-    //       scale={[1, 0.1, 1]}
-    //       thickness={2}
-    //       renderOrder={0}
-    //     />
-    //   </PolygonSprite>
+      <PolygonSprite
+        texture={middle}
+        polygon={EYES_POLYGON}
+        position={[0, -800, 2600]}
+        scale={scale}
+        draggable={!still}
+        ref={eyesRef}
+        throwable={!still}
+        bounds={still ? STILL_BOUNDS : PIECE_BOUNDS}
+        onPointerDown={still ? undefined : () => handleGrab("eyes")}
+        onPointerUp={still ? undefined : () => handleGrab(null)}
+        onTap={still ? handleTap : undefined}
+        hoverCursor={still ? "pointer" : "grab"}
+      >
+        <HalfCircleWithDisk
+          radius={122.5}
+          position={[5.5, 82, -1]}
+          scale={[1, 0.1, 1]}
+          thickness={2}
+          renderOrder={0}
+        />
+      </PolygonSprite>
 
-    //   <MetaBalls
-    //     ref={metaBallsMouthFront}
-    //     occluders={mouthSeamOccluders}
-    //     pointerReaction={GOO_POINTER}
-    //     position={[5, -830, 2605]}
-    //     scale={[300, 280, 1]}
-    //     wallMinX={-12}
-    //     wallMaxX={12}
-    //     enableTransparency
-    //     seed={12}
-    //     // Match the front head metaballs' colour phase (seed 10 → 10 * 10)
-    //     holoTimeOffset={100}
-    //     animationSize={40}
-    //     renderOrder={FRONT_ORDER}
-    //     pauseYOffset={25}
-    //     mask={mouthMask}
-    //     {...GOO}
-    //     ballSpreadY={3}
-    //     ballCount={9}
-    //     clumpFactor={0.9}
-    //     anchors={[
-    //       { x: -1.5, y: 1.5, radius: 15, roundness: 0.6, yScale: 0.1 },
-    //       { x: -0.95, y: -7, radius: 13, roundness: 0.6, yScale: 0.05 },
-    //     ]}
-    //   />
+      <MetaBalls
+        ref={metaBallsMouthFront}
+        occluders={mouthSeamOccluders}
+        pointerReaction={GOO_POINTER}
+        position={[5, -830, 2605]}
+        scale={[300, 280, 1]}
+        wallMinX={-12}
+        wallMaxX={12}
+        enableTransparency
+        seed={12}
+        // Match the front head metaballs' colour phase (seed 10 → 10 * 10)
+        holoTimeOffset={100}
+        animationSize={40}
+        renderOrder={FRONT_ORDER}
+        pauseYOffset={25}
+        mask={mouthMask}
+        {...GOO}
+        ballSpreadY={3}
+        ballCount={9}
+        clumpFactor={0.9}
+        anchors={[
+          { x: -1.5, y: 1.5, radius: 15, roundness: 0.6, yScale: 0.1 },
+          { x: -0.95, y: -7, radius: 13, roundness: 0.6, yScale: 0.05 },
+        ]}
+      />
 
-    //   <MetaBalls
-    //     ref={metaBallsMouthBack}
-    //     occluders={mouthSeamOccluders}
-    //     position={[10, -830, 2605]}
-    //     scale={[300, 280, 1]}
-    //     wallMinX={-12}
-    //     wallMaxX={12}
-    //     enableTransparency
-    //     seed={12}
-    //     // Match the back head metaballs' colour phase (seed 5 → 5 * 10)
-    //     holoTimeOffset={50}
-    //     animationSize={40}
-    //     renderOrder={BACK_ORDER}
-    //     pauseYOffset={25}
-    //     mask={mouthMask}
-    //     {...GOO}
-    //     {...GOO_BACK}
-    //     ballSpreadY={4}
-    //     ballCount={8}
-    //     clumpFactor={0.6}
-    //     // Invisible for the same reason as the rear head layer above.
-    //     anchors={[
-    //       {
-    //         x: -1.5,
-    //         y: 1.5,
-    //         radius: 15,
-    //         roundness: 0.6,
-    //         yScale: 0.1,
-    //         visible: false,
-    //       },
-    //       {
-    //         x: -0.95,
-    //         y: -6,
-    //         radius: 15,
-    //         roundness: 0.6,
-    //         yScale: 0.05,
-    //         visible: false,
-    //       },
-    //     ]}
-    //   />
+      <MetaBalls
+        ref={metaBallsMouthBack}
+        occluders={mouthSeamOccluders}
+        position={[10, -830, 2605]}
+        scale={[300, 280, 1]}
+        wallMinX={-12}
+        wallMaxX={12}
+        enableTransparency
+        seed={12}
+        // Match the back head metaballs' colour phase (seed 5 → 5 * 10)
+        holoTimeOffset={50}
+        animationSize={40}
+        renderOrder={BACK_ORDER}
+        pauseYOffset={25}
+        mask={mouthMask}
+        {...GOO}
+        {...GOO_BACK}
+        ballSpreadY={4}
+        ballCount={8}
+        clumpFactor={0.6}
+        // Invisible for the same reason as the rear head layer above.
+        anchors={[
+          {
+            x: -1.5,
+            y: 1.5,
+            radius: 15,
+            roundness: 0.6,
+            yScale: 0.1,
+            visible: false,
+          },
+          {
+            x: -0.95,
+            y: -6,
+            radius: 15,
+            roundness: 0.6,
+            yScale: 0.05,
+            visible: false,
+          },
+        ]}
+      />
 
-    //   <PolygonSprite
-    //     texture={bottom}
-    //     polygon={MOUTH_POLYGON}
-    //     position={[0, -800, 2600]}
-    //     scale={scale}
-    //     draggable={!still}
-    //     throwable={!still}
-    //     ref={mouthRef}
-    //     bounds={still ? STILL_MOUTH_BOUNDS : MOUTH_BOUNDS}
-    //     onPointerDown={still ? undefined : () => handleGrab("mouth")}
-    //     onPointerUp={still ? undefined : () => handleGrab(null)}
-    //     onTap={still ? handleTap : undefined}
-    //     hoverCursor={still ? "pointer" : "grab"}
-    //   >
-    //     <HalfCircleWithDisk
-    //       radius={123}
-    //       position={[1, -58, -5]}
-    //       scale={[1, 0.1, 1]}
-    //       thickness={2}
-    //       renderOrder={0}
-    //     />
-    //   </PolygonSprite>
-    // </group>
+      <PolygonSprite
+        texture={bottom}
+        polygon={MOUTH_POLYGON}
+        position={[0, -800, 2600]}
+        scale={scale}
+        draggable={!still}
+        throwable={!still}
+        ref={mouthRef}
+        bounds={still ? STILL_MOUTH_BOUNDS : MOUTH_BOUNDS}
+        onPointerDown={still ? undefined : () => handleGrab("mouth")}
+        onPointerUp={still ? undefined : () => handleGrab(null)}
+        onTap={still ? handleTap : undefined}
+        hoverCursor={still ? "pointer" : "grab"}
+      >
+        <HalfCircleWithDisk
+          radius={123}
+          position={[1, -58, -5]}
+          scale={[1, 0.1, 1]}
+          thickness={2}
+          renderOrder={0}
+        />
+      </PolygonSprite>
+    </group>
   );
 }
