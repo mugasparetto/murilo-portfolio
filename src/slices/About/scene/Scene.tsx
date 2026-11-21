@@ -13,7 +13,7 @@ import { useCoarsePointer } from "@/app/hooks/pointer";
 import Head, { FACE_HOME } from "./Head";
 import Title from "./Title";
 import { readFaceSlot } from "./faceSlot";
-import { aboutScrolledPast } from "./aboutExit";
+import { aboutExitProgress } from "./aboutExit";
 import { publishBackdrop } from "@/app/helpers/backdrop";
 import { useScrollY } from "@/app/hooks/ScrollY";
 import {
@@ -390,18 +390,8 @@ const GRID_OFFSET = 0.1;
 
 /** the backdrop plane's span, and how deep its top edge dips at the centre */
 const PLANE_W = 2000;
+const PLANE_H = 2000;
 const PLANE_CURVE = 60;
-
-/**
- * How tall the backdrop — and the grid ruled over it — is.
- *
- * Long enough that there is no scrolling past the bottom of it: the plane and
- * its lattice hang down from the curved top edge, and everything below that
- * edge is just more of the same surface. Growing it only ever adds plane at
- * the bottom; the top stays at {@link PLANE_TOP}, which is the edge the hero
- * sees wiping up and the one thing about the plane that is composed.
- */
-const PLANE_H = 50000;
 
 /**
  * World y of the plane's top corners, below `md` and from `md` up. The curve
@@ -432,19 +422,6 @@ export const PLANE_LEAD_MD_VH =
   ((PLANE_TOP.md - PLANE_TOP.base) /
     poseFrame(ABOUT_POSE, FOV, 1, BACKDROP_Z).height) *
   100;
-
-/**
- * How much of the plane the hero's overlays are clipped against, measured down
- * from the top.
- *
- * Not the whole of it: the clip projects the outline through the hero's camera,
- * which pitches up at the door, and a bottom edge tens of thousands of units
- * down is *behind* that camera — at which point the clip gives up on the
- * outline altogether (see `clipToBackdrop`). The overlays only ever meet the
- * crest of the plane anyway, so the silhouette is published at the height the
- * plane used to be.
- */
-const CLIP_H = 2000;
 
 /**
  * The grid's alpha at each end of the falloff, `[centre, edges]`.
@@ -562,8 +539,6 @@ const FACE_FIT_ASPECT = 16 / 10;
 
 const faceRay = new THREE.Raycaster();
 const faceNdc = new THREE.Vector2();
-const slotTop = new THREE.Vector3();
-const slotBottom = new THREE.Vector3();
 const slotMid = new THREE.Vector3();
 
 /**
@@ -787,14 +762,9 @@ export default function Scene() {
     if (!mesh) return;
 
     mesh.updateWorldMatrix(true, false);
-
-    // the bottom corners pulled up to CLIP_H below the top — see there
-    const floor = PLANE_H / 2 - CLIP_H;
     publishBackdrop(
       planeOutline.map((p) =>
-        new THREE.Vector3(p.x, Math.max(p.y, floor), 0).applyMatrix4(
-          mesh.matrixWorld,
-        ),
+        new THREE.Vector3(p.x, p.y, 0).applyMatrix4(mesh.matrixWorld),
       ),
     );
 
@@ -830,18 +800,9 @@ export default function Scene() {
     // and the grid alone — see the placement below, which takes it back off.
     // Which is the whole of the picture that buys: a background that has been
     // nailed in place for the length of the section finally letting go of it.
-    //
-    // And it doesn't stop when the exit does. `past` is the same scroll with
-    // the top left open, so once the column has gone the scene carries on up at
-    // the pace the exit ended on — the backdrop and grid are long enough (see
-    // {@link PLANE_H}) to be scrolled through for the rest of the page rather
-    // than parking a screen up and sitting there. The vignette's retirement and
-    // the cell rounding below still run off the one-screen `exit`: both are
-    // things that happen once, on the way out.
-    const past = aboutScrolledPast(scrollY.current);
-    const exit = Math.min(1, past);
+    const exit = aboutExitProgress(scrollY.current);
 
-    if (root.current) root.current.position.y = past * exitLift;
+    if (root.current) root.current.position.y = exit * exitLift;
     // and the grid rides the rounding back off the group — see {@link gridLift}
     if (grid.current) grid.current.position.y = exit * (gridLift - exitLift);
 
@@ -950,7 +911,7 @@ export default function Scene() {
     //
     // And the exit comes back off. `slotMid` is in world space, but this
     // position is local to `root`, which the exit is lifting by
-    // `past * exitLift`. The box is already leaving with the page, so leaving
+    // `exit * exitLift`. The box is already leaving with the page, so leaving
     // the lift on would carry the face out of its hole at twice the page's
     // speed. Down here the head belongs to the column, so it leaves with the
     // page and not with the scene behind it.
@@ -959,7 +920,7 @@ export default function Scene() {
     group.scale.setScalar(scale);
     group.position.set(
       (1 - scale) * FACE_HOME.x,
-      slotMid.y - scale * (FACE_HOME.y - float) - past * exitLift,
+      slotMid.y - scale * (FACE_HOME.y - float) - exit * exitLift,
       (1 - scale) * FACE_HOME.z,
     );
     group.visible = true;
