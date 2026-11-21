@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { CameraPose } from "./SceneManager";
-import { useScrollY } from "@/app/hooks/ScrollY";
+import { RIG_PRIORITY, useScrollY } from "@/app/hooks/ScrollY";
 import { pxToVh } from "@/app/helpers/viewport";
 
 export type RigPose = {
@@ -43,6 +43,11 @@ export type ScrollRigProps = {
 
   smoothing?: number;
   applyToCamera?: boolean;
+  /**
+   * `useFrame` priority. Defaults to {@link RIG_PRIORITY}: after
+   * <ScrollYProvider /> has read this frame's scroll, before the sections that
+   * project through the camera. Keep it at or below 0 — see the provider.
+   */
   priority?: number;
 
   /**
@@ -105,6 +110,7 @@ export default function ScrollRig({
   applyToCamera,
   scrollContainerRef,
   intensityRef,
+  priority = RIG_PRIORITY,
 }: ScrollRigProps) {
   const { camera } = useThree();
   // The page's scroll position for this frame, read live at the top of it —
@@ -280,8 +286,14 @@ export default function ScrollRig({
     if (shouldApply) {
       cam.position.copy(currentPos.current);
       cam.lookAt(currentLook.current);
+      // `lookAt` only writes the quaternion. The world matrix it leaves behind
+      // is the one it composed on the way in — this frame's position, last
+      // frame's rotation — and nothing recomposes it until the composer
+      // renders. <Scene /> casts a ray through the camera before then to put
+      // the head in its hole, so bring the matrix up to date here.
+      cam.updateMatrixWorld();
     }
-  });
+  }, priority);
 
   return null;
 }

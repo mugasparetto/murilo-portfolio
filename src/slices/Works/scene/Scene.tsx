@@ -50,7 +50,8 @@ import { worksProgress } from "./worksScroll";
  * frame is always the pose the rest of the site is held at — which means that
  * on the first frame this stops writing, that pose is already there and the
  * section leaves without a jump. Below `md`, where no parallax rig is mounted,
- * <ScrollRig /> does the same job at priority 0.
+ * <ScrollRig /> does the same job from the other side: it runs at -1, ahead of
+ * this, and writes the pose every frame whether this overwrites it or not.
  *
  * The handover the other way is seamless for a different reason: TUNNEL_ORIGIN
  * puts the far end of the lead-in exactly on ABOUT_POSE, so progress 0 *is*

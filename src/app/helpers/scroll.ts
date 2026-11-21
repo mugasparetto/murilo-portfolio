@@ -56,7 +56,7 @@ export function useScrollVhAbsolute(
   scrollContainerRef?: RefObject<HTMLElement | null>,
 ): RefObject<number> {
   // The document scroll is the shared per-frame read — see <ScrollYProvider />
-  // for why a `scroll` listener is the wrong source for it on iOS. Handed back
+  // for why a `scroll` listener is the wrong source for it. Handed back
   // as a getter rather than a cached ref so it can't be a frame stale either:
   // callers read `.current` from inside their own `useFrame`, which runs after
   // the provider's, and the value is derived at that moment rather than

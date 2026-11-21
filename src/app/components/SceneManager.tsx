@@ -94,7 +94,6 @@ export default function SceneManager() {
         intensityRef={parallaxIntensityRef}
         smoothing={-25}
         applyToCamera={!up.md}
-        priority={0}
       />
 
       <Postprocessing />

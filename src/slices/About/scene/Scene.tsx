@@ -566,8 +566,8 @@ export default function Scene() {
   const root = useRef<THREE.Group | null>(null);
   const grid = useRef<THREE.Group | null>(null);
   const head = useRef<THREE.Group | null>(null);
-  // the page position Lenis has eased to this frame — the same one the layer
-  // the head is being fitted into is placed by
+  // the page's scroll this frame, read once Lenis has moved the page — the
+  // offset the column the head is fitted into is painted at
   const { scrollY } = useScrollY();
 
   /**

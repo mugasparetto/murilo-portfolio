@@ -51,10 +51,10 @@ const state: { el: HTMLElement | null; slot: FaceSlot | null } = {
 /**
  * Re-read the box.
  *
- * `window.scrollY` rather than the eased figure <ScrollYProvider /> keeps: this
- * turns a viewport rect into a page position, and the rect was measured against
- * the page as it is laid out right now. The two agree except mid-fling, and
- * this never runs mid-fling.
+ * `window.scrollY` read beside the rect rather than <ScrollYProvider />'s
+ * figure. Most of the time they are the same number, but this runs outside the
+ * frame loop — from an observer or a ref callback — and a viewport rect and a
+ * scroll only add up to a page position when they are read at the same moment.
  *
  * A zero width means there is no slot — `lg:hidden` takes the box away entirely
  * from `lg` up, which is exactly what the scene wants to hear: no column for

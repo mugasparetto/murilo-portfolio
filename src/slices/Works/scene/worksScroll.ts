@@ -42,9 +42,9 @@ const state: { el: HTMLElement | null; top: number; height: number } = {
 /**
  * Re-read the section's box.
  *
- * `window.scrollY` rather than the eased figure <ScrollYProvider /> keeps: this
- * turns a viewport rect into a page position, and the rect was measured against
- * the page as it is laid out right now.
+ * `window.scrollY` read beside the rect rather than <ScrollYProvider />'s
+ * figure — ../../About/scene/faceSlot's argument: a viewport rect and a scroll
+ * only add up to a page position when they are read at the same moment.
  */
 export function measureWorks() {
   const el = state.el;

@@ -31,10 +31,9 @@ const state: { el: HTMLElement | null; pageBottom: number | null } = {
 /**
  * Re-read the section's foot.
  *
- * `window.scrollY` rather than the eased figure <ScrollYProvider /> keeps —
- * ./faceSlot's argument exactly: this turns a viewport rect into a page
- * position, and the rect was measured against the page as it is laid out right
- * now.
+ * `window.scrollY` read beside the rect rather than <ScrollYProvider />'s
+ * figure — ./faceSlot's argument exactly: a viewport rect and a scroll only add
+ * up to a page position when they are read at the same moment.
  *
  * It moves for two different reasons, which is why its caller watches two
  * things: the section's own height changes when a skill is added in Prismic,
