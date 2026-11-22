@@ -510,7 +510,7 @@ export const TUNNEL_PRESETS = {
  * The one the section flies — change it to any name in {@link TUNNEL_PRESETS}.
  * Nothing else moves: the page height follows the new path's length.
  */
-const SELECTED_PRESET: keyof typeof TUNNEL_PRESETS = "SPIRAL";
+const SELECTED_PRESET: keyof typeof TUNNEL_PRESETS = "SLALOM";
 
 export const TUNNEL_SEGMENTS: TunnelSegment[] = TUNNEL_PRESETS[SELECTED_PRESET];
 
