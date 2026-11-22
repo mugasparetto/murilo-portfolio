@@ -9,7 +9,7 @@ import { useSceneRegistry } from "@/app/hooks/SceneRegistry";
 import Scene from "./scene/Scene";
 import WorksCards from "./scene/WorksCards";
 import { measureWorks, publishWorks } from "./scene/worksScroll";
-import { worksSectionVh } from "./scene-core/presets";
+import { worksOverlapVh, worksSectionVh } from "./scene-core/presets";
 
 /**
  * Props for `Works`.
@@ -37,6 +37,13 @@ const Works: FC<WorksProps> = ({ slice }) => {
    * exactly as much more as it added.
    */
   const heightVh = useMemo(() => worksSectionVh(), []);
+
+  /**
+   * How far the section starts above the About section's foot — whole cells of
+   * that section's exit, which the flight takes over and finishes itself. See
+   * {@link worksOverlapVh}.
+   */
+  const overlapVh = useMemo(() => worksOverlapVh(), []);
 
   // Register scene once, after About's 20 — the entries are sorted by priority
   // and mounted in that order, so this section's geometry keeps the same
@@ -125,8 +132,13 @@ const Works: FC<WorksProps> = ({ slice }) => {
       // Nothing but scroll: everything this section shows is either in the
       // shared canvas or in the fixed card layer below, and the height is what
       // gives the flight something to be driven by.
-      className="relative"
-      style={{ height: `${heightVh}vh` }}
+      //
+      // Pulled up over the About section's foot by {@link overlapVh}, which is
+      // why it is also transparent to the pointer: for that stretch its box
+      // sits over the end of the About column. The cards opt back in on their
+      // own.
+      className="pointer-events-none relative"
+      style={{ height: `${heightVh}vh`, marginTop: `${-overlapVh}vh` }}
     >
       <WorksCards works={works} />
     </section>

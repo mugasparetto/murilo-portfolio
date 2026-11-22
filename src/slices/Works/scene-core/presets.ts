@@ -354,6 +354,50 @@ export function wallRows(columns: number, from: number, to: number) {
 }
 
 /* ==========================================================================
+   Where the flight takes over
+   ========================================================================== */
+
+/**
+ * How many whole cells the About section's grid rises across its exit: the
+ * exit's lift snapped to the lattice. ../../About/scene/Scene lifts its grid by
+ * exactly this, which is what keeps that grid on the wall's rings.
+ */
+export function aboutGridLiftCells() {
+  return Math.round(ABOUT_EXIT_LIFT / wallCell(TUNNEL.radial));
+}
+
+/**
+ * How many of those cells the flight takes over from the exit — and so how
+ * many cells' worth of scroll sooner it starts.
+ *
+ * The exit is the About scene rising, and the scene rising is the same picture
+ * as the camera falling, at exactly the speed the flight launches at (see
+ * {@link launch}). So the flight can start before the exit has run out and do
+ * the rest of the fall itself: the About scene stops where it is and the
+ * camera carries on down. The one thing on screen that cares *when* is the
+ * grid, which the wall takes over on that frame and so has to be on the wall's
+ * lattice then — and the lattice repeats every cell, so the takeover can come
+ * early by whole cells and nothing in between.
+ *
+ * Fewer than {@link aboutGridLiftCells}, which would start the flight before
+ * the exit had begun. Each one is a third of a screen at today's figures, and
+ * the first comes cheap: the flat wall is about a third of a screen of scroll
+ * too, so with one the throat starts curling a couple of vh before where the
+ * handover used to be, by which point the column has all but gone. Past one,
+ * the camera starts moving forward into the throat while the About section's
+ * head and title are still on screen.
+ */
+export const HANDOVER_EARLY_CELLS = 1;
+
+/**
+ * How far the Works section is pulled up over the About section's foot, in vh:
+ * the scroll the About grid spends rising {@link HANDOVER_EARLY_CELLS}.
+ */
+export function worksOverlapVh() {
+  return (100 * HANDOVER_EARLY_CELLS) / aboutGridLiftCells();
+}
+
+/* ==========================================================================
    The compiled path, once
    ========================================================================== */
 

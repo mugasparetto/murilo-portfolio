@@ -25,6 +25,7 @@ import {
 import { smoothstep } from "@/slices/Works/scene-core/path";
 import { worksProgress } from "@/slices/Works/scene/worksScroll";
 import {
+  aboutGridLiftCells,
   TUNNEL,
   WALL_Z,
   wallCell,
@@ -32,6 +33,7 @@ import {
   wallColumns,
   wallHandoverVh,
   wallRows,
+  worksOverlapVh,
   worksSectionVh,
 } from "@/slices/Works/scene-core/presets";
 
@@ -718,10 +720,22 @@ export default function Scene() {
    * around a thirtieth of a screen at this depth. Nobody can read that as the
    * background having risen the wrong distance. Two grids they can read.
    */
-  const gridLift = useMemo(() => {
-    const cell = wallCell(columns);
-    return Math.round(exitLift / cell) * cell;
-  }, [columns]);
+  const gridLift = useMemo(
+    () => aboutGridLiftCells() * wallCell(columns),
+    [columns],
+  );
+
+  /**
+   * How far through the exit the flight takes over: short of the end by the
+   * whole cells {@link worksOverlapVh} hands to it. With one of three, two
+   * thirds of the way through, which is where the grid has risen exactly two
+   * cells and is on the wall's lattice.
+   *
+   * Everything this section moves stops here and the camera's fall does the
+   * rest — see the exit in the frame loop. 1 when nothing is handed over,
+   * which is the exit running out on the frame the flight starts.
+   */
+  const exitAtFlight = useMemo(() => 1 - worksOverlapVh() / 100, []);
 
   /**
    * The falloff the grid is drawn through: an ellipse inscribed in the
@@ -802,9 +816,20 @@ export default function Scene() {
     // nailed in place for the length of the section finally letting go of it.
     const exit = aboutExitProgress(scrollY.current);
 
-    if (root.current) root.current.position.y = exit * exitLift;
-    // and the grid rides the rounding back off the group — see {@link gridLift}
-    if (grid.current) grid.current.position.y = exit * (gridLift - exitLift);
+    // Held where the flight takes over — see {@link exitAtFlight}. A lift of
+    // the scene and a fall of the camera are the same picture, and the flight
+    // launches at exactly this lift's speed, so from that frame the camera
+    // carries on what the group was doing. Leaving the lift running as well
+    // would be both at once: everything here going up the screen twice as fast
+    // on the frame the flight starts.
+    const held = exit < exitAtFlight ? exit : exitAtFlight;
+
+    if (root.current) root.current.position.y = held * exitLift;
+    // and the grid takes the group's lift back off and its own on, snapped to
+    // whole cells — see {@link gridLift}. Unheld: it is retired on the frame
+    // the flight starts, and until then the two are the same number.
+    if (grid.current)
+      grid.current.position.y = exit * gridLift - held * exitLift;
 
     // Handed over to the wall as the flight opens — see {@link handover}.
     // The Works section's own progress, read the way that section reads it, so
@@ -835,7 +860,11 @@ export default function Scene() {
     // The grid leaves on the same figure, in both senses of leaving: its
     // vignette flattens out and the lines come up to {@link GRID_EXIT_OPACITY}
     // across that screen. See LINE_FRAGMENT, where the two are actually spent.
-    gridExit.value = exit;
+    //
+    // Over the part of the exit before the flight rather than all of it, so it
+    // has arrived on the wall's level and weight by the frame the wall takes
+    // over.
+    gridExit.value = exitAtFlight > 0 ? Math.min(1, exit / exitAtFlight) : 1;
 
     const group = head.current;
     if (!group) return;
@@ -885,6 +914,17 @@ export default function Scene() {
     // the scroll already read this frame, then a ray through the live camera
     // onto the face's plane, which stays right while the camera is still
     // pitching on its way in.
+    // Gone once the flight has the camera. Its box is far off the top of the
+    // screen by then, and the ray below is cast through a camera that is now
+    // flying the tunnel: it crosses the face's plane partway down the throat,
+    // and the last ray before that lands the face right on top of the lens.
+    // This section stays drawn for a screen past its foot, and the flight now
+    // starts before that foot, so the crossing is inside that window.
+    if (flown > 0) {
+      group.visible = false;
+      return;
+    }
+
     const slot = readFaceSlot();
     if (!slot) {
       // measured before the column has been laid out, or across a resize past
@@ -920,7 +960,7 @@ export default function Scene() {
     group.scale.setScalar(scale);
     group.position.set(
       (1 - scale) * FACE_HOME.x,
-      slotMid.y - scale * FACE_HOME.y - exit * exitLift,
+      slotMid.y - scale * FACE_HOME.y - held * exitLift,
       (1 - scale) * FACE_HOME.z,
     );
     group.visible = true;
