@@ -144,66 +144,6 @@ export function makeShellMaterial() {
 }
 
 /* ==========================================================================
-   The title
-   ========================================================================== */
-
-const TITLE_VERT = /* glsl */ `
-  ${FADE_UNIFORMS}
-  ${FADE_VARYING}
-  varying vec2 vUv;
-
-  void main() {
-    vUv = uv;
-    ${FADE_VERTEX}
-  }
-`;
-
-/**
- * The type, printed: one texture of coverage, in white.
- *
- * The texture is the whole column of letters as it is laid out — see
- * ../scene/WorksTitle, which draws it — and the sheet spans exactly that
- * texture, so there is no layout left to do here.
- *
- * Faded in alpha over black, for the wireframe's reason: the sheet sits on the
- * wall and has to go into the distance with it.
- */
-const TITLE_FRAG = /* glsl */ `
-  ${FADE_UNIFORMS}
-  ${FADE_VARYING}
-  uniform sampler2D uMap;
-  uniform float uFill;
-  uniform float uOpacity;
-  varying vec2 vUv;
-
-  void main() {
-    ${FADE_FACTOR}
-    float ink = texture2D(uMap, vUv).r;
-    gl_FragColor = vec4(vec3(1.0), ink * uFill * uOpacity * fade);
-  }
-`;
-
-export function makeTitleMaterial(map: THREE.Texture, fill: number) {
-  return new THREE.ShaderMaterial({
-    uniforms: {
-      uFogNear: { value: TUNNEL.fogNear * TUNNEL.scale },
-      uFogFar: { value: TUNNEL.fogFar * TUNNEL.scale },
-      uMap: { value: map },
-      uFill: { value: fill },
-      uOpacity: { value: 1 },
-    },
-    vertexShader: TITLE_VERT,
-    fragmentShader: TITLE_FRAG,
-    transparent: true,
-    depthWrite: false,
-    // seen from the axis side all the way, but which face that is depends on
-    // the winding the sheet happened to be built in — and costs nothing to
-    // not care about
-    side: THREE.DoubleSide,
-  });
-}
-
-/* ==========================================================================
    The fluid
    ========================================================================== */
 
