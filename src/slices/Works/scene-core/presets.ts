@@ -13,7 +13,7 @@ import {
 } from "./path";
 
 /**
- * The tunnel's dials, and the one preset the section flies.
+ * The tunnel's dials, its presets, and which one the section flies.
  *
  * Everything here is authored in *path units* — the units the prototype was
  * written in, where a tube is about 10 and a straight run about 80 — and
@@ -242,17 +242,17 @@ export function wallColumnCount() {
 }
 
 /* ==========================================================================
-   The preset
+   The presets
    ========================================================================== */
 
 /**
- * Switchback: fall down a flat wall, curl it into a tube, then a run of
- * alternating turns with a card on every straight, and out into the pool.
+ * How every preset opens: fall down the flat wall the About section shares,
+ * then curl it into a tube heading away from the screen.
  *
- * Cards carry no content — only where they are. The slice fills the slots from
- * Prismic in the order they appear here; see ../scene/cardSlots.
+ * Shared rather than copied into each one, because {@link tunnelPath} sizes the
+ * *first* segment as the flat wall — every preset has to start on exactly it.
  */
-export const SWITCHBACK: TunnelSegment[] = [
+const OPENING: TunnelSegment[] = [
   // No `run` on this one, and it is the only segment without one: how long the
   // opening wall is is not a fact about the shape, it is what the handover
   // costs, and {@link tunnelPath} solves it from {@link TUNNEL.handoverVh}.
@@ -260,6 +260,43 @@ export const SWITCHBACK: TunnelSegment[] = [
   // shares is where the flight opens, so that is the segment being solved.
   { label: "wall", tube: WALL_TUBE, wrap: 0, aim: 0, pace: 5.5 },
   { label: "throat", pitch: 90, bend: 26, wrap: 1, aim: 1, pace: 4.3 },
+];
+
+/*
+ * Turns and banks, for writing presets.
+ *
+ * Every turn is a flat arc about the frame's own axis, so the bank a turn
+ * *starts* with decides which way it tilts: banked into the turn it descends,
+ * banked away from it it climbs. A `roll` written on the turn itself only rolls
+ * the camera along the way — it is the next turn that feels it.
+ *
+ * Two exact cases, which every preset after SWITCHBACK is built from:
+ *
+ *   - a 90 degree turn entered banked into it by some angle comes out pitched
+ *     down by that same angle, with the bank gone;
+ *   - a 90 degree turn entered pitched down by some angle comes out level,
+ *     banked by that angle away from the turn — which is into a turn the other
+ *     way.
+ *
+ * So those presets only ever go down, and each names its angle once: the roll
+ * and the pitch that later cancels it have to agree, or the frame is left
+ * holding a little of both and the next turn tilts.
+ *
+ * Cards carry no content — only where they are. The slice fills the slots from
+ * Prismic in the order they appear; see ../scene/cardSlots. Every preset here
+ * has five, and each sits on the side the next turn goes, as SWITCHBACK's do.
+ */
+
+/**
+ * Switchback: fall down a flat wall, curl it into a tube, then a run of
+ * alternating turns with a card on every straight, and out into the pool.
+ *
+ * Its banks are written on the turns, so each one is still held going into a
+ * turn the other way: every turn tilts it up a little more. It climbs about 345
+ * path units all told and meets the pool nose-up at some 66 degrees.
+ */
+export const SWITCHBACK: TunnelSegment[] = [
+  ...OPENING,
 
   { label: "run in", run: 76, card: { at: 0.55, u: 0.22, w: 3, h: 2 } },
   { label: "bear right", yaw: 62, bend: 34, roll: 20 },
@@ -275,8 +312,207 @@ export const SWITCHBACK: TunnelSegment[] = [
   { label: "plunge", run: 150, pool: 0.3, pace: 1.3 },
 ];
 
-/** The one the section flies. Swap it for another list and nothing else moves. */
-export const TUNNEL_SEGMENTS: TunnelSegment[] = SWITCHBACK;
+/**
+ * Staircase: no turns at all. Level landings with a card each, and between
+ * them a steep drop that bends over the edge and back out at the foot. The last
+ * edge never levels out, so the pool is at the bottom of a slope.
+ *
+ * Each step is about 42 path units down: the drop's `run` sets how tall, the
+ * edge and foot's `pitch` how steep — keep those two equal and opposite or the
+ * landing after them is not level.
+ */
+export const STAIRCASE: TunnelSegment[] = [
+  ...OPENING,
+
+  { label: "landing", run: 70, card: { at: 0.55, u: 0.22, w: 3, h: 2 } },
+  { label: "edge", pitch: -50, bend: 26 },
+  { label: "drop", run: 30 },
+  { label: "foot", pitch: 50, bend: 26 },
+
+  { label: "landing", run: 60, card: { at: 0.5, u: -0.24, w: 3, h: 2 } },
+  { label: "edge", pitch: -50, bend: 26 },
+  { label: "drop", run: 30 },
+  { label: "foot", pitch: 50, bend: 26 },
+
+  { label: "landing", run: 60, card: { at: 0.5, u: 0.24, w: 3, h: 2 } },
+  { label: "edge", pitch: -50, bend: 26 },
+  { label: "drop", run: 30 },
+  { label: "foot", pitch: 50, bend: 26 },
+
+  { label: "landing", run: 60, card: { at: 0.5, u: -0.22, w: 3, h: 2 } },
+  { label: "edge", pitch: -50, bend: 26 },
+  { label: "drop", run: 30 },
+  { label: "foot", pitch: 50, bend: 26 },
+
+  { label: "landing", run: 60, card: { at: 0.5, u: 0.2, w: 3, h: 2 } },
+  { label: "last edge", pitch: -35, bend: 30 },
+
+  // down the slope into the pool
+  { label: "plunge", run: 150, pool: 0.3, pace: 1.3 },
+];
+
+/**
+ * Well: two flat turns, then over a lip into a vertical shaft, with the last
+ * two cards on its walls and the pool at the bottom, looked straight down on.
+ *
+ * The turns are unbanked so the lip starts from a level frame and the shaft
+ * comes out plumb. Bank them and the drop leans to one side.
+ */
+export const WELL: TunnelSegment[] = [
+  ...OPENING,
+
+  { label: "run in", run: 70, card: { at: 0.55, u: 0.22, w: 3, h: 2 } },
+  { label: "bear right", yaw: 70, bend: 34 },
+  { label: "straight", run: 70, card: { at: 0.5, u: -0.24, w: 3, h: 2 } },
+  { label: "hard left", yaw: -90, bend: 30 },
+  { label: "straight", run: 60, card: { at: 0.5, u: 0.22, w: 3, h: 2 } },
+
+  // the throat run backwards: level to straight down
+  { label: "lip", pitch: -90, bend: 26 },
+  { label: "shaft", run: 70, card: { at: 0.5, u: -0.22, w: 3, h: 2 } },
+  { label: "shaft", run: 60, card: { at: 0.5, u: 0.22, w: 3, h: 2 } },
+
+  // straight down into the pool
+  { label: "plunge", run: 150, pool: 0.3, pace: 1.3 },
+];
+
+/**
+ * Bobsled: lean into every turn on the way in, so every turn drops. The lean
+ * comes out of the turn as a dive, a chute carries the card down, and the
+ * flatten levels off while leaning the other way for the next turn.
+ *
+ * Every turn is 90 degrees and opposite to the one before, so it zigzags off
+ * on a diagonal, about 55 path units lower per turn.
+ */
+const BOBSLED_BANK = 25;
+
+export const BOBSLED: TunnelSegment[] = [
+  ...OPENING,
+
+  // the lean builds over the run in, so it is all there when the turn starts
+  {
+    label: "run in",
+    run: 76,
+    roll: BOBSLED_BANK,
+    card: { at: 0.55, u: 0.22, w: 3, h: 2 },
+  },
+
+  { label: "bank right", yaw: 90, bend: 34 },
+  { label: "chute", run: 55, card: { at: 0.5, u: -0.24, w: 3, h: 2 } },
+  { label: "flatten", pitch: BOBSLED_BANK, bend: 30, roll: -BOBSLED_BANK },
+
+  { label: "bank left", yaw: -90, bend: 34 },
+  { label: "chute", run: 55, card: { at: 0.5, u: 0.24, w: 3, h: 2 } },
+  { label: "flatten", pitch: BOBSLED_BANK, bend: 30, roll: BOBSLED_BANK },
+
+  { label: "bank right", yaw: 90, bend: 34 },
+  { label: "chute", run: 55, card: { at: 0.5, u: -0.22, w: 3, h: 2 } },
+  { label: "flatten", pitch: BOBSLED_BANK, bend: 30, roll: -BOBSLED_BANK },
+
+  { label: "bank left", yaw: -90, bend: 34 },
+  { label: "chute", run: 60, card: { at: 0.5, u: 0.2, w: 3, h: 2 } },
+
+  // no flatten: on down the last chute into the pool
+  { label: "plunge", run: 150, pool: 0.3, pace: 1.3 },
+];
+
+/**
+ * Slalom: tip over once and never level out again. Each carve trades the dive
+ * for a lean and the next carve trades it back, so the straights alternate
+ * between a banked traverse and a dive down the fall line.
+ *
+ * The one rule: a traverse leans away from the carve before it, so the carve
+ * after it has to go the other way. A dive can go either way. Right, left,
+ * left, right keeps it snaking about the same heading instead of drifting off
+ * to one side.
+ */
+const SLALOM_DIVE = 24;
+
+export const SLALOM: TunnelSegment[] = [
+  ...OPENING,
+
+  { label: "run in", run: 60, card: { at: 0.55, u: 0.22, w: 3, h: 2 } },
+  { label: "tip over", pitch: -SLALOM_DIVE, bend: 40 },
+
+  { label: "carve right", yaw: 90, bend: 36 },
+  // leaning left now, so the next carve is left
+  { label: "traverse", run: 55, card: { at: 0.5, u: -0.24, w: 3, h: 2 } },
+  { label: "carve left", yaw: -90, bend: 36 },
+  { label: "fall line", run: 50, card: { at: 0.5, u: -0.22, w: 3, h: 2 } },
+
+  { label: "carve left", yaw: -90, bend: 36 },
+  // leaning right now, so the next carve is right
+  { label: "traverse", run: 55, card: { at: 0.5, u: 0.24, w: 3, h: 2 } },
+  { label: "carve right", yaw: 90, bend: 36 },
+  { label: "fall line", run: 50, card: { at: 0.5, u: 0.2, w: 3, h: 2 } },
+
+  // on down the fall line into the pool
+  { label: "plunge", run: 150, pool: 0.3, pace: 1.3 },
+];
+
+/**
+ * Spiral: the bobsled's turn, always to the right, so it corkscrews down — a
+ * turn and a half, with a card on each of the first four chutes.
+ *
+ * A lap drops about 100 path units, which keeps the coils well clear of each
+ * other. Tighten it (a smaller bank or shorter chutes) and the development
+ * build warns once they come close.
+ */
+const SPIRAL_BANK = 18;
+
+export const SPIRAL: TunnelSegment[] = [
+  ...OPENING,
+
+  {
+    label: "run in",
+    run: 60,
+    roll: SPIRAL_BANK,
+    card: { at: 0.55, u: 0.22, w: 3, h: 2 },
+  },
+
+  { label: "turn", yaw: 90, bend: 34 },
+  { label: "chute", run: 40, card: { at: 0.6, u: 0.24, w: 3, h: 2 } },
+  { label: "flatten", pitch: SPIRAL_BANK, bend: 30, roll: SPIRAL_BANK },
+
+  { label: "turn", yaw: 90, bend: 34 },
+  { label: "chute", run: 40, card: { at: 0.6, u: 0.24, w: 3, h: 2 } },
+  { label: "flatten", pitch: SPIRAL_BANK, bend: 30, roll: SPIRAL_BANK },
+
+  { label: "turn", yaw: 90, bend: 34 },
+  { label: "chute", run: 40, card: { at: 0.6, u: 0.24, w: 3, h: 2 } },
+  { label: "flatten", pitch: SPIRAL_BANK, bend: 30, roll: SPIRAL_BANK },
+
+  { label: "turn", yaw: 90, bend: 34 },
+  { label: "chute", run: 40, card: { at: 0.6, u: 0.24, w: 3, h: 2 } },
+  { label: "flatten", pitch: SPIRAL_BANK, bend: 30, roll: SPIRAL_BANK },
+
+  { label: "turn", yaw: 90, bend: 34 },
+  { label: "chute", run: 40 },
+  { label: "flatten", pitch: SPIRAL_BANK, bend: 30, roll: SPIRAL_BANK },
+
+  { label: "turn", yaw: 90, bend: 34 },
+
+  // out of the last turn and down into the pool
+  { label: "plunge", run: 150, pool: 0.3, pace: 1.3 },
+];
+
+/** Every preset, by name. */
+export const TUNNEL_PRESETS = {
+  SWITCHBACK,
+  STAIRCASE,
+  WELL,
+  BOBSLED,
+  SLALOM,
+  SPIRAL,
+} satisfies Record<string, TunnelSegment[]>;
+
+/**
+ * The one the section flies — change it to any name in {@link TUNNEL_PRESETS}.
+ * Nothing else moves: the page height follows the new path's length.
+ */
+const SELECTED_PRESET: keyof typeof TUNNEL_PRESETS = "SPIRAL";
+
+export const TUNNEL_SEGMENTS: TunnelSegment[] = TUNNEL_PRESETS[SELECTED_PRESET];
 
 /* ==========================================================================
    Where it sits in the world
