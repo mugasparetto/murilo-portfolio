@@ -7,7 +7,7 @@ import { SliceComponentProps } from "@prismicio/react";
 import { useSceneRegistry } from "@/app/hooks/SceneRegistry";
 
 import Scene from "./scene/Scene";
-import WorksCards from "./scene/WorksCards";
+import WorksCards, { workTitle } from "./scene/WorksCards";
 import WorksHud from "./scene/WorksHud";
 import { measureWorks, publishWorks } from "./scene/worksScroll";
 import { worksOverlapVh, worksSectionVh } from "./scene-core/presets";
@@ -142,7 +142,7 @@ const Works: FC<WorksProps> = ({ slice }) => {
       style={{ height: `${heightVh}vh`, marginTop: `${-overlapVh}vh` }}
     >
       <WorksCards works={works} />
-      <WorksHud total={works.length} />
+      <WorksHud titles={works.map(workTitle)} />
     </section>
   );
 };

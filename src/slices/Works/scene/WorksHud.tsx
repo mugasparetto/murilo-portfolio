@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
+import { useLenis } from "lenis/react";
 
 import { blockInset } from "@/slices/Hero/scene/Name";
 
@@ -12,6 +13,7 @@ import {
   publishHudStage,
   useHud,
 } from "./hud";
+import { worksScrollY } from "./worksScroll";
 
 /**
  * The Works section's instrument row, in the bottom-right corner.
@@ -25,6 +27,10 @@ import {
  * The corner is the one <ScrollCue /> holds in the hero — bottom-right, on the
  * nav's centre line, in the cue's type — which the cue has long since left. So
  * the page has one row of furniture along the bottom throughout.
+ *
+ * Each tick is also a button. Clicking it flies the page to that card: a
+ * scroll, so the tunnel plays through on the way exactly as if it had been
+ * scrolled by hand.
  *
  * See ./HudDriver for the numbers the frame loop writes, and ./hud for where
  * along the flight each part happens.
@@ -43,6 +49,21 @@ const pad = (n: number) => String(n).padStart(2, "0");
 
 /** `x` clamped to 0..1, written for CSS */
 const unit = (x: string) => `clamp(0, ${x}, 1)`;
+
+/** the most a tick's hit area reaches either side of it */
+const HIT_HALF = "16px";
+
+/**
+ * A fly-to's length in seconds. It grows with the distance, but by less and
+ * less, so the next card over is a short hop and the far end of the tunnel is
+ * not a long wait.
+ */
+const flyDuration = (screens: number) =>
+  Math.min(2.4, 0.8 + 0.5 * Math.sqrt(screens));
+
+/** ease in and out: pull away from where the page was, settle on the card */
+const flyEase = (t: number) =>
+  t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 
 /**
  * One digit as a strip of all ten, rolled to the one showing — so the counter
@@ -66,12 +87,41 @@ function Digit({ value }: { value: number }) {
   );
 }
 
-export default function WorksHud({ total }: { total: number }) {
+export default function WorksHud({ titles }: { titles: string[] }) {
   const on = useHud((s) => s.on);
   const index = useHud((s) => s.index);
+  const lenis = useLenis();
+
+  const total = titles.length;
 
   // one tick per card the path can show *and* Prismic has filled
-  const ticks = useMemo(() => hudLayout().ticks.slice(0, total), [total]);
+  const { ticks, jumps } = useMemo(() => {
+    const L = hudLayout();
+    return {
+      ticks: L.ticks.slice(0, total),
+      jumps: L.jumps.slice(0, total),
+    };
+  }, [total]);
+
+  // Through Lenis, not `window.scrollTo`, because Lenis owns the scroll: a
+  // native scroll would be overwritten on its next frame. A wheel or a finger
+  // during the flight takes over from it, as it does from any Lenis scroll.
+  const flyTo = useCallback(
+    (i: number) => {
+      if (!lenis) return;
+
+      const y = worksScrollY(jumps[i]);
+      const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      lenis.scrollTo(y, {
+        duration: flyDuration(Math.abs(y - window.scrollY) / innerHeight),
+        easing: flyEase,
+        immediate: still,
+      });
+    },
+    [lenis, jumps],
+  );
+
   const showing = ticks.length > 0;
 
   if (!showing) return null;
@@ -93,8 +143,12 @@ export default function WorksHud({ total }: { total: number }) {
     // --hud-rise is how far the word or the count climbs as it arrives, as a
     // share of its own height: dropped for reduced motion, which keeps the
     // fades.
+    //
+    // Inert while hidden, so the tick buttons are neither clickable nor
+    // focusable while there is nothing to see.
     <div
       ref={publishHudStage}
+      inert={!on}
       style={blockInset}
       className={`pointer-events-none fixed inset-0 z-20 transition-opacity duration-500 select-none [--hud-rise:40%] motion-reduce:[--hud-rise:0%] ${on ? "opacity-100" : "opacity-0"}`}
     >
@@ -115,34 +169,58 @@ export default function WorksHud({ total }: { total: number }) {
 
         {/* the rail: the whole flight, a tick where each card is reached */}
         <div
-          aria-hidden
-          className="relative h-3 w-16 origin-left overflow-hidden sm:w-24 md:w-40 lg:w-48"
+          className="relative h-3 w-16 origin-left sm:w-24 md:w-40 lg:w-48"
           style={{ scale: `${railIn} 1` }}
         >
-          <div className="absolute inset-x-0 top-[5.5px] h-px bg-white/25" />
+          <div aria-hidden className="absolute inset-0 overflow-hidden">
+            <div className="absolute inset-x-0 top-[5.5px] h-px bg-white/25" />
 
-          <div
-            ref={publishHudFill}
-            className="absolute inset-x-0 top-[5.5px] h-px origin-left bg-white/70 will-change-transform"
-            style={{ transform: "scaleX(0)" }}
-          />
-
-          {ticks.map((t, i) => (
             <div
-              key={i}
-              className={`absolute top-0.5 h-2 w-px transition-colors duration-300 ${index > i ? "bg-white" : "bg-white/35"}`}
-              style={{ left: `${t * 100}%`, opacity: ticksIn }}
+              ref={publishHudFill}
+              className="absolute inset-x-0 top-[5.5px] h-px origin-left bg-white/70 will-change-transform"
+              style={{ transform: "scaleX(0)" }}
             />
-          ))}
 
-          {/* full width less its own, so at the end of the flight the cursor
-              sits on the rail's last pixel rather than just past it */}
-          <div
-            ref={publishHudCursor}
-            className="absolute inset-y-0 right-px left-0 will-change-transform"
-          >
-            <div className="absolute top-0 left-0 h-full w-px bg-white" />
+            {/* full width less its own, so at the end of the flight the
+                cursor sits on the rail's last pixel rather than just past it */}
+            <div
+              ref={publishHudCursor}
+              className="absolute inset-y-0 right-px left-0 will-change-transform"
+            >
+              <div className="absolute top-0 left-0 h-full w-px bg-white" />
+            </div>
           </div>
+
+          {ticks.map((t, i) => {
+            // The hit area is centred on its tick, as tall as the row, and
+            // reaches HIT_HALF either side, or halfway to a neighbouring tick
+            // if that is nearer. Ticks close together share the gap between
+            // them, without overlapping.
+            const gaps = [
+              i > 0 ? `${(t - ticks[i - 1]) * 50}%` : null,
+              i < ticks.length - 1 ? `${(ticks[i + 1] - t) * 50}%` : null,
+            ].filter(Boolean);
+            const half = `min(${[HIT_HALF, ...gaps].join(", ")})`;
+
+            return (
+              <button
+                key={i}
+                type="button"
+                aria-label={`Go to ${titles[i]}`}
+                onClick={() => flyTo(i)}
+                className="group pointer-events-auto absolute top-1/2 h-10 -translate-y-1/2 cursor-pointer focus-visible:outline-1 focus-visible:outline-white/60 md:h-12.5"
+                style={{
+                  left: `calc(${t * 100}% - ${half})`,
+                  width: `calc(2 * ${half})`,
+                }}
+              >
+                <span
+                  className={`absolute top-1/2 left-1/2 h-2 w-px -translate-x-1/2 -translate-y-1/2 transition-[background-color,scale] duration-300 group-hover:scale-y-150 group-hover:bg-white group-focus-visible:scale-y-150 group-focus-visible:bg-white ${index > i ? "bg-white" : "bg-white/35"}`}
+                  style={{ opacity: ticksIn }}
+                />
+              </button>
+            );
+          })}
         </div>
 
         <div

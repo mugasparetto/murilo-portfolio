@@ -30,9 +30,25 @@ import { publishCardCount, publishCardSlot } from "./cardSlots";
  * long as the bar was out.
  */
 
+type WorkItem = Content.WorksSliceDefaultPrimaryWorksItem;
+
 export type WorksCardsProps = {
-  works: Content.WorksSliceDefaultPrimaryWorksItem[];
+  works: WorkItem[];
 };
+
+/** the linked work's own fields, once Prismic has filled the link in */
+function workData(item: WorkItem) {
+  const link = item.works;
+
+  return link && "data" in link
+    ? (link.data as Partial<Content.WorkDocumentData> | undefined)
+    : undefined;
+}
+
+/** what a card is called, on the card and wherever else it is named */
+export function workTitle(item: WorkItem) {
+  return workData(item)?.title ?? "Untitled";
+}
 
 export default function WorksCards({ works }: WorksCardsProps) {
   // How many slots the tunnel should light. Written once here rather than
@@ -46,12 +62,9 @@ export default function WorksCards({ works }: WorksCardsProps) {
     <div className="pointer-events-none fixed inset-0 z-10 h-screen w-full overflow-hidden">
       {works.map((item, i) => {
         const link = item.works;
-        const data =
-          link && "data" in link
-            ? (link.data as Partial<Content.WorkDocumentData> | undefined)
-            : undefined;
+        const data = workData(item);
 
-        const title = data?.title ?? "Untitled";
+        const title = workTitle(item);
         const year = data?.year ?? "";
         const thumb = data?.thumbnail
           ? asImageSrc(data.thumbnail, { w: 720 })

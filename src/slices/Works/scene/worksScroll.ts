@@ -75,6 +75,15 @@ export function worksProgress(scrollY: number) {
   return (scrollY - state.top) / travel;
 }
 
+/**
+ * The page scroll at which the flight is `progress` of the way through —
+ * {@link worksProgress} the other way round, for sending the page to a point
+ * along the flight.
+ */
+export function worksScrollY(progress: number) {
+  return state.top + progress * Math.max(0, state.height - cssVh());
+}
+
 /** Hands the section over: <Works /> calls it with the element on mount. */
 export function publishWorks(el: HTMLElement | null) {
   state.el = el;
