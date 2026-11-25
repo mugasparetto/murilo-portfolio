@@ -3,7 +3,6 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 
-import { smoothstep } from "../scene-core/path";
 import { cardCount } from "./cardSlots";
 import { flight } from "./flight";
 import { hudElements, hudLayout, useHud } from "./hud";
@@ -16,13 +15,10 @@ import { hudElements, hudLayout, useHud } from "./hud";
  * this frame's flight at 0.5. See ./hud for why whether it shows and the count
  * go through React state while everything else doesn't.
  *
- * The scrubbed parts get three numbers on the stage, and the markup's CSS does
- * the rest:
+ * The row's arrival is one number on the stage, and the markup's CSS does the
+ * rest:
  *
- *   --hud-v  vh of scroll since the HUD appeared — each letter works its own
- *            arrival out of this, offset by its place in the word
- *   --hud-k  0..1, how far the word has glided from the centre to its corner
- *   --hud-c  0..1, how far the rail and counter have arrived in the corner
+ *   --hud-c  0..1, how far the corner row has drawn in
  */
 export default function HudDriver() {
   /** what was last written, so an idle frame writes nothing */
@@ -73,13 +69,8 @@ export default function HudDriver() {
       last.stage = stage;
 
       if (stage) {
-        const k = smoothstep(
-          (held - L.glideFromV) / (L.glideToV - L.glideFromV),
-        );
         const c = (held - L.cornerFromV) / (L.cornerToV - L.cornerFromV);
 
-        stage.style.setProperty("--hud-v", held.toFixed(2));
-        stage.style.setProperty("--hud-k", k.toFixed(4));
         stage.style.setProperty(
           "--hud-c",
           Math.min(1, Math.max(0, c)).toFixed(4),

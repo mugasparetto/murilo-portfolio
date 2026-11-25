@@ -20,6 +20,7 @@ import { tunnelResources } from "../scene-core/resources";
 import { flight } from "./flight";
 import HudDriver from "./HudDriver";
 import TunnelCards from "./TunnelCards";
+import WorksTitle from "./WorksTitle";
 import { worksProgress } from "./worksScroll";
 
 /**
@@ -338,6 +339,8 @@ export default function Scene() {
         frustumCulled={false}
         dispose={null}
       />
+
+      <WorksTitle />
 
       {res.poolFrame && (
         // a disc filling the tube's cross-section. It writes depth too, so it

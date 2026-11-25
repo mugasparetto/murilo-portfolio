@@ -168,7 +168,7 @@ export const TUNNEL = {
    * them still carrying the picture. Everything else is a multiple of it: see
    * ./geometry, where the wall brightens as it curls.
    */
-  level: 0.18,
+  level: 0.1,
 
   /**
    * How much scroll the wall takes to stop being the About section's and start
