@@ -8,7 +8,12 @@ import { ABOUT_POSE } from "@/app/components/poses";
 import { useScrollY } from "@/app/hooks/ScrollY";
 
 import { visibleRange } from "../scene-core/geometry";
-import { frameAt, makeFrame, smoothstep } from "../scene-core/path";
+import {
+  frameAt,
+  makeFrame,
+  smoothstep,
+  submersion as submersionAt,
+} from "../scene-core/path";
 import {
   flightDistance,
   TUNNEL,
@@ -286,7 +291,7 @@ export default function Scene({ count }: { count: number }) {
       const scale = TUNNEL.scale;
       const dPool = path.pool - s;
 
-      submersion = 1 - smoothstep((dPool + 6 * scale) / (16 * scale));
+      submersion = submersionAt(dPool, scale);
       live.washMat.uniforms.uFade.value = submersion;
 
       const pd = live.poolFrame.position.distanceTo(camera.position);

@@ -533,6 +533,16 @@ export function emergence(d: number, aim: number, scale: number) {
   );
 }
 
+/**
+ * How far under the water the camera is, 0..1, from how far ahead of it the
+ * pool's surface still is — in world units, and negative once it is through.
+ * Written once here because two things read it: the wash that takes the frame,
+ * and the HUD, which leaves halfway into it.
+ */
+export function submersion(dPool: number, scale: number) {
+  return 1 - smoothstep((dPool + 6 * scale) / (16 * scale));
+}
+
 const _los = new THREE.Vector3();
 
 /**

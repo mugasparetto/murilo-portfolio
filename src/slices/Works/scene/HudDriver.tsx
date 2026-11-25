@@ -4,7 +4,13 @@ import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 
 import { flight } from "./flight";
-import { hudElements, hudLayout, useHud } from "./hud";
+import {
+  HUD_SUBMERGED,
+  hudElements,
+  hudLayout,
+  railAt,
+  useHud,
+} from "./hud";
 
 /**
  * Drives <WorksHud /> from the flight.
@@ -36,7 +42,7 @@ export default function HudDriver({ count }: { count: number }) {
 
     // off above the curl, and off again once the water has closed over — the
     // wash takes the whole frame there and the HUD would be floating on it
-    const on = flight.active && v >= 0 && flight.submersion < 0.5;
+    const on = flight.active && v >= 0 && flight.submersion < HUD_SUBMERGED;
 
     let index = 0;
     for (let i = 0; i < L.reachS.length; i++) {
@@ -82,9 +88,13 @@ export default function HudDriver({ count }: { count: number }) {
       last.t = t;
       last.fill = fill;
 
-      if (fill) fill.style.transform = `scaleX(${t.toFixed(4)})`;
+      // not the progress itself: the rail is a timeline of the cards, with
+      // their ticks evenly spaced — see ./hud
+      const x = railAt(L, t);
+
+      if (fill) fill.style.transform = `scaleX(${x.toFixed(4)})`;
       if (cursor) {
-        cursor.style.transform = `translateX(${(t * 100).toFixed(2)}%)`;
+        cursor.style.transform = `translateX(${(x * 100).toFixed(2)}%)`;
       }
     }
   }, 0.6);

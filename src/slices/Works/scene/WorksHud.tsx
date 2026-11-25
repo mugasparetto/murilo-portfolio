@@ -96,8 +96,10 @@ export default function WorksHud({ titles }: { titles: string[] }) {
 
   // One tick per card on the path, which is one per work — or as many as a
   // preset that cannot grow has room for. The rail stays the width it is, so
-  // more works put the ticks closer together.
-  const ticks = useMemo(() => hudLayout(total).ticks, [total]);
+  // more works put the ticks closer together. `ticks` is when each card is
+  // reached, as section progress; `marks` is where its tick sits, evenly
+  // spaced along the rail.
+  const { ticks, marks } = useMemo(() => hudLayout(total), [total]);
 
   // Through Lenis, not `window.scrollTo`, because Lenis owns the scroll: a
   // native scroll would be overwritten on its next frame. A wheel or a finger
@@ -168,7 +170,8 @@ export default function WorksHud({ titles }: { titles: string[] }) {
           {HUD_WORD}
         </h2>
 
-        {/* the rail: the whole flight, a tick where each card is reached */}
+        {/* the rail: the row's time on screen, with the cards evenly spaced
+            along it and a tick where each one is reached */}
         <div
           className="relative h-3 w-16 origin-left sm:w-24 md:w-40 lg:w-48"
           style={{ scale: `${railIn} 1` }}
@@ -192,14 +195,14 @@ export default function WorksHud({ titles }: { titles: string[] }) {
             </div>
           </div>
 
-          {ticks.map((t, i) => {
+          {marks.map((t, i) => {
             // The hit area is centred on its tick, as tall as the row, and
             // reaches HIT_HALF either side, or halfway to a neighbouring tick
             // if that is nearer. Ticks close together share the gap between
             // them, without overlapping.
             const gaps = [
-              i > 0 ? `${(t - ticks[i - 1]) * 50}%` : null,
-              i < ticks.length - 1 ? `${(ticks[i + 1] - t) * 50}%` : null,
+              i > 0 ? `${(t - marks[i - 1]) * 50}%` : null,
+              i < marks.length - 1 ? `${(marks[i + 1] - t) * 50}%` : null,
             ].filter(Boolean);
             const half = `min(${[HIT_HALF, ...gaps].join(", ")})`;
 

@@ -2,7 +2,12 @@
 
 import { create } from "zustand";
 
-import { emergence, frameAt, makeFrame } from "../scene-core/path";
+import {
+  emergence,
+  frameAt,
+  makeFrame,
+  submersion,
+} from "../scene-core/path";
 import {
   flightDistance,
   tunnelPath,
@@ -80,11 +85,31 @@ const CORNER_LEAD_VH = 10;
 const CORNER_VH = 14;
 
 /**
- * A card has arrived once it is all the way out of the wall on the way in: as
- * far out as `emergence` takes it, less a hair, because a smoothstep only
- * creeps up to 1.
+ * A card is all the way out of the wall at this `emergence`: as far out as it
+ * goes, less a hair, because a smoothstep only creeps up to 1.
  */
-const ARRIVED = 0.999;
+const OUT = 0.999;
+
+/**
+ * Where the camera is said to have reached a card: this share of the way
+ * through the stretch the card stays all the way out, from first being fully
+ * out on the way in to starting back into the wall.
+ *
+ * Down the tunnel that is about 20 path units short of the card, two tube
+ * radii. Taking the moment the card is first fully out instead stops the
+ * camera about 34 short, which is too far. On SLALOM that point is still in
+ * the carve before the card's straight, so the view is still turning. At this
+ * share the camera is past the carve and on the straight, and on desktop the
+ * card is about 1.7 times as wide as it was. Much later and it overruns the
+ * edge of the frame: at 1024px wide this leaves it about 50px from the edge,
+ * and 18 units would leave 14px. A touch earlier than the round number,
+ * because the drawn card snaps to the nearest ring and can sit a unit or so
+ * nearer than the card's own `s`, which is what is read here.
+ */
+const REACHED = 0.6;
+
+/** how far under the water the camera is when the HUD leaves */
+export const HUD_SUBMERGED = 0.5;
 
 type HudLayout = {
   /** section progress at which the HUD appears — the zero of everything below */
@@ -97,10 +122,19 @@ type HudLayout = {
   /** per card: the spine distance at which it counts as reached */
   reachS: number[];
   /**
-   * and the same moment as section progress: where its tick sits, and where
+   * and the same moment as section progress: when its tick lights, and where
    * clicking the tick sends the page
    */
   ticks: number[];
+  /** per card: where its tick sits along the rail, 0..1 — evenly spaced */
+  marks: number[];
+  /**
+   * The rail's cursor, as knots of section progress against rail position:
+   * the row starting to draw in at 0, each card reached on its mark, and the
+   * HUD leaving at 1. Both increasing.
+   */
+  knotT: number[];
+  knotX: number[];
 };
 
 /** keyed by work count, like the path it is read off */
@@ -116,14 +150,24 @@ const layouts = new Map<number, HudLayout>();
  * in as that card starts coming out of the wall, so the corner fills in as
  * there is something to count.
  *
- * A card counts as reached once it is all the way out of the wall on the way
- * in, so the counter turns over as the card arrives rather than when the camera
- * finally passes it. That one moment is everything the HUD says about the card:
- * where its tick sits, when the tick lights and the count turns over, and where
- * clicking the tick takes the page. So a click leaves the cursor on the mark
- * that was clicked, with the count agreeing. Both card moments here are read
- * off `emergence` itself, at the aim the card is approached with, rather than
- * restated.
+ * A card counts as reached partway through the stretch it is all the way out
+ * of the wall for (see {@link REACHED}), so the counter turns over while the
+ * card is presented rather than when the camera finally passes it. That one
+ * moment is everything the HUD says about the card: where its tick sits, when
+ * the tick lights and the count turns over, and where clicking the tick takes
+ * the page. So a click leaves the cursor on the mark that was clicked, with the
+ * count agreeing. The card moments here are read off `emergence` itself, at
+ * the aim the card is approached with, rather than restated.
+ *
+ * The ticks are evenly spaced along the rail. The cards are not evenly spaced
+ * along the flight: the run in from the wall, the stretch between two cards and
+ * the dive to the pool after the last one all differ, and the dive is the
+ * longest. Placed at their true progress, the ticks bunched on the left with an
+ * empty stretch to the right. So the rail is a timeline of the cards rather than
+ * of the scroll. It covers the stretch the row is on screen for, from starting
+ * to draw in until the HUD leaves. Each gap, first and last included, is the
+ * same share of it, and the cursor runs at whatever pace gets it from one mark
+ * to the next as the next card is reached.
  */
 export function hudLayout(count: number): HudLayout {
   const hit = layouts.get(count);
@@ -133,16 +177,33 @@ export function hudLayout(count: number): HudLayout {
   const curl = path.segs.find((seg) => seg.wrap1 > seg.wrap0);
   const fr = makeFrame();
 
+  const step = 0.25 * path.scale;
+
   /** where along the spine a card has come `share` of the way out */
   const outBy = (s: number, share: number) => {
     const aim = frameAt(path, s, fr).aim;
 
     // walk in from well beyond any approach until it is that far out
-    const step = 0.25 * path.scale;
     let d = 120 * path.scale;
     while (d > 0 && emergence(d, aim, path.scale) < share) d -= step;
 
     return s - d;
+  };
+
+  /** where along the spine a card counts as reached — see {@link REACHED} */
+  const reachedAt = (s: number) => {
+    const aim = frameAt(path, s, fr).aim;
+    const out = (d: number) => emergence(d, aim, path.scale) >= OUT;
+
+    // walk in to where it is first all the way out, then on to where it
+    // starts back
+    let d = 120 * path.scale;
+    while (d > 0 && !out(d)) d -= step;
+    const from = d;
+    while (d > 0 && out(d)) d -= step;
+    const to = Math.min(from, d + step);
+
+    return s - (from + (to - from) * REACHED);
   };
 
   /** section progress at a spine distance — flightDistance's inverse */
@@ -165,7 +226,7 @@ export function hudLayout(count: number): HudLayout {
   const revealS = curl ? curl.s0 : path.travelA;
   const revealT = progressAt(revealS);
 
-  const reachS = path.cards.map((card) => outBy(card.s, ARRIVED));
+  const reachS = path.cards.map((card) => reachedAt(card.s));
   const ticks = reachS.map(progressAt);
 
   // the row lands as the first card starts to come out of the wall
@@ -176,6 +237,40 @@ export function hudLayout(count: number): HudLayout {
   );
   const cornerFromV = landV - CORNER_LEAD_VH;
 
+  // The rail's two ends: the row starting to draw in, and the HUD leaving as
+  // the camera goes under. Submersion only rises along the last stretch before
+  // the pool, so the moment it passes the mark can be bisected for there.
+  const railFromT = revealT + cornerFromV / flightVh;
+  let railToT = 1;
+
+  if (path.pool != null) {
+    let lo = path.pool - 20 * path.scale;
+    let hi = path.pool + 10 * path.scale;
+
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (submersion(path.pool - mid, path.scale) < HUD_SUBMERGED) lo = mid;
+      else hi = mid;
+    }
+
+    railToT = progressAt(lo);
+  }
+
+  const marks = ticks.map((_, i) => (i + 1) / (ticks.length + 1));
+
+  // Only the knots that keep both columns increasing. Each one is, on any path
+  // the presets make, but a knot out of order would send the cursor backwards.
+  const knotT = [railFromT];
+  const knotX = [0];
+  const keep = (t: number, x: number) => {
+    if (t > knotT[knotT.length - 1] && x > knotX[knotX.length - 1]) {
+      knotT.push(t);
+      knotX.push(x);
+    }
+  };
+  ticks.forEach((t, i) => keep(t, marks[i]));
+  keep(railToT, 1);
+
   const layout = {
     revealT,
     flightVh,
@@ -183,8 +278,29 @@ export function hudLayout(count: number): HudLayout {
     cornerToV: cornerFromV + CORNER_VH,
     reachS,
     ticks,
+    marks,
+    knotT,
+    knotX,
   };
 
   layouts.set(count, layout);
   return layout;
+}
+
+/**
+ * Where the rail's cursor sits, 0..1, at section progress `t`: straight lines
+ * between the layout's knots, held at either end.
+ */
+export function railAt(L: HudLayout, t: number) {
+  const { knotT, knotX } = L;
+  const last = knotT.length - 1;
+
+  if (t <= knotT[0]) return 0;
+  if (t >= knotT[last]) return knotX[last];
+
+  let i = 1;
+  while (knotT[i] < t) i++;
+
+  const k = (t - knotT[i - 1]) / (knotT[i] - knotT[i - 1]);
+  return knotX[i - 1] + (knotX[i] - knotX[i - 1]) * k;
 }
