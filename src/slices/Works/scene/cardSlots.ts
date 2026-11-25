@@ -16,30 +16,16 @@
  * re-render five cards on every frame of the scroll to change a string.
  *
  * Module-scoped: there is only ever one Works section, and its slots are
- * numbered by the path the tunnel is compiled from.
+ * numbered by the path the tunnel is compiled from — which is compiled for as
+ * many works as there are, so slot `i` is always work `i`.
  */
 
 const elements: (HTMLElement | null)[] = [];
-
-/**
- * How many slots actually have content. The path may offer more card positions
- * than Prismic has works — a preset is a shape, not a promise about the CMS —
- * and the patches past this count are never lit.
- */
-let filled = 0;
 
 export function publishCardSlot(index: number, el: HTMLElement | null) {
   elements[index] = el;
 }
 
-export function publishCardCount(n: number) {
-  filled = n;
-}
-
 export function cardSlot(index: number) {
   return elements[index] ?? null;
-}
-
-export function cardCount() {
-  return filled;
 }

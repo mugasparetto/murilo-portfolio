@@ -40,6 +40,18 @@ const state: { el: HTMLElement | null; top: number; height: number } = {
 };
 
 /**
+ * How long the flight is and how much of it the handover takes, both in vh of
+ * the section's own scroll: what ../../About/scene/Scene needs to read the
+ * flight's progress the way this section does.
+ *
+ * Published rather than worked out over there, because both depend on how many
+ * works Prismic sent and only this section knows that. Until it publishes, the
+ * section has not been measured either, so {@link worksProgress} says "not
+ * here" and nothing reads them.
+ */
+const figures = { flightVh: 1, handoverVh: 0 };
+
+/**
  * Re-read the section's box.
  *
  * `window.scrollY` read beside the rect rather than <ScrollYProvider />'s
@@ -82,6 +94,22 @@ export function worksProgress(scrollY: number) {
  */
 export function worksScrollY(progress: number) {
   return state.top + progress * Math.max(0, state.height - cssVh());
+}
+
+/** Hands the flight's figures over — see {@link figures}. */
+export function publishWorksFlight(flightVh: number, handoverVh: number) {
+  figures.flightVh = Math.max(1, flightVh);
+  figures.handoverVh = Math.max(0, handoverVh);
+}
+
+/** how long the flight is, in vh of scroll — see {@link figures} */
+export function worksFlightVh() {
+  return figures.flightVh;
+}
+
+/** how much of the flight the handover takes, in vh — see {@link figures} */
+export function worksHandoverVh() {
+  return figures.handoverVh;
 }
 
 /** Hands the section over: <Works /> calls it with the element on mount. */

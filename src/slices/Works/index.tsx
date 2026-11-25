@@ -7,10 +7,18 @@ import { SliceComponentProps } from "@prismicio/react";
 import { useSceneRegistry } from "@/app/hooks/SceneRegistry";
 
 import Scene from "./scene/Scene";
-import WorksCards, { workTitle } from "./scene/WorksCards";
+import WorksCards, { linkedWorks, workTitle } from "./scene/WorksCards";
 import WorksHud from "./scene/WorksHud";
-import { measureWorks, publishWorks } from "./scene/worksScroll";
-import { worksOverlapVh, worksSectionVh } from "./scene-core/presets";
+import {
+  measureWorks,
+  publishWorks,
+  publishWorksFlight,
+} from "./scene/worksScroll";
+import {
+  wallHandoverVh,
+  worksOverlapVh,
+  worksSectionVh,
+} from "./scene-core/presets";
 
 /**
  * Props for `Works`.
@@ -25,7 +33,16 @@ const Works: FC<WorksProps> = ({ slice }) => {
   const id = useId();
   const { register, remove, setActive } = useSceneRegistry();
 
-  const works = slice.primary.works ?? [];
+  /**
+   * The works the tunnel is built for — every entry that links to a published
+   * work. The tunnel grows a stretch per work, and the page with it, so this
+   * count is the one number here that comes from Prismic.
+   */
+  const works = useMemo(
+    () => linkedWorks(slice.primary.works ?? []),
+    [slice.primary.works],
+  );
+  const count = works.length;
 
   /**
    * How much scroll this section is worth.
@@ -33,11 +50,11 @@ const Works: FC<WorksProps> = ({ slice }) => {
    * A screen for the tunnel to be seen through, plus the flight's own weight,
    * plus what the launch spends getting up to the About section's speed — see
    * {@link worksSectionVh}, which reads all three off the path. Derived
-   * rather than typed so that editing the preset in ./scene-core/presets cannot
-   * quietly change the pace of the whole thing: a longer tunnel takes more page,
-   * exactly as much more as it added.
+   * rather than typed so that neither editing the preset in ./scene-core/presets
+   * nor adding a work can quietly change the pace of the whole thing: a longer
+   * tunnel takes more page, exactly as much more as it added.
    */
-  const heightVh = useMemo(() => worksSectionVh(), []);
+  const heightVh = useMemo(() => worksSectionVh(count), [count]);
 
   /**
    * How far the section starts above the About section's foot — whole cells of
@@ -54,12 +71,19 @@ const Works: FC<WorksProps> = ({ slice }) => {
       id,
       name: "scene-works",
       priority: 30,
-      node: <Scene />,
+      node: <Scene count={count} />,
       active: true,
     });
 
     return () => remove(id);
-  }, [id, register, remove]);
+  }, [id, register, remove, count]);
+
+  // The About section reads this section's progress in vh to hand its grid
+  // over to the wall, and how long the flight is depends on the count — so it
+  // gets the figures from here. See ./scene/worksScroll.
+  useEffect(() => {
+    publishWorksFlight(heightVh - 100, wallHandoverVh(count));
+  }, [count, heightVh]);
 
   // Drawn while the section is anywhere near the viewport, hidden once it is a
   // long way off — the same margin the other two sections use, so a section

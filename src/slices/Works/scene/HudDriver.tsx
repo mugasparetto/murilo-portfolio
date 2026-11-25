@@ -3,7 +3,6 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 
-import { cardCount } from "./cardSlots";
 import { flight } from "./flight";
 import { hudElements, hudLayout, useHud } from "./hud";
 
@@ -20,7 +19,7 @@ import { hudElements, hudLayout, useHud } from "./hud";
  *
  *   --hud-c  0..1, how far the corner row has drawn in
  */
-export default function HudDriver() {
+export default function HudDriver({ count }: { count: number }) {
   /** what was last written, so an idle frame writes nothing */
   const written = useRef<{
     v: number;
@@ -30,7 +29,7 @@ export default function HudDriver() {
   }>({ v: NaN, t: -1, stage: null, fill: null });
 
   useFrame(() => {
-    const L = hudLayout();
+    const L = hudLayout(count);
 
     // vh of scroll since the HUD appeared: negative above it
     const v = (flight.progress - L.revealT) * L.flightVh;
@@ -39,11 +38,10 @@ export default function HudDriver() {
     // wash takes the whole frame there and the HUD would be floating on it
     const on = flight.active && v >= 0 && flight.submersion < 0.5;
 
-    // a path can offer more slots than Prismic has works; the extras are
-    // never lit, so they are never counted either
-    const filled = Math.min(cardCount(), L.reachS.length);
     let index = 0;
-    for (let i = 0; i < filled; i++) if (flight.s >= L.reachS[i]) index = i + 1;
+    for (let i = 0; i < L.reachS.length; i++) {
+      if (flight.s >= L.reachS[i]) index = i + 1;
+    }
 
     const state = useHud.getState();
     if (state.on !== on || state.index !== index) {

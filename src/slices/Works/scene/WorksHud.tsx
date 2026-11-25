@@ -94,14 +94,10 @@ export default function WorksHud({ titles }: { titles: string[] }) {
 
   const total = titles.length;
 
-  // one tick per card the path can show *and* Prismic has filled
-  const { ticks, jumps } = useMemo(() => {
-    const L = hudLayout();
-    return {
-      ticks: L.ticks.slice(0, total),
-      jumps: L.jumps.slice(0, total),
-    };
-  }, [total]);
+  // One tick per card on the path, which is one per work — or as many as a
+  // preset that cannot grow has room for. The rail stays the width it is, so
+  // more works put the ticks closer together.
+  const ticks = useMemo(() => hudLayout(total).ticks, [total]);
 
   // Through Lenis, not `window.scrollTo`, because Lenis owns the scroll: a
   // native scroll would be overwritten on its next frame. A wheel or a finger
@@ -110,7 +106,12 @@ export default function WorksHud({ titles }: { titles: string[] }) {
     (i: number) => {
       if (!lenis) return;
 
-      const y = worksScrollY(jumps[i]);
+      // Onto the tick itself, so the cursor stops on the mark that was clicked.
+      // A couple of pixels past it, because the tick is the exact moment the
+      // count turns over, and a scroll rounded to the device pixel can stop
+      // just short of it with the count one behind. Two pixels of a flight
+      // thousands long is nothing on the rail.
+      const y = Math.ceil(worksScrollY(ticks[i])) + 2;
       const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
       lenis.scrollTo(y, {
@@ -119,7 +120,7 @@ export default function WorksHud({ titles }: { titles: string[] }) {
         immediate: still,
       });
     },
-    [lenis, jumps],
+    [lenis, ticks],
   );
 
   const showing = ticks.length > 0;

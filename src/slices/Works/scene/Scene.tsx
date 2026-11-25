@@ -80,13 +80,17 @@ const BLACK = new THREE.Color(0x000000);
 /** the water glowing back up the last stretch of tunnel */
 const POOL_TINT = new THREE.Color(0x07203c);
 
-export default function Scene() {
+/**
+ * `count` is how many works Prismic sent: the tunnel is built for exactly that
+ * many cards — see `tunnelPath` in ../scene-core/presets.
+ */
+export default function Scene({ count }: { count: number }) {
   // shared with the About section, which rules its grid on the same lattice
   const radial = wallColumnCount();
 
   // Not a hook: see ../scene-core/resources, which is where the geometry, the
   // materials and the reason they live outside React all are.
-  const res = tunnelResources(radial);
+  const res = tunnelResources(radial, count);
 
   const { scrollY } = useScrollY();
   const gl = useThree((s) => s.gl);
@@ -100,8 +104,11 @@ export default function Scene() {
    * its half of the same fade from — see there, and see the write in the frame
    * loop for what the two halves are actually crossing.
    */
-  const flightVh = useMemo(() => Math.max(1, worksSectionVh() - 100), []);
-  const handover = useMemo(() => Math.max(0, wallHandoverVh()), []);
+  const flightVh = useMemo(
+    () => Math.max(1, worksSectionVh(count) - 100),
+    [count],
+  );
+  const handover = useMemo(() => Math.max(0, wallHandoverVh(count)), [count]);
 
   const root = useRef<THREE.Group>(null);
   const wash = useRef<THREE.Mesh>(null);
@@ -124,11 +131,11 @@ export default function Scene() {
   // The fluid is written in screen space, so the pane needs the shape of the
   // screen. The disc is a circle and keeps 1.
   useEffect(() => {
-    const live = tunnelResources(radial);
+    const live = tunnelResources(radial, count);
     if (!live) return;
 
     live.washMat.uniforms.uAspect.value = size.width / Math.max(1, size.height);
-  }, [radial, size]);
+  }, [radial, count, size]);
 
   // Whatever the section did to the clear colour, undo it on the way out.
   useEffect(
@@ -143,7 +150,7 @@ export default function Scene() {
     // Looked up here rather than closed over from render: a Map hit, and the
     // one shape React's compiler will let a frame callback write to. Everything
     // below writes — uniforms, draw ranges, a clear colour.
-    const live = tunnelResources(radial);
+    const live = tunnelResources(radial, count);
     if (!group || !live) return;
 
     const { path, build } = live;
@@ -166,7 +173,7 @@ export default function Scene() {
     }
 
     const t = progress > 1 ? 1 : progress;
-    const s = flightDistance(t);
+    const s = flightDistance(count, t);
     const fr = frameAt(path, s, scratch.frame);
 
     // ── The wall's grid, coming up as the About section's goes out ────────
@@ -340,7 +347,7 @@ export default function Scene() {
         dispose={null}
       />
 
-      <WorksTitle />
+      <WorksTitle count={count} />
 
       {res.poolFrame && (
         // a disc filling the tube's cross-section. It writes depth too, so it
@@ -372,8 +379,8 @@ export default function Scene() {
         <planeGeometry args={[1, 1]} />
       </mesh>
 
-      <TunnelCards radial={radial} />
-      <HudDriver />
+      <TunnelCards radial={radial} count={count} />
+      <HudDriver count={count} />
     </group>
   );
 }

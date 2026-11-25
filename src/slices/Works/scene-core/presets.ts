@@ -57,7 +57,7 @@ export const WALL_DEPTH = ABOUT_POSE.position[2] - WALL_Z;
  *
  * The *authored* `w`, not the live one. The GUI can drag it in development and
  * this will not follow, which is the right answer rather than a gap: the tunnel
- * is compiled once as a module singleton, so nothing downstream of here could
+ * is compiled once per work count and kept, so nothing downstream of here could
  * follow it either. Settle on a width in the GUI, put it in `defaultParams`,
  * and the wall picks it up on reload.
  */
@@ -246,6 +246,21 @@ export function wallColumnCount() {
    ========================================================================== */
 
 /**
+ * A preset is a shape *for a number of works*: handed how many cards Prismic
+ * has, it returns the segments to fly. Cards carry no content — only where they
+ * are. The slice fills them from Prismic in the order they appear; see
+ * ../scene/cardSlots.
+ *
+ * Every card a preset adds is a stretch of tunnel added, and the page grows to
+ * match — see {@link worksSectionVh}, which sizes the section off the path — so
+ * a section is flown at the pace it was tuned at however many works there are.
+ *
+ * A preset may hand back more card slots than it was asked for: one that
+ * cannot grow keeps its own count. {@link tunnelPath} takes the spare ones off.
+ */
+export type TunnelPreset = (count: number) => TunnelSegment[];
+
+/**
  * How every preset opens: fall down the flat wall the About section shares,
  * then curl it into a tube heading away from the screen.
  *
@@ -261,6 +276,76 @@ const OPENING: TunnelSegment[] = [
   { label: "wall", tube: WALL_TUBE, wrap: 0, aim: 0, pace: 5.5 },
   { label: "throat", pitch: 90, bend: 26, wrap: 1, aim: 1, pace: 4.3 },
 ];
+
+/** straight on into the pool: past `pool` you are under it */
+const PLUNGE: TunnelSegment = {
+  label: "plunge",
+  run: 150,
+  pool: 0.3,
+  pace: 1.3,
+};
+
+/** a card slot `at` along its straight and `u` around the tube, three cells by two */
+const card = (u: number, at = 0.5) => ({ at, u, w: 3, h: 2 });
+
+/**
+ * One card's stretch of a growing preset: whatever leads up to its straight,
+ * the straight with the card on it, and anything that has to follow before the
+ * next card's stretch can start.
+ *
+ * `close` is only for the *last* card. Some stretches leave the frame where the
+ * finish should not start from — banked across the slope, say, when the pool
+ * wants diving into — and this brings it back. It is never put between two
+ * cards.
+ */
+type Stretch = {
+  segments: TunnelSegment[];
+  close?: TunnelSegment[];
+};
+
+/**
+ * A preset that grows with the works: `intro` for the first cards, then
+ * `cycle` round and round for as many more as there are, then `finish` into
+ * the pool.
+ *
+ * Each stretch carries exactly one card, and the cycle is written so that it
+ * can follow itself: whatever the last stretch in it leaves the frame doing is
+ * what the first one starts from. Every one here is also written so that five
+ * works fly exactly the preset as it was tuned, which is the shape the rest of
+ * the page has been looked at against.
+ */
+function growing({
+  intro,
+  cycle,
+  finish,
+}: {
+  intro: Stretch[];
+  cycle: [Stretch, ...Stretch[]];
+  finish: TunnelSegment[];
+}): TunnelPreset {
+  return (count) => {
+    const stretches = Array.from({ length: count }, (_, k) =>
+      k < intro.length ? intro[k] : cycle[(k - intro.length) % cycle.length],
+    );
+    const last = stretches[stretches.length - 1];
+
+    return [
+      ...OPENING,
+      ...stretches.flatMap((stretch) => stretch.segments),
+      ...(last?.close ?? []),
+      ...finish,
+    ];
+  };
+}
+
+/**
+ * A preset that cannot grow: the same shape for any number of works. Fewer
+ * works than it has slots leave the last straights empty; more, and the works
+ * past its slots are not shown — the development build says so.
+ */
+function fixed(segments: TunnelSegment[]): TunnelPreset {
+  return () => segments;
+}
 
 /*
  * Turns and banks, for writing presets.
@@ -280,11 +365,11 @@ const OPENING: TunnelSegment[] = [
  *
  * So those presets only ever go down, and each names its angle once: the roll
  * and the pitch that later cancels it have to agree, or the frame is left
- * holding a little of both and the next turn tilts.
+ * holding a little of both and the next turn tilts. It is also what lets them
+ * grow: a pattern that only goes down can be repeated for as long as there are
+ * works, where one that climbs would end up upside down.
  *
- * Cards carry no content — only where they are. The slice fills the slots from
- * Prismic in the order they appear; see ../scene/cardSlots. Every preset here
- * has five, and each sits on the side the next turn goes, as SWITCHBACK's do.
+ * Each card sits on the side the next turn goes, as SWITCHBACK's do.
  */
 
 /**
@@ -294,23 +379,25 @@ const OPENING: TunnelSegment[] = [
  * Its banks are written on the turns, so each one is still held going into a
  * turn the other way: every turn tilts it up a little more. It climbs about 345
  * path units all told and meets the pool nose-up at some 66 degrees.
+ *
+ * Which is why it cannot grow: a few more turns would carry it over the
+ * vertical. It keeps its five slots — see {@link fixed}.
  */
-export const SWITCHBACK: TunnelSegment[] = [
+export const SWITCHBACK = fixed([
   ...OPENING,
 
-  { label: "run in", run: 76, card: { at: 0.55, u: 0.22, w: 3, h: 2 } },
+  { label: "run in", run: 76, card: card(0.22, 0.55) },
   { label: "bear right", yaw: 62, bend: 34, roll: 20 },
-  { label: "straight", run: 80, card: { at: 0.5, u: -0.24, w: 3, h: 2 } },
+  { label: "straight", run: 80, card: card(-0.24) },
   { label: "hard left", yaw: -88, bend: 30, roll: -40 },
-  { label: "straight", run: 55, card: { at: 0.5, u: 0.26, w: 3, h: 2 } },
+  { label: "straight", run: 55, card: card(0.26) },
   { label: "hard right", yaw: 88, bend: 30, roll: 40 },
-  { label: "straight", run: 90, card: { at: 0.5, u: -0.22, w: 3, h: 2 } },
+  { label: "straight", run: 90, card: card(-0.22) },
   { label: "bear left", yaw: -62, bend: 34, roll: -20 },
-  { label: "out run", run: 72, card: { at: 0.5, u: 0.2, w: 3, h: 2 } },
+  { label: "out run", run: 72, card: card(0.2) },
 
-  // straight on into the pool: past `pool` you are under it
-  { label: "plunge", run: 150, pool: 0.3, pace: 1.3 },
-];
+  PLUNGE,
+]);
 
 /**
  * Staircase: no turns at all. Level landings with a card each, and between
@@ -319,62 +406,70 @@ export const SWITCHBACK: TunnelSegment[] = [
  *
  * Each step is about 42 path units down: the drop's `run` sets how tall, the
  * edge and foot's `pitch` how steep — keep those two equal and opposite or the
- * landing after them is not level.
+ * landing after them is not level. Every work past the first is another step.
  */
-export const STAIRCASE: TunnelSegment[] = [
-  ...OPENING,
+const step = (u: number): Stretch => ({
+  segments: [
+    { label: "edge", pitch: -50, bend: 26 },
+    { label: "drop", run: 30 },
+    { label: "foot", pitch: 50, bend: 26 },
+    { label: "landing", run: 60, card: card(u) },
+  ],
+});
 
-  { label: "landing", run: 70, card: { at: 0.55, u: 0.22, w: 3, h: 2 } },
-  { label: "edge", pitch: -50, bend: 26 },
-  { label: "drop", run: 30 },
-  { label: "foot", pitch: 50, bend: 26 },
-
-  { label: "landing", run: 60, card: { at: 0.5, u: -0.24, w: 3, h: 2 } },
-  { label: "edge", pitch: -50, bend: 26 },
-  { label: "drop", run: 30 },
-  { label: "foot", pitch: 50, bend: 26 },
-
-  { label: "landing", run: 60, card: { at: 0.5, u: 0.24, w: 3, h: 2 } },
-  { label: "edge", pitch: -50, bend: 26 },
-  { label: "drop", run: 30 },
-  { label: "foot", pitch: 50, bend: 26 },
-
-  { label: "landing", run: 60, card: { at: 0.5, u: -0.22, w: 3, h: 2 } },
-  { label: "edge", pitch: -50, bend: 26 },
-  { label: "drop", run: 30 },
-  { label: "foot", pitch: 50, bend: 26 },
-
-  { label: "landing", run: 60, card: { at: 0.5, u: 0.2, w: 3, h: 2 } },
-  { label: "last edge", pitch: -35, bend: 30 },
-
-  // down the slope into the pool
-  { label: "plunge", run: 150, pool: 0.3, pace: 1.3 },
-];
+export const STAIRCASE = growing({
+  intro: [
+    { segments: [{ label: "landing", run: 70, card: card(0.22, 0.55) }] },
+  ],
+  cycle: [step(-0.24), step(0.24), step(-0.22), step(0.2)],
+  finish: [
+    // down the slope into the pool
+    { label: "last edge", pitch: -35, bend: 30 },
+    PLUNGE,
+  ],
+});
 
 /**
- * Well: two flat turns, then over a lip into a vertical shaft, with the last
- * two cards on its walls and the pool at the bottom, looked straight down on.
+ * Well: two flat turns, then over a lip into a vertical shaft, with every card
+ * past the third on its walls and the pool at the bottom, looked straight down
+ * on.
  *
  * The turns are unbanked so the lip starts from a level frame and the shaft
- * comes out plumb. Bank them and the drop leans to one side.
+ * comes out plumb. Bank them and the drop leans to one side. With three works
+ * or fewer there is no shaft to put a card in, but there is still the lip: the
+ * pool is always looked straight down on.
  */
-export const WELL: TunnelSegment[] = [
-  ...OPENING,
+const LIP: TunnelSegment = { label: "lip", pitch: -90, bend: 26 };
 
-  { label: "run in", run: 70, card: { at: 0.55, u: 0.22, w: 3, h: 2 } },
-  { label: "bear right", yaw: 70, bend: 34 },
-  { label: "straight", run: 70, card: { at: 0.5, u: -0.24, w: 3, h: 2 } },
-  { label: "hard left", yaw: -90, bend: 30 },
-  { label: "straight", run: 60, card: { at: 0.5, u: 0.22, w: 3, h: 2 } },
-
-  // the throat run backwards: level to straight down
-  { label: "lip", pitch: -90, bend: 26 },
-  { label: "shaft", run: 70, card: { at: 0.5, u: -0.22, w: 3, h: 2 } },
-  { label: "shaft", run: 60, card: { at: 0.5, u: 0.22, w: 3, h: 2 } },
-
+export const WELL = growing({
+  intro: [
+    {
+      segments: [{ label: "run in", run: 70, card: card(0.22, 0.55) }],
+      close: [LIP],
+    },
+    {
+      segments: [
+        { label: "bear right", yaw: 70, bend: 34 },
+        { label: "straight", run: 70, card: card(-0.24) },
+      ],
+      close: [LIP],
+    },
+    {
+      segments: [
+        { label: "hard left", yaw: -90, bend: 30 },
+        { label: "straight", run: 60, card: card(0.22) },
+        // the throat run backwards: level to straight down
+        LIP,
+      ],
+    },
+  ],
+  cycle: [
+    { segments: [{ label: "shaft", run: 70, card: card(-0.22) }] },
+    { segments: [{ label: "shaft", run: 60, card: card(0.22) }] },
+  ],
   // straight down into the pool
-  { label: "plunge", run: 150, pool: 0.3, pace: 1.3 },
-];
+  finish: [PLUNGE],
+});
 
 /**
  * Bobsled: lean into every turn on the way in, so every turn drops. The lean
@@ -382,39 +477,57 @@ export const WELL: TunnelSegment[] = [
  * flatten levels off while leaning the other way for the next turn.
  *
  * Every turn is 90 degrees and opposite to the one before, so it zigzags off
- * on a diagonal, about 55 path units lower per turn.
+ * on a diagonal, about 55 path units lower per turn. The last chute has no
+ * flatten: it carries on down into the pool.
  */
 const BOBSLED_BANK = 25;
 
-export const BOBSLED: TunnelSegment[] = [
-  ...OPENING,
+const bank = (dir: 1 | -1): TunnelSegment => ({
+  label: dir > 0 ? "bank right" : "bank left",
+  yaw: 90 * dir,
+  bend: 34,
+});
 
-  // the lean builds over the run in, so it is all there when the turn starts
-  {
-    label: "run in",
-    run: 76,
-    roll: BOBSLED_BANK,
-    card: { at: 0.55, u: 0.22, w: 3, h: 2 },
-  },
+/** level off out of a chute, leaning into a turn the `next` way */
+const flatten = (next: 1 | -1): TunnelSegment => ({
+  label: "flatten",
+  pitch: BOBSLED_BANK,
+  bend: 30,
+  roll: BOBSLED_BANK * next,
+});
 
-  { label: "bank right", yaw: 90, bend: 34 },
-  { label: "chute", run: 55, card: { at: 0.5, u: -0.24, w: 3, h: 2 } },
-  { label: "flatten", pitch: BOBSLED_BANK, bend: 30, roll: -BOBSLED_BANK },
+const chute = (u: number, run = 55): TunnelSegment => ({
+  label: "chute",
+  run,
+  card: card(u),
+});
 
-  { label: "bank left", yaw: -90, bend: 34 },
-  { label: "chute", run: 55, card: { at: 0.5, u: 0.24, w: 3, h: 2 } },
-  { label: "flatten", pitch: BOBSLED_BANK, bend: 30, roll: BOBSLED_BANK },
-
-  { label: "bank right", yaw: 90, bend: 34 },
-  { label: "chute", run: 55, card: { at: 0.5, u: -0.22, w: 3, h: 2 } },
-  { label: "flatten", pitch: BOBSLED_BANK, bend: 30, roll: -BOBSLED_BANK },
-
-  { label: "bank left", yaw: -90, bend: 34 },
-  { label: "chute", run: 60, card: { at: 0.5, u: 0.2, w: 3, h: 2 } },
-
+export const BOBSLED = growing({
+  intro: [
+    {
+      // the lean builds over the run in, so it is all there when the turn starts
+      segments: [
+        {
+          label: "run in",
+          run: 76,
+          roll: BOBSLED_BANK,
+          card: card(0.22, 0.55),
+        },
+      ],
+      // the only card that does not end on a dive: take the turn it leant into
+      close: [bank(1)],
+    },
+    { segments: [bank(1), chute(-0.24)] },
+  ],
+  cycle: [
+    { segments: [flatten(-1), bank(-1), chute(0.24)] },
+    { segments: [flatten(1), bank(1), chute(-0.22)] },
+    { segments: [flatten(-1), bank(-1), chute(0.2, 60)] },
+    { segments: [flatten(1), bank(1), chute(-0.24)] },
+  ],
   // no flatten: on down the last chute into the pool
-  { label: "plunge", run: 150, pool: 0.3, pace: 1.3 },
-];
+  finish: [PLUNGE],
+});
 
 /**
  * Slalom: tip over once and never level out again. Each carve trades the dive
@@ -424,77 +537,102 @@ export const BOBSLED: TunnelSegment[] = [
  * The one rule: a traverse leans away from the carve before it, so the carve
  * after it has to go the other way. A dive can go either way. Right, left,
  * left, right keeps it snaking about the same heading instead of drifting off
- * to one side.
+ * to one side, and it repeats: the fourth carve leaves it on the fall line the
+ * first one started from.
+ *
+ * A traverse is no way to meet the pool — level, and leaning — so a run of
+ * works that ends on one takes the carve after it as well, back onto the fall
+ * line.
  */
 const SLALOM_DIVE = 24;
 
-export const SLALOM: TunnelSegment[] = [
-  ...OPENING,
+const carve = (dir: 1 | -1): TunnelSegment => ({
+  label: dir > 0 ? "carve right" : "carve left",
+  yaw: 90 * dir,
+  bend: 36,
+});
 
-  { label: "run in", run: 60, card: { at: 0.55, u: 0.22, w: 3, h: 2 } },
-  { label: "tip over", pitch: -SLALOM_DIVE, bend: 40 },
-
-  { label: "carve right", yaw: 90, bend: 36 },
-  // leaning left now, so the next carve is left
-  { label: "traverse", run: 55, card: { at: 0.5, u: -0.24, w: 3, h: 2 } },
-  { label: "carve left", yaw: -90, bend: 36 },
-  { label: "fall line", run: 50, card: { at: 0.5, u: -0.22, w: 3, h: 2 } },
-
-  { label: "carve left", yaw: -90, bend: 36 },
-  // leaning right now, so the next carve is right
-  { label: "traverse", run: 55, card: { at: 0.5, u: 0.24, w: 3, h: 2 } },
-  { label: "carve right", yaw: 90, bend: 36 },
-  { label: "fall line", run: 50, card: { at: 0.5, u: 0.2, w: 3, h: 2 } },
-
+export const SLALOM = growing({
+  intro: [
+    {
+      segments: [
+        { label: "run in", run: 60, card: card(0.22, 0.55) },
+        { label: "tip over", pitch: -SLALOM_DIVE, bend: 40 },
+      ],
+    },
+  ],
+  cycle: [
+    {
+      // leaning left now, so the next carve is left
+      segments: [carve(1), { label: "traverse", run: 55, card: card(-0.24) }],
+      close: [carve(-1)],
+    },
+    {
+      segments: [carve(-1), { label: "fall line", run: 50, card: card(-0.22) }],
+    },
+    {
+      // leaning right now, so the next carve is right
+      segments: [carve(-1), { label: "traverse", run: 55, card: card(0.24) }],
+      close: [carve(1)],
+    },
+    {
+      segments: [carve(1), { label: "fall line", run: 50, card: card(0.2) }],
+    },
+  ],
   // on down the fall line into the pool
-  { label: "plunge", run: 150, pool: 0.3, pace: 1.3 },
-];
+  finish: [PLUNGE],
+});
 
 /**
- * Spiral: the bobsled's turn, always to the right, so it corkscrews down — a
- * turn and a half, with a card on each of the first four chutes.
+ * Spiral: the bobsled's turn, always to the right, so it corkscrews down —
+ * a card on the run in and on every chute after it, then a turn and a half
+ * more before the pool.
  *
  * A lap drops about 100 path units, which keeps the coils well clear of each
- * other. Tighten it (a smaller bank or shorter chutes) and the development
- * build warns once they come close.
+ * other however many there are. Tighten it (a smaller bank or shorter chutes)
+ * and the development build warns once they come close.
  */
 const SPIRAL_BANK = 18;
 
-export const SPIRAL: TunnelSegment[] = [
-  ...OPENING,
+const SPIRAL_TURN: TunnelSegment = { label: "turn", yaw: 90, bend: 34 };
+const SPIRAL_FLATTEN: TunnelSegment = {
+  label: "flatten",
+  pitch: SPIRAL_BANK,
+  bend: 30,
+  roll: SPIRAL_BANK,
+};
 
-  {
-    label: "run in",
-    run: 60,
-    roll: SPIRAL_BANK,
-    card: { at: 0.55, u: 0.22, w: 3, h: 2 },
-  },
-
-  { label: "turn", yaw: 90, bend: 34 },
-  { label: "chute", run: 40, card: { at: 0.6, u: 0.24, w: 3, h: 2 } },
-  { label: "flatten", pitch: SPIRAL_BANK, bend: 30, roll: SPIRAL_BANK },
-
-  { label: "turn", yaw: 90, bend: 34 },
-  { label: "chute", run: 40, card: { at: 0.6, u: 0.24, w: 3, h: 2 } },
-  { label: "flatten", pitch: SPIRAL_BANK, bend: 30, roll: SPIRAL_BANK },
-
-  { label: "turn", yaw: 90, bend: 34 },
-  { label: "chute", run: 40, card: { at: 0.6, u: 0.24, w: 3, h: 2 } },
-  { label: "flatten", pitch: SPIRAL_BANK, bend: 30, roll: SPIRAL_BANK },
-
-  { label: "turn", yaw: 90, bend: 34 },
-  { label: "chute", run: 40, card: { at: 0.6, u: 0.24, w: 3, h: 2 } },
-  { label: "flatten", pitch: SPIRAL_BANK, bend: 30, roll: SPIRAL_BANK },
-
-  { label: "turn", yaw: 90, bend: 34 },
-  { label: "chute", run: 40 },
-  { label: "flatten", pitch: SPIRAL_BANK, bend: 30, roll: SPIRAL_BANK },
-
-  { label: "turn", yaw: 90, bend: 34 },
-
-  // out of the last turn and down into the pool
-  { label: "plunge", run: 150, pool: 0.3, pace: 1.3 },
-];
+export const SPIRAL = growing({
+  intro: [
+    {
+      segments: [
+        {
+          label: "run in",
+          run: 60,
+          roll: SPIRAL_BANK,
+          card: card(0.22, 0.55),
+        },
+      ],
+    },
+  ],
+  cycle: [
+    {
+      segments: [
+        SPIRAL_TURN,
+        { label: "chute", run: 40, card: card(0.24, 0.6) },
+        SPIRAL_FLATTEN,
+      ],
+    },
+  ],
+  finish: [
+    SPIRAL_TURN,
+    { label: "chute", run: 40 },
+    SPIRAL_FLATTEN,
+    SPIRAL_TURN,
+    // out of the last turn and down into the pool
+    PLUNGE,
+  ],
+});
 
 /** Every preset, by name. */
 export const TUNNEL_PRESETS = {
@@ -504,15 +642,13 @@ export const TUNNEL_PRESETS = {
   BOBSLED,
   SLALOM,
   SPIRAL,
-} satisfies Record<string, TunnelSegment[]>;
+} satisfies Record<string, TunnelPreset>;
 
 /**
  * The one the section flies — change it to any name in {@link TUNNEL_PRESETS}.
  * Nothing else moves: the page height follows the new path's length.
  */
 const SELECTED_PRESET: keyof typeof TUNNEL_PRESETS = "SLALOM";
-
-export const TUNNEL_SEGMENTS: TunnelSegment[] = TUNNEL_PRESETS[SELECTED_PRESET];
 
 /* ==========================================================================
    Where it sits in the world
@@ -634,40 +770,64 @@ export function worksOverlapVh() {
 }
 
 /* ==========================================================================
-   The compiled path, once
+   The compiled path, once per number of works
    ========================================================================== */
 
-let compiled: CompiledPath | null = null;
+/**
+ * The selected preset's segments for `count` works.
+ *
+ * Asked for at least one card's worth, because every shape needs its first
+ * straight — the curl opens onto it — and then any card past the count is taken
+ * off. With no works that leaves the first straight empty, and a preset that
+ * cannot grow leaves its spare straights empty. Empty meaning *not there*: no
+ * patch is built for a card that is not on the path, so nothing downstream has
+ * to know the CMS ran short.
+ */
+function segmentsFor(count: number) {
+  let k = 0;
+
+  return TUNNEL_PRESETS[SELECTED_PRESET](Math.max(1, count)).map((seg) =>
+    seg.card && k++ >= count ? { ...seg, card: undefined } : seg,
+  );
+}
+
+/** A compiled path, and the launch worked out for it — see {@link launchFor}. */
+type Tunnel = { path: CompiledPath; launch: Launch };
 
 /**
- * The preset compiled with the opening wall at `run` path units.
+ * Keyed by how many works the tunnel was built for. One entry in practice —
+ * the count is whatever Prismic sent — and a second only if a preview changes
+ * it mid-session.
+ */
+const tunnels = new Map<number, Tunnel>();
+
+/**
+ * The segments compiled with the opening wall at `run` path units.
  *
  * The wall is the first segment by construction — it is the one the About
  * section shares, so it is where the flight opens — and its length is the only
  * thing about the shape this file decides rather than reads.
  */
-function compileWall(run: number) {
-  const [wall, ...rest] = TUNNEL_SEGMENTS;
+function compileWall(segments: TunnelSegment[], run: number): Tunnel {
+  const [wall, ...rest] = segments;
 
-  return compile([{ ...wall, run }, ...rest], {
+  const path = compile([{ ...wall, run }, ...rest], {
     scale: TUNNEL.scale,
     origin: TUNNEL_ORIGIN,
     overhang: TUNNEL.overhang,
     tail: TUNNEL.tail,
   });
+
+  return { path, launch: launchFor(path) };
 }
 
-/**
- * The path every part of the section reads: the geometry builder, the flight,
- * the cards, and the slice that sizes the page off its weight.
- *
- * A module singleton rather than a hook, for ../scene/cardSlots' reason — there
- * is only ever one Works section, its input is a module constant, and the
- * compile has to happen before React renders anything so the section's own
- * height can be a function of it.
- */
-export function tunnelPath(): CompiledPath {
-  if (compiled) return compiled;
+function tunnel(count: number): Tunnel {
+  const n = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+
+  const hit = tunnels.get(n);
+  if (hit) return hit;
+
+  const segments = segmentsFor(n);
 
   // ── How long the opening wall is ──────────────────────────────────────
   //
@@ -689,51 +849,73 @@ export function tunnelPath(): CompiledPath {
   // the curl reaches the foot of the screen on the exact frame the handover
   // runs out, rather than after a stretch of flat wall nobody asked for.
   const want = Math.max(0, TUNNEL.handoverVh);
-  let run = HALF_FRAME / TUNNEL.scale;
+  let t = compileWall(segments, HALF_FRAME / TUNNEL.scale);
 
   for (let i = 0; i < 3; i++) {
-    compiled = compileWall(run);
-    launched = null;
-
     const fall =
-      flightDistance(want / Math.max(1, worksSectionVh() - 100)) -
-      compiled.travelA;
+      distanceOn(t, want / Math.max(1, sectionVhOf(t) - 100)) - t.path.travelA;
 
-    run = (HALF_FRAME + fall) / TUNNEL.scale;
+    t = compileWall(segments, (HALF_FRAME + fall) / TUNNEL.scale);
   }
 
-  compiled = compileWall(run);
-  launched = null;
+  tunnels.set(n, t);
 
-  if (process.env.NODE_ENV !== "production") {
-    for (const w of compiled.warn.concat(proximityWarnings(compiled))) {
-      console.warn(`[works tunnel] ${w}`);
-    }
+  if (process.env.NODE_ENV !== "production") warnAbout(t, n, want);
 
-    // The solve should land the handover on the knob exactly, so a miss means
-    // the preset has done something it does not know about — a first segment
-    // that is not the flat wall, most likely. Worth saying out loud: what is
-    // downstream of it is the About section handing its grid to a surface that
-    // has already moved, and nothing over there can see that from where it
-    // sits.
-    const got = wallHandoverVh();
+  return t;
+}
 
-    if (Math.abs(got - want) > 0.5) {
-      console.warn(
-        `[works tunnel] asked for a ${want}vh handover, the opening wall carries ${got.toFixed(1)}vh of one — is the first segment still the flat wall?`,
-      );
-    }
+/** What the development build says about a freshly compiled tunnel. */
+function warnAbout(t: Tunnel, count: number, want: number) {
+  const { path } = t;
 
-    // And the other end of it, which the wall cannot see: the About section's
-    // grid runs out before the wall does. See {@link HANDOVER_LIMIT_VH}.
-    if (want > HANDOVER_LIMIT_VH) {
-      console.warn(
-        `[works tunnel] a ${want}vh handover outlives the About section's own grid — past about ${HANDOVER_LIMIT_VH}vh the bottom ends of its verticals rise into frame while it is still being drawn`,
-      );
-    }
+  for (const w of path.warn.concat(proximityWarnings(path))) {
+    console.warn(`[works tunnel] ${w}`);
   }
 
-  return compiled;
+  // Only a preset that cannot grow runs out of slots — see {@link fixed}.
+  if (path.cards.length < count) {
+    console.warn(
+      `[works tunnel] Prismic has ${count} works and ${SELECTED_PRESET} has room for ${path.cards.length} — the rest are not shown. Pick a preset that grows.`,
+    );
+  }
+
+  // The solve should land the handover on the knob exactly, so a miss means
+  // the preset has done something it does not know about — a first segment
+  // that is not the flat wall, most likely. Worth saying out loud: what is
+  // downstream of it is the About section handing its grid to a surface that
+  // has already moved, and nothing over there can see that from where it sits.
+  const got = handoverOf(t);
+
+  if (Math.abs(got - want) > 0.5) {
+    console.warn(
+      `[works tunnel] asked for a ${want}vh handover, the opening wall carries ${got.toFixed(1)}vh of one — is the first segment still the flat wall?`,
+    );
+  }
+
+  // And the other end of it, which the wall cannot see: the About section's
+  // grid runs out before the wall does. See {@link HANDOVER_LIMIT_VH}.
+  if (want > HANDOVER_LIMIT_VH) {
+    console.warn(
+      `[works tunnel] a ${want}vh handover outlives the About section's own grid — past about ${HANDOVER_LIMIT_VH}vh the bottom ends of its verticals rise into frame while it is still being drawn`,
+    );
+  }
+}
+
+/**
+ * The path every part of the section reads, for `count` works: the geometry
+ * builder, the flight, the cards, the HUD, and the slice that sizes the page
+ * off its weight.
+ *
+ * Compiled once per count and kept, rather than in a hook, for ../scene/
+ * cardSlots' reason — there is only ever one Works section, and the compile
+ * has to happen before React renders anything so the section's own height can
+ * be a function of it. The count is the one input that comes from outside: it
+ * is how many works Prismic sent, and everything that asks for the path asks
+ * with it.
+ */
+export function tunnelPath(count: number): CompiledPath {
+  return tunnel(count).path;
 }
 
 /* ==========================================================================
@@ -773,12 +955,7 @@ type Launch = {
   cost: number;
 };
 
-let launched: Launch | null = null;
-
-function launch(): Launch {
-  if (launched) return launched;
-
-  const path = tunnelPath();
+function launchFor(path: CompiledPath): Launch {
   const total = path.weightB - path.weightA;
 
   // How much of the flight is spent on the flat wall: everything up to the
@@ -806,8 +983,7 @@ function launch(): Launch {
   // solution of `launchEase(span) === flat`
   const span = flat > 0 ? (2 * flat) / (1 + slow + flat * (1 - slow)) : 0;
 
-  launched = { slow, span, cost: 1 - ((1 - slow) * span) / 2 };
-  return launched;
+  return { slow, span, cost: 1 - ((1 - slow) * span) / 2 };
 }
 
 /**
@@ -819,8 +995,7 @@ function launch(): Launch {
  * flight. Closed form, and it can be: the section asks for a distance from a
  * progress and never the other way round, so there is nothing to invert.
  */
-function launchEase(p: number) {
-  const { slow, span, cost } = launch();
+function launchEase({ slow, span, cost }: Launch, p: number) {
   if (span <= 0) return p;
 
   if (p >= span) return ((span * (1 + slow)) / 2 + p - span) / cost;
@@ -831,28 +1006,37 @@ function launchEase(p: number) {
   );
 }
 
-/** Where along the spine a scroll progress of 0..1 puts the camera. */
-export function flightDistance(progress: number) {
-  const path = tunnelPath();
-  const t = progress < 0 ? 0 : progress > 1 ? 1 : progress;
+function distanceOn(t: Tunnel, progress: number) {
+  const p = progress < 0 ? 0 : progress > 1 ? 1 : progress;
 
-  return distanceAtProgress(path, launchEase(t));
+  return distanceAtProgress(t.path, launchEase(t.launch, p));
 }
 
 /**
- * How tall the section is, in `vh`.
+ * Where along the spine a scroll progress of 0..1 puts the camera, in the
+ * tunnel built for `count` works.
+ */
+export function flightDistance(count: number, progress: number) {
+  return distanceOn(tunnel(count), progress);
+}
+
+function sectionVhOf(t: Tunnel) {
+  const travel = (t.path.weightB - t.path.weightA) / t.path.scale;
+
+  return Math.round(100 + (travel * TUNNEL.vhPerUnit) / t.launch.cost);
+}
+
+/**
+ * How tall the section is, in `vh`, for `count` works.
  *
  * A screen for the tunnel to be seen through, plus the flight's own weight at
- * {@link TUNNEL.vhPerUnit}, plus what {@link launch} spends getting up to
- * speed. Derived rather than typed so that editing the preset cannot silently
- * change the pace of the whole thing: a longer tunnel takes more page, exactly
- * as much more as it added.
+ * {@link TUNNEL.vhPerUnit}, plus what {@link launchFor} spends getting up to
+ * speed. Derived rather than typed so that neither editing the preset nor
+ * adding a work in Prismic can silently change the pace of the whole thing: a
+ * longer tunnel takes more page, exactly as much more as it added.
  */
-export function worksSectionVh() {
-  const path = tunnelPath();
-  const travel = (path.weightB - path.weightA) / path.scale;
-
-  return Math.round(100 + (travel * TUNNEL.vhPerUnit) / launch().cost);
+export function worksSectionVh(count: number) {
+  return sectionVhOf(tunnel(count));
 }
 
 /**
@@ -895,6 +1079,28 @@ function flatWallEnd(path: CompiledPath) {
   return curl.s0 - HALF_FRAME;
 }
 
+function handoverOf(t: Tunnel) {
+  const want = Math.max(0, TUNNEL.handoverVh);
+  const s = flatWallEnd(t.path);
+
+  if (s === Infinity) return want;
+  if (s <= t.path.travelA) return 0;
+
+  // The ease is only ever asked forwards — see {@link launchEase}, which is
+  // closed form for exactly that reason — so this reads it the same way and
+  // bisects instead. Forty halvings of a monotone function, asked once.
+  let lo = 0;
+  let hi = 1;
+
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (distanceOn(t, mid) < s) lo = mid;
+    else hi = mid;
+  }
+
+  return Math.min(want, lo * (sectionVhOf(t) - 100));
+}
+
 /**
  * How long the About section's copy of the wall stays true, in vh of the
  * flight — and so how long the two sections have to cross one grid into the
@@ -911,31 +1117,14 @@ function flatWallEnd(path: CompiledPath) {
  * One figure and not two, because both halves of the fade are run off it:
  * ../scene/Scene brings the tunnel's own grid up over exactly this window as
  * the About section takes its copy out. Split them and the middle of the
- * handover is a brightness step, which is the thing being hidden.
+ * handover is a brightness step, which is the thing being hidden. The About
+ * section gets it through ../scene/worksScroll, which the slice publishes it
+ * to — it has no way to know how many works there are.
  *
  * Zero is a real answer and a reachable one, {@link TUNNEL.handoverVh} being
  * allowed to be zero. There is no window to spend then, only the one frame on
  * which the two lattices coincide exactly — so the swap happens on that.
  */
-export function wallHandoverVh() {
-  const path = tunnelPath();
-  const want = Math.max(0, TUNNEL.handoverVh);
-  const s = flatWallEnd(path);
-
-  if (s === Infinity) return want;
-  if (s <= path.travelA) return 0;
-
-  // The ease is only ever asked forwards — see {@link launchEase}, which is
-  // closed form for exactly that reason — so this reads it the same way and
-  // bisects instead. Forty halvings of a monotone function, asked once.
-  let lo = 0;
-  let hi = 1;
-
-  for (let i = 0; i < 40; i++) {
-    const mid = (lo + hi) / 2;
-    if (flightDistance(mid) < s) lo = mid;
-    else hi = mid;
-  }
-
-  return Math.min(want, lo * (worksSectionVh() - 100));
+export function wallHandoverVh(count: number) {
+  return handoverOf(tunnel(count));
 }

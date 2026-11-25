@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
-import { asImageSrc } from "@prismicio/client";
+import { asImageSrc, isFilled } from "@prismicio/client";
 import { PrismicNextLink } from "@prismicio/next";
 import type { Content } from "@prismicio/client";
 
 import { TUNNEL } from "../scene-core/presets";
-import { publishCardCount, publishCardSlot } from "./cardSlots";
+import { publishCardSlot } from "./cardSlots";
 
 /**
  * The cards themselves: markup, laid over the canvas and moved by the frame
@@ -45,19 +44,23 @@ function workData(item: WorkItem) {
     : undefined;
 }
 
+/**
+ * The works that actually point at something: an entry whose link was never
+ * set, or whose document has since been unpublished, would otherwise be a card
+ * called "Untitled" that goes nowhere. The tunnel is built for this many.
+ */
+export function linkedWorks(items: WorkItem[]) {
+  return items.filter(
+    (item) => isFilled.contentRelationship(item.works) && !item.works.isBroken,
+  );
+}
+
 /** what a card is called, on the card and wherever else it is named */
 export function workTitle(item: WorkItem) {
   return workData(item)?.title ?? "Untitled";
 }
 
 export default function WorksCards({ works }: WorksCardsProps) {
-  // How many slots the tunnel should light. Written once here rather than
-  // derived inside the frame loop, which has no idea what Prismic returned.
-  useEffect(() => {
-    publishCardCount(works.length);
-    return () => publishCardCount(0);
-  }, [works.length]);
-
   return (
     <div className="pointer-events-none fixed inset-0 z-10 h-screen w-full overflow-hidden">
       {works.map((item, i) => {

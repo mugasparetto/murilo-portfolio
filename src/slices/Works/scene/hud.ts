@@ -80,13 +80,11 @@ const CORNER_LEAD_VH = 10;
 const CORNER_VH = 14;
 
 /**
- * Where clicking a card's tick sends the page: this far through the stretch of
- * the flight over which that card is all the way out of the wall. That stretch
- * starts with the card small and far off and ends with the camera on top of it
- * and the card sliding off the screen. Halfway, it is the thing on screen and
- * entirely on it, at any window shape.
+ * A card has arrived once it is all the way out of the wall on the way in: as
+ * far out as `emergence` takes it, less a hair, because a smoothstep only
+ * creeps up to 1.
  */
-const JUMP_SHARE = 0.5;
+const ARRIVED = 0.999;
 
 type HudLayout = {
   /** section progress at which the HUD appears — the zero of everything below */
@@ -96,18 +94,21 @@ type HudLayout = {
   /** the corner row arriving, in vh since the reveal */
   cornerFromV: number;
   cornerToV: number;
-  /** per card slot: the spine distance at which it counts as reached */
+  /** per card: the spine distance at which it counts as reached */
   reachS: number[];
-  /** and the same moment as section progress, which is where its tick sits */
+  /**
+   * and the same moment as section progress: where its tick sits, and where
+   * clicking the tick sends the page
+   */
   ticks: number[];
-  /** per card slot: the section progress its tick sends the page to */
-  jumps: number[];
 };
 
-let layout: HudLayout | null = null;
+/** keyed by work count, like the path it is read off */
+const layouts = new Map<number, HudLayout>();
 
 /**
- * Worked out once from the compiled path — a module singleton, so this is too.
+ * Worked out once per work count from the compiled path, which is kept per
+ * count, so this is too.
  *
  * The HUD's zero is where the wall starts to curl — the foot of the screen
  * on the frame the flight takes over — so the counting starts with the throat,
@@ -115,17 +116,20 @@ let layout: HudLayout | null = null;
  * in as that card starts coming out of the wall, so the corner fills in as
  * there is something to count.
  *
- * A card counts as reached once it is halfway out of the wall on the way in,
- * so the counter turns over as the card becomes the thing on screen rather than
- * when the camera finally passes it. Clicking its tick goes a little further,
- * into the middle of the stretch where it is all the way out. Every card moment
- * is read off `emergence` itself, at the aim the card is approached with,
- * rather than restated here.
+ * A card counts as reached once it is all the way out of the wall on the way
+ * in, so the counter turns over as the card arrives rather than when the camera
+ * finally passes it. That one moment is everything the HUD says about the card:
+ * where its tick sits, when the tick lights and the count turns over, and where
+ * clicking the tick takes the page. So a click leaves the cursor on the mark
+ * that was clicked, with the count agreeing. Both card moments here are read
+ * off `emergence` itself, at the aim the card is approached with, rather than
+ * restated.
  */
-export function hudLayout(): HudLayout {
-  if (layout) return layout;
+export function hudLayout(count: number): HudLayout {
+  const hit = layouts.get(count);
+  if (hit) return hit;
 
-  const path = tunnelPath();
+  const path = tunnelPath(count);
   const curl = path.segs.find((seg) => seg.wrap1 > seg.wrap0);
   const fr = makeFrame();
 
@@ -141,24 +145,6 @@ export function hudLayout(): HudLayout {
     return s - d;
   };
 
-  /**
-   * The stretch of spine over which a card is all the way out, as [from, to].
-   * The walk runs on past the card itself, because a card approached
-   * head-on is still out as the camera draws level with it.
-   */
-  const fullyOut = (s: number): [number, number] => {
-    const aim = frameAt(path, s, fr).aim;
-
-    const step = 0.25 * path.scale;
-    const end = -120 * path.scale;
-    let d = 120 * path.scale;
-    while (d > end && emergence(d, aim, path.scale) < 0.999) d -= step;
-    const from = s - d;
-    while (d > end && emergence(d, aim, path.scale) >= 0.999) d -= step;
-
-    return [from, s - d];
-  };
-
   /** section progress at a spine distance — flightDistance's inverse */
   const progressAt = (s: number) => {
     let lo = 0;
@@ -167,25 +153,20 @@ export function hudLayout(): HudLayout {
     // it is only ever asked forwards, so bisect it
     for (let i = 0; i < 40; i++) {
       const mid = (lo + hi) / 2;
-      if (flightDistance(mid) < s) lo = mid;
+      if (flightDistance(count, mid) < s) lo = mid;
       else hi = mid;
     }
 
     return lo;
   };
 
-  const flightVh = Math.max(1, worksSectionVh() - 100);
+  const flightVh = Math.max(1, worksSectionVh(count) - 100);
 
   const revealS = curl ? curl.s0 : path.travelA;
   const revealT = progressAt(revealS);
 
-  const reachS = path.cards.map((card) => outBy(card.s, 0.5));
+  const reachS = path.cards.map((card) => outBy(card.s, ARRIVED));
   const ticks = reachS.map(progressAt);
-
-  const jumps = path.cards.map((card) => {
-    const [from, to] = fullyOut(card.s);
-    return progressAt(from + (to - from) * JUMP_SHARE);
-  });
 
   // the row lands as the first card starts to come out of the wall
   const landS = path.cards.length > 0 ? outBy(path.cards[0].s, 0.01) : revealS;
@@ -195,15 +176,15 @@ export function hudLayout(): HudLayout {
   );
   const cornerFromV = landV - CORNER_LEAD_VH;
 
-  layout = {
+  const layout = {
     revealT,
     flightVh,
     cornerFromV,
     cornerToV: cornerFromV + CORNER_VH,
     reachS,
     ticks,
-    jumps,
   };
 
+  layouts.set(count, layout);
   return layout;
 }

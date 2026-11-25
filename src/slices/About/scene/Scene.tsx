@@ -23,7 +23,11 @@ import {
   poseFrame,
 } from "@/app/components/poses";
 import { smoothstep } from "@/slices/Works/scene-core/path";
-import { worksProgress } from "@/slices/Works/scene/worksScroll";
+import {
+  worksFlightVh,
+  worksHandoverVh,
+  worksProgress,
+} from "@/slices/Works/scene/worksScroll";
 import {
   aboutGridLiftCells,
   TUNNEL,
@@ -31,10 +35,8 @@ import {
   wallCell,
   wallColumnCount,
   wallColumns,
-  wallHandoverVh,
   wallRows,
   worksOverlapVh,
-  worksSectionVh,
 } from "@/slices/Works/scene-core/presets";
 
 type LinePosition = {
@@ -589,9 +591,6 @@ export default function Scene() {
    */
   const gridLive = useMemo(() => ({ value: 1 }), []);
 
-  /** the section below's scroll, in vh, so its progress can be read as one */
-  const flightVh = useMemo(() => Math.max(1, worksSectionVh() - 100), []);
-
   /**
    * How long the handover gets, in vh of the flight below.
    *
@@ -615,8 +614,13 @@ export default function Scene() {
    * there — and `flown <= 0` being checked first is what keeps that a hand over
    * rather than a divide by zero. The preset warns about it in development;
    * there is nothing this side can do about it.
+   *
+   * Read every frame from the section below rather than worked out here once:
+   * this figure, and the length of flight it is quoted against, both depend on
+   * how many works Prismic sent, which only that section knows. It publishes
+   * them through ../../Works/scene/worksScroll, beside its position.
    */
-  const handover = useMemo(() => Math.max(0, wallHandoverVh()), []);
+  const handover = worksHandoverVh;
 
   const [grabbing, setGrabbing] = useState<null | "head" | "eyes" | "mouth">(
     null,
@@ -836,7 +840,7 @@ export default function Scene() {
     // the two cannot disagree about when the flight has started.
     const flown = worksProgress(scrollY.current);
     gridLive.value =
-      flown <= 0 ? 1 : 1 - smoothstep((flown * flightVh) / handover);
+      flown <= 0 ? 1 : 1 - smoothstep((flown * worksFlightVh()) / handover());
 
     // The backdrop goes on the frame the flight starts, and unlike the grid it
     // does not get a handover to do it in.

@@ -12,7 +12,7 @@ import {
 } from "../scene-core/path";
 import { TUNNEL } from "../scene-core/presets";
 import { SEGMENTS_PER_CARD, tunnelResources } from "../scene-core/resources";
-import { cardCount, cardSlot } from "./cardSlots";
+import { cardSlot } from "./cardSlots";
 import { flight } from "./flight";
 
 /**
@@ -36,9 +36,15 @@ import { flight } from "./flight";
  * frame as each other.
  */
 
-export default function TunnelCards({ radial }: { radial: number }) {
+export default function TunnelCards({
+  radial,
+  count,
+}: {
+  radial: number;
+  count: number;
+}) {
   const size = useThree((s) => s.size);
-  const res = tunnelResources(radial);
+  const res = tunnelResources(radial, count);
 
   const scratch = useMemo(
     () => ({
@@ -67,7 +73,7 @@ export default function TunnelCards({ radial }: { radial: number }) {
   useFrame((state) => {
     // for <Scene />'s reason: a frame callback may not write to anything it
     // closed over from render
-    const live = tunnelResources(radial);
+    const live = tunnelResources(radial, count);
     if (!live) return;
 
     const { path, build, beams, patchMats } = live;
@@ -110,7 +116,6 @@ export default function TunnelCards({ radial }: { radial: number }) {
     }
 
     const camera = state.camera;
-    const filled = cardCount();
     const reach = TUNNEL.fogFar * TUNNEL.scale;
 
     camera.matrixWorld.extractBasis(scratch.right, scratch.up, scratch.back);
@@ -123,12 +128,7 @@ export default function TunnelCards({ radial }: { radial: number }) {
       const patch = build.patches[i];
       const mat = patchMats[i];
 
-      // A path may offer more slots than the CMS has works. The extras keep
-      // their geometry — it costs nothing while it is dark — and simply never
-      // light up, rather than the preset having to be edited every time a count
-      // that lives somewhere else entirely changes.
-      const e =
-        i < filled ? emergence(patch.s - flight.s, patch.aim, path.scale) : 0;
+      const e = emergence(patch.s - flight.s, patch.aim, path.scale);
 
       mat.lines.opacity = Math.min(1, e * 1.5) * 0.95;
       mat.fill.opacity = e * 0.16;

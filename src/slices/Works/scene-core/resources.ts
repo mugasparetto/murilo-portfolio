@@ -17,11 +17,12 @@ import {
  * Two reasons, and they point the same way.
  *
  * The first is that it is true. There is only ever one Works section on the
- * page, its input is a module constant, and fifty thousand vertices of wall is
- * not something to rebuild because a section scrolled out of the registry's
- * margin and back in, or because a development double-mount asked twice.
- * {@link tunnelPath} is a singleton for exactly this reason and this is the
- * rest of the same object.
+ * page, its inputs are how many works Prismic sent and how many columns the
+ * wall is ruled into, and fifty thousand vertices of wall is not something to
+ * rebuild because a section scrolled out of the registry's margin and back in,
+ * or because a development double-mount asked twice. {@link tunnelPath} is
+ * kept per count for exactly this reason and this is the rest of the same
+ * object.
  *
  * The second is that a frame loop has to *write* to all of it — a uniform, an
  * opacity, a draw range, a buffer of beam vertices, sixty times a second. A
@@ -63,7 +64,7 @@ export type TunnelResources = {
   beams: THREE.BufferGeometry;
   beamMat: THREE.LineBasicMaterial;
 
-  /** one pair per card slot, because each fades on its own */
+  /** one pair per card, because each fades on its own */
   patchMats: PatchMaterials[];
 };
 
@@ -71,21 +72,27 @@ export type TunnelResources = {
 export const SEGMENTS_PER_CARD = 8;
 
 /**
- * Keyed by column count, which is the only thing that can differ: a coarse
- * pointer gets fewer columns. At most two entries ever, and a tablet docked to
- * a mouse mid-session keeps both rather than rebuilding on the swap.
+ * Keyed by work count and column count, the two things that can differ. One
+ * entry in practice: the column count is fixed, and the work count only moves
+ * if a Prismic preview changes it mid-session — which leaves the old entry
+ * behind rather than disposing something a frame may still be drawing.
  */
-const cache = new Map<number, TunnelResources | null>();
+const cache = new Map<string, TunnelResources | null>();
 
-export function tunnelResources(radial: number): TunnelResources | null {
-  const hit = cache.get(radial);
+export function tunnelResources(
+  radial: number,
+  works: number,
+): TunnelResources | null {
+  const key = `${works}:${radial}`;
+
+  const hit = cache.get(key);
   if (hit !== undefined) return hit;
 
-  const path = tunnelPath();
+  const path = tunnelPath(works);
   const build = buildTunnel(path, radial);
 
   if (!build) {
-    cache.set(radial, null);
+    cache.set(key, null);
     return null;
   }
 
@@ -157,6 +164,6 @@ export function tunnelResources(radial: number): TunnelResources | null {
     })),
   };
 
-  cache.set(radial, resources);
+  cache.set(key, resources);
   return resources;
 }

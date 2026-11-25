@@ -217,25 +217,27 @@ async function drawTitle(text: string, anisotropy: number) {
 
 /**
  * The crown's arc length against spine distance, from the top of the flight to
- * well past the throat — everything the sheet can reach. Built once: the path
- * is a module singleton.
+ * well past the throat — everything the sheet can reach. Built once per work
+ * count, like the path it is read off.
  */
-let table: ReturnType<typeof crownTable> | null = null;
+const tables = new Map<number, ReturnType<typeof crownTable>>();
 
-function titleTable() {
-  if (table) return table;
+function titleTable(count: number) {
+  const hit = tables.get(count);
+  if (hit) return hit;
 
-  const path = tunnelPath();
+  const path = tunnelPath(count);
   const curl = path.segs.find((seg) => seg.wrap1 > seg.wrap0);
   const origin = curl ? curl.s0 : path.travelA;
 
-  table = crownTable(
+  const table = crownTable(
     path,
     path.travelA,
     Math.min(path.total, origin + 120 * path.scale),
     origin,
   );
 
+  tables.set(count, table);
   return table;
 }
 
@@ -245,7 +247,7 @@ function titleTable() {
  * height — and cheap enough to be: a few thousand vertices and a handful of
  * uniforms, with the shader program shared.
  */
-function buildSheet(art: TitleArt, width: number) {
+function buildSheet(art: TitleArt, width: number, works: number) {
   const sheetW = width / art.inkShare;
   const capW = sheetW * art.capShare;
 
@@ -271,7 +273,7 @@ function buildSheet(art: TitleArt, width: number) {
   const top = -PAD;
   const bottom = 1 + tail + ECHO_STROKE + CLIP_SLOP + PAD;
 
-  const geometry = wallSheet(tunnelPath(), titleTable(), {
+  const geometry = wallSheet(tunnelPath(works), titleTable(works), {
     top: TOP + top * capW,
     width: sheetW,
     height: (bottom - top) * capW,
@@ -295,7 +297,7 @@ function buildSheet(art: TitleArt, width: number) {
   return { geometry, material };
 }
 
-export default function WorksTitle() {
+export default function WorksTitle({ count }: { count: number }) {
   const size = useThree((s) => s.size);
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
@@ -340,8 +342,8 @@ export default function WorksTitle() {
   }, [camera.fov, size.width, size.height, up.md]);
 
   const sheet = useMemo(
-    () => (art ? buildSheet(art, width) : null),
-    [art, width],
+    () => (art ? buildSheet(art, width, count) : null),
+    [art, width, count],
   );
 
   useEffect(
