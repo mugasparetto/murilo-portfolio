@@ -129,6 +129,11 @@ type HudLayout = {
   /** per card: where its tick sits along the rail, 0..1 — evenly spaced */
   marks: number[];
   /**
+   * where the pool's tick, at the rail's right end, sends the page: the camera
+   * all the way under the water, just past where the HUD leaves
+   */
+  poolT: number;
+  /**
    * The rail's cursor, as knots of section progress against rail position:
    * the row starting to draw in at 0, each card reached on its mark, and the
    * HUD leaving at 1. Both increasing.
@@ -168,6 +173,11 @@ const layouts = new Map<number, HudLayout>();
  * to draw in until the HUD leaves. Each gap, first and last included, is the
  * same share of it, and the cursor runs at whatever pace gets it from one mark
  * to the next as the next card is reached.
+ *
+ * The rail's right end has a tick too, for the pool. Clicking it dives the
+ * page in, going on past the end of the rail until the water has closed over.
+ * By then the HUD has gone, so nothing is left on screen for the cursor to
+ * disagree with. It is not a work, so the counter does not count it.
  */
 export function hudLayout(count: number): HudLayout {
   const hit = layouts.get(count);
@@ -237,24 +247,35 @@ export function hudLayout(count: number): HudLayout {
   );
   const cornerFromV = landV - CORNER_LEAD_VH;
 
-  // The rail's two ends: the row starting to draw in, and the HUD leaving as
-  // the camera goes under. Submersion only rises along the last stretch before
-  // the pool, so the moment it passes the mark can be bisected for there.
-  const railFromT = revealT + cornerFromV / flightVh;
-  let railToT = 1;
+  /**
+   * section progress at which the camera is first `level` under the water, or
+   * the end of the flight on a path without a pool
+   */
+  const underAt = (level: number) => {
+    const pool = path.pool;
+    if (pool == null) return 1;
 
-  if (path.pool != null) {
-    let lo = path.pool - 20 * path.scale;
-    let hi = path.pool + 10 * path.scale;
+    // submersion only rises, and only over the last stretch before the surface
+    // and just past it, so it can be bisected for there
+    let lo = pool - 20 * path.scale;
+    let hi = pool + 10 * path.scale;
 
     for (let i = 0; i < 40; i++) {
       const mid = (lo + hi) / 2;
-      if (submersion(path.pool - mid, path.scale) < HUD_SUBMERGED) lo = mid;
+      if (submersion(pool - mid, path.scale) < level) lo = mid;
       else hi = mid;
     }
 
-    railToT = progressAt(lo);
-  }
+    return progressAt(hi);
+  };
+
+  // The rail's two ends: the row starting to draw in, and the HUD leaving as
+  // the camera goes under.
+  const railFromT = revealT + cornerFromV / flightVh;
+  const railToT = underAt(HUD_SUBMERGED);
+
+  // the pool's tick goes on until the water has closed over
+  const poolT = underAt(1);
 
   const marks = ticks.map((_, i) => (i + 1) / (ticks.length + 1));
 
@@ -279,6 +300,7 @@ export function hudLayout(count: number): HudLayout {
     reachS,
     ticks,
     marks,
+    poolT,
     knotT,
     knotX,
   };

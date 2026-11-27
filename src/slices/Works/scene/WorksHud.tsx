@@ -95,17 +95,27 @@ export default function WorksHud({ titles }: { titles: string[] }) {
   const total = titles.length;
 
   // One tick per card on the path, which is one per work — or as many as a
-  // preset that cannot grow has room for. The rail stays the width it is, so
-  // more works put the ticks closer together. `ticks` is when each card is
-  // reached, as section progress; `marks` is where its tick sits, evenly
-  // spaced along the rail.
-  const { ticks, marks } = useMemo(() => hudLayout(total), [total]);
+  // preset that cannot grow has room for — and one more at the rail's right
+  // end, for the pool. The rail stays the width it is, so more works put the
+  // ticks closer together. Each stop is where its tick sits along the rail,
+  // `x`, and the section progress clicking it sends the page to, `t`.
+  const { ticks, stops } = useMemo(() => {
+    const L = hudLayout(total);
+
+    return {
+      ticks: L.ticks,
+      stops: [
+        ...L.marks.map((x, i) => ({ x, t: L.ticks[i] })),
+        { x: 1, t: L.poolT },
+      ],
+    };
+  }, [total]);
 
   // Through Lenis, not `window.scrollTo`, because Lenis owns the scroll: a
   // native scroll would be overwritten on its next frame. A wheel or a finger
   // during the flight takes over from it, as it does from any Lenis scroll.
   const flyTo = useCallback(
-    (i: number) => {
+    (t: number) => {
       if (!lenis) return;
 
       // Onto the tick itself, so the cursor stops on the mark that was clicked.
@@ -113,7 +123,7 @@ export default function WorksHud({ titles }: { titles: string[] }) {
       // count turns over, and a scroll rounded to the device pixel can stop
       // just short of it with the count one behind. Two pixels of a flight
       // thousands long is nothing on the rail.
-      const y = Math.ceil(worksScrollY(ticks[i])) + 2;
+      const y = Math.ceil(worksScrollY(t)) + 2;
       const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
       lenis.scrollTo(y, {
@@ -122,7 +132,7 @@ export default function WorksHud({ titles }: { titles: string[] }) {
         immediate: still,
       });
     },
-    [lenis, ticks],
+    [lenis],
   );
 
   const showing = ticks.length > 0;
@@ -171,7 +181,8 @@ export default function WorksHud({ titles }: { titles: string[] }) {
         </h2>
 
         {/* the rail: the row's time on screen, with the cards evenly spaced
-            along it and a tick where each one is reached */}
+            along it, a tick where each one is reached, and the pool's tick
+            at the end */}
         <div
           className="relative h-3 w-16 origin-left sm:w-24 md:w-40 lg:w-48"
           style={{ scale: `${railIn} 1` }}
@@ -195,26 +206,34 @@ export default function WorksHud({ titles }: { titles: string[] }) {
             </div>
           </div>
 
-          {marks.map((t, i) => {
+          {stops.map(({ x, t }, i) => {
             // The hit area is centred on its tick, as tall as the row, and
             // reaches HIT_HALF either side, or halfway to a neighbouring tick
             // if that is nearer. Ticks close together share the gap between
             // them, without overlapping.
             const gaps = [
-              i > 0 ? `${(t - marks[i - 1]) * 50}%` : null,
-              i < marks.length - 1 ? `${(marks[i + 1] - t) * 50}%` : null,
+              i > 0 ? `${(x - stops[i - 1].x) * 50}%` : null,
+              i < stops.length - 1 ? `${(stops[i + 1].x - x) * 50}%` : null,
             ].filter(Boolean);
             const half = `min(${[HIT_HALF, ...gaps].join(", ")})`;
+
+            // Centred where the cursor's pixel is centred at that point: the
+            // cursor travels the rail less its own width, so this is `x` of
+            // that plus half a pixel. That is what puts the pool's tick on the
+            // rail's last pixel, as the cursor ends, rather than half off it.
+            const centre = `calc(${x * 100}% + ${(0.5 - x).toFixed(3)}px)`;
 
             return (
               <button
                 key={i}
                 type="button"
-                aria-label={`Go to ${titles[i]}`}
-                onClick={() => flyTo(i)}
+                aria-label={
+                  i < ticks.length ? `Go to ${titles[i]}` : "Go to the pool"
+                }
+                onClick={() => flyTo(t)}
                 className="group pointer-events-auto absolute top-1/2 h-10 -translate-y-1/2 cursor-pointer focus-visible:outline-1 focus-visible:outline-white/60 md:h-12.5"
                 style={{
-                  left: `calc(${t * 100}% - ${half})`,
+                  left: `calc(${centre} - ${half})`,
                   width: `calc(2 * ${half})`,
                 }}
               >
