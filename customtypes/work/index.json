@@ -33,6 +33,14 @@
           "label": "Year",
           "placeholder": ""
         }
+      },
+      "live_url": {
+        "type": "Link",
+        "config": {
+          "label": "Live URL",
+          "placeholder": "https://",
+          "select": "web"
+        }
       }
     }
   }

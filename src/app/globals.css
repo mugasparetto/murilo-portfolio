@@ -119,6 +119,79 @@ body {
 }
 
 /*
+ * Works card — see <WorksCards /> in src/slices/Works/scene/WorksCards.tsx.
+ *
+ * The actions' arrows: the CTA's swap above, along whichever way the arrow
+ * points. Each icon pair carries that as `--fly-x` / `--fly-y`. The lead leaves
+ * that way and the copy arrives from the opposite side. As with the CTA the
+ * transitions live in the hover state, so leaving snaps the pair home rather
+ * than flying it back. Hover only where there is a pointer to hover with, so a
+ * tap doesn't leave the arrow stuck mid-swap; keyboard focus swaps it too.
+ */
+.fly-copy {
+  translate: calc(var(--fly-x) * -200%) calc(var(--fly-y) * -200%);
+}
+
+@media (hover: hover) {
+  .fly-button:hover .fly-lead {
+    transition: translate 0.2s ease-in-out;
+    translate: calc(var(--fly-x) * 200%) calc(var(--fly-y) * 200%);
+  }
+
+  .fly-button:hover .fly-copy {
+    transition: translate 0.2s ease-in-out 0.1s;
+    translate: 0 0;
+  }
+}
+
+.fly-button:focus-visible .fly-lead {
+  transition: translate 0.2s ease-in-out;
+  translate: calc(var(--fly-x) * 200%) calc(var(--fly-y) * 200%);
+}
+
+.fly-button:focus-visible .fly-copy {
+  transition: translate 0.2s ease-in-out 0.1s;
+  translate: 0 0;
+}
+
+/*
+ * The thumbnail: greyscale and a shade down until the card is hovered or has
+ * focus in it, then in colour with a slow push in, on the scroll cue's ease.
+ * Only where there is a pointer to do that with; on a touch screen it is in
+ * colour from the start.
+ *
+ * The filter is drawn into the card's layer, so the card is re-rastered only
+ * while this transition runs, never while the flight moves it.
+ */
+@media (hover: hover) {
+  .work-thumb {
+    filter: grayscale(1);
+    opacity: 0.85;
+    transition:
+      filter 0.7s cubic-bezier(0.65, 0, 0.35, 1),
+      opacity 0.7s cubic-bezier(0.65, 0, 0.35, 1),
+      scale 0.7s cubic-bezier(0.65, 0, 0.35, 1);
+  }
+
+  .work-card:is(:hover, :focus-within) .work-thumb {
+    filter: none;
+    opacity: 1;
+    scale: 1.04;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fly-button .fly-lead,
+  .fly-button .fly-copy {
+    transition: none !important;
+  }
+
+  .work-card:is(:hover, :focus-within) .work-thumb {
+    scale: none;
+  }
+}
+
+/*
  * Hero scroll cue — see <ScrollCue /> in src/slices/Hero/ScrollCue.tsx.
  *
  * A segment as tall as its track falls from fully above it to fully below,

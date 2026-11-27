@@ -170,6 +170,23 @@ interface WorkDocumentData {
    * - **Documentation**: https://prismic.io/docs/fields/text
    */
   year: prismic.KeyTextField;
+
+  /**
+   * Live URL field in *Work*
+   *
+   * - **Field Type**: Link
+   * - **Placeholder**: https://
+   * - **API ID Path**: work.live_url
+   * - **Tab**: Main
+   * - **Documentation**: https://prismic.io/docs/fields/link
+   */
+  live_url: prismic.LinkField<
+    string,
+    string,
+    unknown,
+    prismic.FieldState,
+    never
+  >;
 }
 
 /**
@@ -393,7 +410,7 @@ export interface WorksSliceDefaultPrimaryWorksItem {
    * - **Documentation**: https://prismic.io/docs/fields/content-relationship
    */
   works: ContentRelationshipFieldWithData<
-    [{ id: "work"; fields: ["thumbnail", "title", "year"] }]
+    [{ id: "work"; fields: ["thumbnail", "title", "year", "live_url"] }]
   >;
 }
 

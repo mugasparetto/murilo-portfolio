@@ -99,12 +99,12 @@ const OUT = 0.999;
  * radii. Taking the moment the card is first fully out instead stops the
  * camera about 34 short, which is too far. On SLALOM that point is still in
  * the carve before the card's straight, so the view is still turning. At this
- * share the camera is past the carve and on the straight, and on desktop the
- * card is about 1.7 times as wide as it was. Much later and it overruns the
- * edge of the frame: at 1024px wide this leaves it about 50px from the edge,
- * and 18 units would leave 14px. A touch earlier than the round number,
- * because the drawn card snaps to the nearest ring and can sit a unit or so
- * nearer than the card's own `s`, which is what is read here.
+ * share the camera is past the carve and on the straight. It is also the
+ * moment the card is sized for: ./cardFit makes it land here at its layout
+ * size, inside the page margins, so moving this moves the card's size with it.
+ * A touch earlier than the round number, because the drawn card snaps to the
+ * nearest ring and can sit a unit or so nearer than the card's own `s`, which
+ * is what is read here.
  */
 const REACHED = 0.6;
 

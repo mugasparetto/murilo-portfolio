@@ -197,18 +197,8 @@ export const TUNNEL = {
    */
   handoverVh: 0,
 
-  /**
-   * The card's plane, in path units across.
-   *
-   * The prototype used 11 at a 55 degree lens. This camera is 40, which
-   * magnifies everything by about 1.4, so the same fraction of the screen wants
-   * a smaller card.
-   */
-  cardWorld: 8,
-
-  /** and the card's laid-out size in CSS px, whose ratio the plane keeps */
-  cardW: 280,
-  cardH: 200,
+  // The card's size, in px and in path units, is not here: it depends on the
+  // screen. See ../scene/cardFit.
 
   /**
    * How much of the section's scroll a path unit is worth. Multiplied by the

@@ -12,6 +12,7 @@ import {
 } from "../scene-core/path";
 import { TUNNEL } from "../scene-core/presets";
 import { SEGMENTS_PER_CARD, tunnelResources } from "../scene-core/resources";
+import { cardFit, GROWTH_AFTER, type CardFit } from "./cardFit";
 import { cardSlot } from "./cardSlots";
 import { flight } from "./flight";
 
@@ -29,6 +30,10 @@ import { flight } from "./flight";
  * is doing they project to an *axis-aligned* screen rectangle; a `translate`
  * and a `scale` then land the element exactly on it, with no perspective
  * transform on the element and no rounding to argue about.
+ *
+ * How big that rectangle is, and how far off the wall the card comes, depends
+ * on the screen — see ./cardFit. This writes the layout size it settles on
+ * onto the markup, and the plane is sized to land at exactly that.
  *
  * Runs at priority 0.6: after <Scene /> has placed the camera at 0.5, before
  * <EffectComposer /> draws with it at 1. See <Scene />, where that ordering is
@@ -69,6 +74,9 @@ export default function TunnelCards({
 
   /** whether each card is laid out, so `display` is only written on a change */
   const shown = useRef<boolean[]>([]);
+
+  /** the fit each card's size was last written for, likewise */
+  const sized = useRef<(CardFit | null)[]>([]);
 
   useFrame((state) => {
     // for <Scene />'s reason: a frame callback may not write to anything it
@@ -115,14 +123,22 @@ export default function TunnelCards({
       return;
     }
 
-    const camera = state.camera;
+    const camera = state.camera as THREE.PerspectiveCamera;
     const reach = TUNNEL.fogFar * TUNNEL.scale;
 
     camera.matrixWorld.extractBasis(scratch.right, scratch.up, scratch.back);
     scratch.fwd.copy(scratch.back).negate();
 
-    const hw = (TUNNEL.cardWorld * TUNNEL.scale) / 2;
-    const hh = hw * (TUNNEL.cardH / TUNNEL.cardW);
+    // cached on the viewport, so a few compares on every frame but the one
+    // after a resize
+    const fit = cardFit(
+      path,
+      build.patches,
+      count,
+      size.width,
+      size.height,
+      camera.fov,
+    );
 
     for (let i = 0; i < build.patches.length; i++) {
       const patch = build.patches[i];
@@ -141,10 +157,30 @@ export default function TunnelCards({
         continue;
       }
 
-      // push the card off the wall, towards the axis
+      // push the card off the wall, towards the axis, as far as it needs to
+      // come to fit the screen
       scratch.anchor
         .copy(patch.centre)
-        .addScaledVector(patch.inward, smoothstep(e) * patch.tube * 0.55);
+        .addScaledVector(
+          patch.inward,
+          smoothstep(e) * patch.tube * fit.push[i],
+        );
+
+      const depth = scratch.tmp
+        .copy(scratch.anchor)
+        .sub(camera.position)
+        .dot(scratch.fwd);
+
+      // Up to its landing the card is a plain plane, growing as it is
+      // approached. Past it, the plane shrinks with the distance left, so the
+      // card holds close to the size it landed at — see GROWTH_AFTER.
+      const land = fit.depth[i];
+      const hold =
+        depth < land
+          ? Math.pow(Math.max(depth, 1e-3) / land, 1 - GROWTH_AFTER)
+          : 1;
+      const hw = fit.hw[i] * hold;
+      const hh = fit.hh[i] * hold;
 
       const corners = scratch.corners;
       corners[0]
@@ -171,11 +207,6 @@ export default function TunnelCards({
       if (!el) continue;
 
       // behind the camera, where `project` would fold it back into frame
-      const depth = scratch.tmp
-        .copy(scratch.anchor)
-        .sub(camera.position)
-        .dot(scratch.fwd);
-
       if (depth < 0.5) {
         hide(i);
         continue;
@@ -212,12 +243,18 @@ export default function TunnelCards({
       const x1 = (scratch.b.x * 0.5 + 0.5) * size.width;
       const y1 = (-scratch.b.y * 0.5 + 0.5) * size.height;
 
+      if (sized.current[i] !== fit) {
+        el.style.width = `${fit.w}px`;
+        el.style.height = `${fit.h}px`;
+        sized.current[i] = fit;
+      }
+
       if (!shown.current[i]) {
         el.style.display = "flex";
         shown.current[i] = true;
       }
 
-      const scale = Math.abs(x1 - x0) / TUNNEL.cardW;
+      const scale = Math.abs(x1 - x0) / fit.w;
       const left = Math.min(x0, x1).toFixed(1);
       const top = Math.min(y0, y1).toFixed(1);
 

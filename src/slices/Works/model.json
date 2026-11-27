@@ -30,7 +30,8 @@
                       "fields": [
                         "thumbnail",
                         "title",
-                        "year"
+                        "year",
+                        "live_url"
                       ]
                     }
                   ]
